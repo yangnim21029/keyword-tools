@@ -59,7 +59,81 @@ const KeywordResults: React.FC<KeywordResultsProps> = ({ suggestions, region }) 
     setIsLoadingClusters(true);
     try {
       const results = await getSemanticClustering(selectedKeywords);
-      if (results.clusters) {
+      
+      // Check if we should use the streaming API
+      if (results.useStreamingApi) {
+        // Create a new AbortController for fetch request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
+        
+        try {
+          // Call the streaming API endpoint
+          const response = await fetch('/api/semantic-clustering', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              keywords: results.limitedKeywords || selectedKeywords.slice(0, 100) 
+            }),
+            signal: controller.signal,
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+          }
+          
+          // Handle the streaming response
+          const reader = response.body?.getReader();
+          let decoder = new TextDecoder();
+          let receivedText = '';
+          
+          if (!reader) {
+            throw new Error('Could not get reader from response');
+          }
+          
+          // Read the stream
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            // Decode and append to our received text
+            receivedText += decoder.decode(value, { stream: true });
+            
+            try {
+              // Try to parse JSON as it comes in (it might be incomplete)
+              const parsedData = JSON.parse(receivedText);
+              if (parsedData.clusters) {
+                setClusters(parsedData.clusters);
+              }
+            } catch (e) {
+              // Not complete JSON yet, continue reading
+              console.log('Still receiving stream data...');
+            }
+          }
+          
+          // Final decode
+          receivedText += decoder.decode();
+          
+          try {
+            // Parse the complete response
+            const parsedData = JSON.parse(receivedText);
+            if (parsedData.clusters) {
+              setClusters(parsedData.clusters);
+              setActiveTab('clusters');
+            }
+          } catch (e) {
+            console.error('Error parsing final JSON response:', e);
+            throw new Error('Error parsing JSON from streaming response');
+          }
+        } catch (streamError) {
+          console.error('Error in streaming semantic clusters:', streamError);
+          throw streamError;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } else if (results.clusters) {
+        // Fall back to the original non-streaming response
         setClusters(results.clusters);
         setActiveTab('clusters');
       }

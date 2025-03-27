@@ -17,8 +17,10 @@ import {
   // cacheKeywordMetadata, // 暫時不使用
   saveSearchHistory,
   getSearchHistoryList,
-  getSearchHistoryDetail
+  getSearchHistoryDetail,
+  db
 } from '@/app/services/firebase';
+import { Timestamp } from 'firebase-admin/firestore';
 
 // Initialize OpenAI client for clustering functionality
 const openai = new OpenAI({
@@ -369,6 +371,13 @@ export async function fetchSearchHistory(limit: number = 50) {
     return historyList;
   } catch (error) {
     console.error('獲取搜索歷史失敗:', error);
+    // 檢查是否為配額錯誤，如果是，將錯誤向上傳播以便前端處理
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    // 其他錯誤情況下返回空數組
     return [];
   }
 }
@@ -381,6 +390,13 @@ export async function fetchSearchHistoryDetail(historyId: string) {
     return historyDetail;
   } catch (error) {
     console.error('獲取搜索歷史詳情失敗:', error);
+    // 檢查是否為配額錯誤，如果是，將錯誤向上傳播以便前端處理
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    // 其他錯誤情況下返回空
     return null;
   }
 }
@@ -519,6 +535,266 @@ function isSimplifiedChinese(text: string): boolean {
   return type === 'simplified';
 }
 
+// 分析 SERP (搜尋引擎結果頁面)
+export async function getSerpAnalysis(keywords: string[], region: string, language: string, maxResults: number = 100) {
+  'use server';
+  
+  try {
+    if (!keywords || keywords.length === 0) {
+      throw new Error('必須提供至少一個關鍵詞');
+    }
+    
+    // 限制關鍵詞數量，避免過多請求
+    const MAX_KEYWORDS = 10;
+    const limitedKeywords = keywords.slice(0, MAX_KEYWORDS);
+    
+    console.log(`開始分析關鍵詞 SERP 數據: ${limitedKeywords.join(', ')} (共 ${limitedKeywords.length} 個關鍵詞)`);
+    
+    // 獲取緩存結果
+    const cacheResults = await getCachedSerpResults(limitedKeywords, region, language);
+    if (cacheResults) {
+      console.log('使用緩存的 SERP 分析結果');
+      return {
+        results: cacheResults,
+        fromCache: true,
+        totalKeywords: limitedKeywords.length
+      };
+    }
+    
+    // 使用正確的 Apify Actor ID 和 API 方式
+    const apiToken = 'apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3';
+    const actorId = 'nFJndFXA5zjCTuudP';
+    const apiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apiToken}`;
+    
+    // 確保國家代碼為小寫，因為 Apify API 要求 countryCode 必須是小寫
+    const countryCode = region ? region.toLowerCase() : "";
+    
+    // 準備請求體 - 確保格式與原始示例匹配
+    const requestBody = {
+      queries: limitedKeywords.join('\n'),
+      resultsPerPage: maxResults,
+      maxPagesPerQuery: 1,
+      languageCode: language || "",
+      countryCode: countryCode,
+      forceExactMatch: false,
+      mobileResults: false,
+      includeUnfilteredResults: false,
+      saveHtml: false,
+      saveHtmlToKeyValueStore: false,
+      includeIcons: false
+    };
+    
+    console.log(`調用 Apify API 獲取 SERP 數據...(國家代碼: ${countryCode})`);
+    
+    // 發送請求到 Apify API
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+    
+    if (!response.ok) {
+      // 嘗試獲取更詳細的錯誤信息
+      let errorDetails = '';
+      try {
+        const errorResponse = await response.text();
+        errorDetails = `: ${errorResponse}`;
+      } catch (e) {
+        // 無法讀取詳細錯誤
+      }
+      
+      throw new Error(`Apify API 請求失敗: ${response.status} ${response.statusText}${errorDetails}`);
+    }
+    
+    // 解析 API 回應
+    const items = await response.json();
+    
+    console.log(`API 返回了 ${Array.isArray(items) ? items.length : 0} 個項目`);
+    
+    // 處理和解析結果數據
+    const processedResults = await processApifyResults(items);
+    
+    const actualKeywordCount = Object.keys(processedResults).length;
+    console.log(`實際處理了 ${actualKeywordCount} 個關鍵詞的結果`);
+    
+    // 保存結果到 Firebase
+    await cacheSerpResults(limitedKeywords, region, language, processedResults);
+    
+    return {
+      results: processedResults,
+      fromCache: false,
+      totalKeywords: actualKeywordCount
+    };
+  } catch (error) {
+    console.error('獲取 SERP 分析失敗:', error);
+    throw error;
+  }
+}
+
+// 處理 Apify 結果數據
+async function processApifyResults(items: any[]) {
+  const results: Record<string, any> = {};
+  
+  console.log('Apify API 回傳的原始資料:', JSON.stringify(items).substring(0, 200) + '...');
+  
+  if (!Array.isArray(items) || items.length === 0) {
+    console.log('API 未返回有效資料，返回空結果');
+    return {};
+  }
+  
+  for (const item of items) {
+    try {
+      // 找到這個項目對應的關鍵詞
+      const keyword = item.searchQuery;
+      if (!keyword) {
+        console.log('跳過沒有關鍵詞的項目');
+        continue;
+      }
+      
+      console.log(`處理關鍵詞 "${keyword}" 的結果`);
+      
+      // 處理搜索結果
+      const searchResults = item.organicResults || [];
+      
+      if (searchResults.length === 0) {
+        console.log(`關鍵詞 "${keyword}" 沒有找到有機搜索結果`);
+      }
+      
+      // 提取重要資訊
+      const processedResults = searchResults.map((result: any) => ({
+        title: result.title || '',
+        url: result.url || '',
+        displayUrl: result.displayedUrl || result.url || '',
+        position: result.position || 0,
+        description: result.description || '',
+        siteLinks: result.siteLinks || [],
+      }));
+      
+      // 分析結果數據
+      const analysis = analyzeSerpResults(processedResults);
+      
+      // 保存結果
+      results[keyword] = {
+        results: processedResults,
+        analysis,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('處理 SERP 結果項目時出錯:', error);
+    }
+  }
+  
+  console.log(`成功處理了 ${Object.keys(results).length} 個關鍵詞的 SERP 結果`);
+  return results;
+}
+
+// 分析 SERP 結果並提取見解
+function analyzeSerpResults(results: any[]) {
+  const analysis = {
+    totalResults: results.length,
+    domains: {} as Record<string, number>,
+    topDomains: [] as string[],
+    avgTitleLength: 0,
+    avgDescriptionLength: 0,
+  };
+  
+  let totalTitleLength = 0;
+  let totalDescLength = 0;
+  
+  // 計算各種指標
+  for (const result of results) {
+    // 提取域名
+    try {
+      const url = new URL(result.url);
+      const domain = url.hostname;
+      analysis.domains[domain] = (analysis.domains[domain] || 0) + 1;
+    } catch (e) {
+      // URL 解析錯誤，跳過
+    }
+    
+    // 累計標題和描述長度
+    if (result.title) totalTitleLength += result.title.length;
+    if (result.description) totalDescLength += result.description.length;
+  }
+  
+  // 計算平均值
+  if (results.length > 0) {
+    analysis.avgTitleLength = Math.round(totalTitleLength / results.length);
+    analysis.avgDescriptionLength = Math.round(totalDescLength / results.length);
+  }
+  
+  // 獲取頂級域名
+  analysis.topDomains = Object.entries(analysis.domains)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([domain]) => domain);
+  
+  return analysis;
+}
+
+// 從 Firebase 獲取緩存的 SERP 結果
+async function getCachedSerpResults(keywords: string[], region: string, language: string) {
+  if (!db) return null;
+  
+  try {
+    const cacheId = generateCacheId(keywords, region, language);
+    const docSnap = await db.collection('serpResults').doc(cacheId).get();
+    
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (!data) return null;
+      
+      const timestamp = data.timestamp.toDate();
+      const now = new Date();
+      
+      // 檢查緩存是否過期 (7天)
+      const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000;
+      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
+        console.log(`使用緩存的 SERP 結果: ${cacheId}`);
+        return data.results;
+      } else {
+        console.log(`緩存已過期: ${cacheId}`);
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("獲取緩存 SERP 結果時出錯:", error);
+    return null;
+  }
+}
+
+// 將 SERP 結果緩存到 Firebase
+async function cacheSerpResults(keywords: string[], region: string, language: string, results: any) {
+  if (!db) return;
+  
+  try {
+    // 確保結果是可序列化的（轉換為純 JSON 並重新解析）
+    // 這會移除任何不可序列化的元素，如日期、函數、循環引用等
+    const serializableResults = JSON.parse(JSON.stringify(results));
+    
+    const cacheId = generateCacheId(keywords, region, language);
+    await db.collection('serpResults').doc(cacheId).set({
+      keywords,
+      region,
+      language,
+      results: serializableResults,
+      timestamp: Timestamp.now(),
+    });
+    console.log(`已緩存 SERP 結果: ${cacheId}`);
+  } catch (error) {
+    console.error("緩存 SERP 結果時出錯:", error);
+  }
+}
+
+// 生成緩存 ID
+function generateCacheId(keywords: string[], region: string, language: string): string {
+  // 對關鍵詞排序並加入，確保相同關鍵詞集合有相同的 ID
+  const keywordsStr = keywords.sort().join(',');
+  return `${keywordsStr}_${region}_${language}`;
+}
+
 // Perform semantic clustering of keywords
 export async function getSemanticClustering(keywords: string[]) {
   try {
@@ -528,61 +804,23 @@ export async function getSemanticClustering(keywords: string[]) {
     
     // 計算預估處理時間
     const estimatedTime = Math.ceil(5 + keywords.length * 0.2); // OpenAI 通常需要幾秒鐘
-    const startTime = Date.now();
     
     // 限制處理的關鍵詞數量
     const MAX_CLUSTERING_KEYWORDS = 100;
     const limitedKeywords = keywords.slice(0, MAX_CLUSTERING_KEYWORDS);
     
-    // 使用與 chat.py 相同的提示語和模型設定
-    const prompt = `請根據以下關鍵詞進行語意分群。目標是將相關的關鍵詞歸類到主題中。
-
-語意辨識的方法，是根據能否至放到同一篇文章，作為 listicle 為依據，不是以 SEO 為主，例如：不以基本知識這種概括詞分群
-    
-請按以下 JSON 格式返回結果：
-{
-  "clusters": {
-    "主題名稱1": ["關鍵詞1", "關鍵詞2", ...],
-    "主題名稱2": ["關鍵詞3", "關鍵詞4", ...],
-    ...
-  }
-}
-
-注意事項：
-1. 主題名稱應簡潔明了
-2. 盡量讓每個主題包含關聯性強的關鍵詞
-3. 如果有關鍵詞難以歸類，可以放入"其他"類別
-4. 不要遺漏任何關鍵詞
-5. 確保返回的是有效的 JSON 格式
-
-關鍵詞列表：
-${limitedKeywords.join(', ')}`;
-    
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",  // 使用與 chat.py 相同的模型
-      messages: [
-        { role: "system", "content": prompt }
-      ],
-      temperature: 0.7,  // 保持一定的創造性
-      response_format: { type: "json_object" },
-    });
-    
-    const content = completion.choices[0].message.content;
-    if (!content) {
-      throw new Error('No content returned from OpenAI');
-    }
-    
-    const clusters = JSON.parse(content) as ClusteringResult;
-    
-    // 計算實際處理時間（秒）
-    const actualTime = Math.ceil((Date.now() - startTime) / 1000);
-    
+    // Instead of direct OpenAI API call, direct client to use our streaming API
+    // The actual clustering logic is now in app/api/semantic-clustering/route.ts
     return {
-      ...clusters,
+      clusters: {},
       processingTime: {
         estimated: estimatedTime,
-        actual: actualTime
-      }
+        actual: 0
+      },
+      // This indicates to the client that it should use the streaming API
+      useStreamingApi: true,
+      // Pass the limited keywords to be used by the client
+      limitedKeywords
     };
   } catch (error) {
     console.error('Error clustering keywords:', error);

@@ -34,4 +34,10 @@ export interface ClusteringResult {
   clusters: {
     [key: string]: string[];
   };
+  processingTime?: {
+    estimated: number;
+    actual: number;
+  };
+  useStreamingApi?: boolean;
+  limitedKeywords?: string[];
 } 

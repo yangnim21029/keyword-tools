@@ -47,4 +47,33 @@ export interface KeywordVolumeResult {
   competition: string;
   competitionIndex: number;
   cpc: number | null;
+}
+
+// SERP 分析相關的類型定義
+export interface SerpResult {
+  title: string;
+  url: string;
+  displayUrl: string;
+  position: number;
+  description: string;
+  siteLinks: any[];
+}
+
+export interface SerpAnalysis {
+  totalResults: number;
+  domains: Record<string, number>;
+  topDomains: string[];
+  avgTitleLength: number;
+  avgDescriptionLength: number;
+}
+
+export interface SerpKeywordResult {
+  results: SerpResult[];
+  analysis: SerpAnalysis;
+  timestamp: string;
+}
+
+export interface SerpAnalysisResult {
+  results: Record<string, SerpKeywordResult>;
+  fromCache: boolean;
 } 

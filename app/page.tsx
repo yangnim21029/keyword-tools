@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { getKeywordSuggestions, getRegions, getSearchVolume, getSemanticClustering, getUrlSuggestions, getFirebaseStats } from './actions';
-import { SuggestionsResult, SearchVolumeResult, KeywordVolumeResult } from '@/app/types';
+import { getKeywordSuggestions, getRegions, getSearchVolume, getSemanticClustering, getUrlSuggestions, getFirebaseStats, getSerpAnalysis } from './actions';
+import { SuggestionsResult, SearchVolumeResult, KeywordVolumeResult, SerpAnalysisResult } from '@/app/types';
 import SearchHistory from './components/SearchHistory';
+import SerpAnalysisComponent from './components/SerpAnalysisComponent';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'keyword' | 'url' | 'settings'>('keyword');
+  const [activeTab, setActiveTab] = useState<'keyword' | 'url' | 'settings' | 'serp'>('keyword');
   const [query, setQuery] = useState('');
   const [url, setUrl] = useState('');
   const [region, setRegion] = useState('HK'); // 默認香港
@@ -18,6 +19,8 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<SuggestionsResult>({ suggestions: [], estimatedProcessingTime: 0 });
   const [volumeData, setVolumeData] = useState<SearchVolumeResult>({ results: [], processingTime: { estimated: 0, actual: 0 } });
   const [clusters, setClusters] = useState<any>(null);
+  const [serpResults, setSerpResults] = useState<SerpAnalysisResult | null>(null);
+  const [serpKeywords, setSerpKeywords] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
   const [step, setStep] = useState<'input' | 'suggestions' | 'volumes' | 'clusters'>('input');
@@ -201,23 +204,126 @@ export default function Home() {
     
     setIsLoading(true);
     setLoadingText('進行語意分群中...');
+    setClusters(null);
     
     try {
       // 獲取關鍵詞文本
       const keywords = volumeData.results.map(item => item.text);
       
-      // 呼叫語意分群 API (使用 chat.py 中的設定)
-      const clustersResult = await getSemanticClustering(keywords);
-      setClusters(clustersResult);
-      setStep('clusters');
+      // 直接調用 API 端點，而不是使用 server action
+      const response = await fetch('/api/semantic-clustering', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keywords }),
+      });
       
-      // 如果有處理時間資訊，輸出到控制台
-      if (clustersResult.processingTime) {
-        console.log(`分群實際處理時間: ${clustersResult.processingTime.actual} 秒 (預估: ${clustersResult.processingTime.estimated} 秒)`);
+      if (!response.ok) {
+        throw new Error(`API 請求失敗: ${response.status}`);
+      }
+      
+      // 處理流式回應
+      const responseBody = response.body;
+      if (!responseBody) {
+        throw new Error('API 回應沒有 body');
+      }
+      
+      const reader = responseBody.getReader();
+      const decoder = new TextDecoder();
+      let result = '';
+      
+      // 更新讀取狀態以顯示流式處理進度
+      setLoadingText('接收 AI 分群結果中...');
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // 解碼接收到的數據塊
+        const chunk = decoder.decode(value, { stream: true });
+        result += chunk;
+        
+        // 嘗試解析部分 JSON，並在 UI 中顯示進度
+        try {
+          // 純粹的 text/event-stream 中尋找有效的 JSON
+          const jsonData = JSON.parse(result);
+          if (jsonData.clusters) {
+            // 更新加載狀態以顯示有多少類別已經收到
+            setLoadingText(`已收到 ${Object.keys(jsonData.clusters).length} 個主題分類...`);
+          }
+        } catch (e) {
+          // 繼續收集數據直到有一個完整的 JSON
+        }
+      }
+      
+      // 當流完成時，解析最終結果
+      try {
+        const jsonData = JSON.parse(result);
+        setClusters(jsonData);
+        setStep('clusters');
+      } catch (e) {
+        console.error('無法解析分群結果:', e);
+        throw new Error('解析語意分群回應時出錯');
       }
     } catch (error) {
       console.error('Error clustering:', error);
       alert('分群失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 分析 SERP 結果
+  const handleSerpAnalysis = async () => {
+    if (!serpKeywords.trim()) {
+      alert('請輸入要分析的關鍵詞');
+      return;
+    }
+    
+    // 將輸入的關鍵詞文本分割成數組
+    const keywordList = serpKeywords
+      .split('\n')
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+    
+    if (keywordList.length === 0) {
+      alert('請輸入至少一個有效的關鍵詞');
+      return;
+    }
+    
+    if (keywordList.length > 10) {
+      alert('一次最多只能分析 10 個關鍵詞');
+      return;
+    }
+    
+    setIsLoading(true);
+    setLoadingText('分析 SERP 結果中...');
+    setSerpResults(null);
+    
+    try {
+      const results = await getSerpAnalysis(keywordList, region, language, 10);
+      setSerpResults(results);
+      console.log('SERP 分析結果:', results);
+      
+      // 更新提示訊息以顯示實際處理的關鍵詞數量
+      const inputCount = keywordList.length;
+      const actualCount = results.totalKeywords || Object.keys(results.results).length;
+      
+      let message = `已分析 ${actualCount} 個關鍵詞的 SERP 結果`;
+      if (results.fromCache) {
+        message += ' (來自緩存)';
+      }
+      
+      // 如果實際處理數量與輸入數量不同，添加說明
+      if (inputCount !== actualCount) {
+        message += `\n注意：您輸入了 ${inputCount} 個關鍵詞，但只有 ${actualCount} 個成功獲取結果`;
+      }
+      
+      alert(message);
+    } catch (error) {
+      console.error('SERP 分析失敗:', error);
+      alert('SERP 分析失敗，請稍後再試');
     } finally {
       setIsLoading(false);
     }
@@ -263,6 +369,12 @@ export default function Home() {
               className={`px-4 py-3 ${activeTab === 'url' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg mr-1`}
             >
               URL 分析
+            </button>
+            <button 
+              onClick={() => setActiveTab('serp')} 
+              className={`px-4 py-3 ${activeTab === 'serp' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg mr-1`}
+            >
+              SERP 分析
             </button>
             <button 
               onClick={() => setActiveTab('settings')} 
@@ -398,6 +510,69 @@ export default function Home() {
                   className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
                 >
                   分析 URL
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* SERP 分析面板 */}
+          {activeTab === 'serp' && (
+            <div>
+              <div className="mb-4">
+                <label className="block mb-2">輸入關鍵詞（每行一個，最多10個）</label>
+                <textarea
+                  value={serpKeywords}
+                  onChange={(e) => setSerpKeywords(e.target.value)}
+                  placeholder="輸入要分析的關鍵詞，每行一個"
+                  className="w-full p-2 border border-gray-300 rounded h-40"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-2">地區</label>
+                  <select 
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded"
+                  >
+                    {Object.entries(regions).map(([name, code]) => (
+                      <option key={code} value={code}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block mb-2">語言</label>
+                  <select 
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded"
+                  >
+                    {Object.entries(languages).length > 0 ? (
+                      Object.entries(languages).map(([code, name]) => (
+                        <option key={code} value={code}>{name} ({code})</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="zh-TW">繁體中文 (zh-TW)</option>
+                        <option value="zh-CN">簡體中文 (zh-CN)</option>
+                        <option value="en">英文 (en)</option>
+                        <option value="ms">馬來文 (ms)</option>
+                        <option value="ko">韓文 (ko)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <button 
+                  onClick={handleSerpAnalysis}
+                  disabled={isLoading}
+                  className="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded"
+                >
+                  分析 SERP 結果
                 </button>
               </div>
             </div>
@@ -601,6 +776,28 @@ export default function Home() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        
+        {/* SERP 分析結果 */}
+        {serpResults && activeTab === 'serp' && (
+          <div className="mb-6">
+            <h2 className="text-xl font-bold mb-4">SERP 分析結果</h2>
+            
+            {serpResults.results && Object.keys(serpResults.results).length > 0 ? (
+              <>
+                <div className="mb-4 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                  <strong>調試信息:</strong> 找到 {Object.keys(serpResults.results).length} 個關鍵詞的 SERP 結果
+                  {serpResults.fromCache && " (來自緩存)"}
+                </div>
+                
+                <SerpAnalysisComponent data={serpResults.results} language={language} />
+              </>
+            ) : (
+              <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg">
+                無法獲取SERP分析數據。請確保您的關鍵詞有效並嘗試再次分析。
+              </div>
+            )}
           </div>
         )}
       </main>
