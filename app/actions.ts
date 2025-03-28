@@ -18,9 +18,13 @@ import {
   saveSearchHistory,
   getSearchHistoryList,
   getSearchHistoryDetail,
-  db
+  db,
+  getHtmlContent,
+  saveHtmlContent,
+  updateSerpResultWithHtmlAnalysis
 } from '@/app/services/firebase';
 import { Timestamp } from 'firebase-admin/firestore';
+import { JSDOM } from 'jsdom';
 
 // Initialize OpenAI client for clustering functionality
 const openai = new OpenAI({
@@ -539,26 +543,40 @@ function isSimplifiedChinese(text: string): boolean {
 export async function getSerpAnalysis(keywords: string[], region: string, language: string, maxResults: number = 100) {
   'use server';
   
+  // 強制將maxResults設置為100，無論傳入的值是什麼
+  maxResults = 100;
+  
   try {
     if (!keywords || keywords.length === 0) {
       throw new Error('必須提供至少一個關鍵詞');
     }
     
-    // 限制關鍵詞數量，避免過多請求
-    const MAX_KEYWORDS = 10;
+    // 增加關鍵詞處理數量上限
+    const MAX_KEYWORDS = 100;
     const limitedKeywords = keywords.slice(0, MAX_KEYWORDS);
     
     console.log(`開始分析關鍵詞 SERP 數據: ${limitedKeywords.join(', ')} (共 ${limitedKeywords.length} 個關鍵詞)`);
     
     // 獲取緩存結果
-    const cacheResults = await getCachedSerpResults(limitedKeywords, region, language);
-    if (cacheResults) {
-      console.log('使用緩存的 SERP 分析結果');
-      return {
-        results: cacheResults,
-        fromCache: true,
-        totalKeywords: limitedKeywords.length
-      };
+    try {
+      const cacheResults = await getCachedSerpResults(limitedKeywords, region, language);
+      if (cacheResults) {
+        console.log('使用緩存的 SERP 分析結果');
+        return {
+          results: cacheResults,
+          fromCache: true,
+          totalKeywords: limitedKeywords.length
+        };
+      }
+    } catch (cacheError) {
+      // 如果是配額錯誤，記錄警告但繼續執行
+      if (cacheError instanceof Error && 
+          (cacheError.message.includes('RESOURCE_EXHAUSTED') || 
+           cacheError.message.includes('Quota exceeded'))) {
+        console.warn("Firebase 配額已用盡，無法檢查 SERP 緩存。繼續從 API 獲取數據。");
+      } else {
+        console.error("緩存檢查失敗，但將繼續從 API 獲取：", cacheError);
+      }
     }
     
     // 使用正確的 Apify Actor ID 和 API 方式
@@ -619,8 +637,18 @@ export async function getSerpAnalysis(keywords: string[], region: string, langua
     const actualKeywordCount = Object.keys(processedResults).length;
     console.log(`實際處理了 ${actualKeywordCount} 個關鍵詞的結果`);
     
-    // 保存結果到 Firebase
-    await cacheSerpResults(limitedKeywords, region, language, processedResults);
+    // 嘗試緩存結果，但不中斷流程
+    try {
+      await cacheSerpResults(limitedKeywords, region, language, processedResults);
+    } catch (cacheError) {
+      if (cacheError instanceof Error && 
+          (cacheError.message.includes('RESOURCE_EXHAUSTED') || 
+           cacheError.message.includes('Quota exceeded'))) {
+        console.warn("Firebase 配額已用盡，無法緩存 SERP 結果。但結果仍會返回給用戶。");
+      } else {
+        console.error("緩存 SERP 結果失敗，但程序將繼續：", cacheError);
+      }
+    }
     
     return {
       results: processedResults,
@@ -647,7 +675,16 @@ async function processApifyResults(items: any[]) {
   for (const item of items) {
     try {
       // 找到這個項目對應的關鍵詞
-      const keyword = item.searchQuery;
+      let keyword = '';
+      
+      // 處理新API格式 - 從 searchQuery.term 中獲取關鍵詞
+      if (item.searchQuery && item.searchQuery.term) {
+        keyword = item.searchQuery.term;
+      } else {
+        // 兼容舊格式
+        keyword = item.searchQuery || '';
+      }
+      
       if (!keyword) {
         console.log('跳過沒有關鍵詞的項目');
         continue;
@@ -670,17 +707,28 @@ async function processApifyResults(items: any[]) {
         position: result.position || 0,
         description: result.description || '',
         siteLinks: result.siteLinks || [],
+        emphasizedKeywords: result.emphasizedKeywords || [], // 保存強調關鍵詞
+        htmlAnalysis: null // 初始化 HTML 分析結果為 null
       }));
       
       // 分析結果數據
       const analysis = analyzeSerpResults(processedResults);
       
-      // 保存結果
+      // 保存結果 - 擴展以包含更多有價值信息
       results[keyword] = {
         results: processedResults,
         analysis,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        originalQuery: keyword,
+        queryDetails: item.searchQuery || {}, // 完整的查詢詳情
+        totalResults: item.resultsTotal || 0, // 總結果數量
+        relatedQueries: item.relatedQueries || [], // 相關查詢
+        peopleAlsoAsk: item.peopleAlsoAsk || [], // 人們也在問
+        rawData: item // 保存原始完整資料以備後用
       };
+      
+      console.log(`已處理關鍵詞 "${keyword}" 的搜索結果，找到 ${processedResults.length} 個結果`);
+      console.log(`相關查詢數量: ${(item.relatedQueries || []).length}`);
     } catch (error) {
       console.error('處理 SERP 結果項目時出錯:', error);
     }
@@ -774,13 +822,21 @@ async function cacheSerpResults(keywords: string[], region: string, language: st
     // 這會移除任何不可序列化的元素，如日期、函數、循環引用等
     const serializableResults = JSON.parse(JSON.stringify(results));
     
+    // 為每個關鍵詞結果添加原始查詢關鍵詞字段
+    Object.keys(serializableResults).forEach(key => {
+      if (serializableResults[key] && typeof serializableResults[key] === 'object') {
+        serializableResults[key].originalQuery = key;
+      }
+    });
+    
     const cacheId = generateCacheId(keywords, region, language);
     await db.collection('serpResults').doc(cacheId).set({
-      keywords,
+      keywords,  // 保存原始關鍵詞列表
       region,
       language,
       results: serializableResults,
       timestamp: Timestamp.now(),
+      searchQueries: keywords, // 額外保存搜索查詢，以便直接訪問
     });
     console.log(`已緩存 SERP 結果: ${cacheId}`);
   } catch (error) {
@@ -864,5 +920,98 @@ async function fetchAutocomplete(query: string, region: string = 'TW', language:
   } catch (error) {
     console.error('Error fetching autocomplete:', error);
     return [];
+  }
+}
+
+// 分析網頁 HTML 內容
+export async function analyzeHtmlContent(url: string, keyword: string, cacheId: string) {
+  try {
+    // 使用 GET 請求，將 URL 作為參數
+    const response = await fetch(`https://slug-unique-possum.ngrok-free.app/extract-html?url=${encodeURIComponent(url)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API 請求失敗: ${response.status}`);
+    }
+
+    // 獲取 HTML 內容
+    const htmlContent = await response.text();
+    
+    // 使用 jsdom 解析 HTML
+    const dom = new JSDOM(htmlContent);
+    const doc = dom.window.document;
+    
+    // 提取標題
+    const h1s = Array.from(doc.getElementsByTagName('h1')).map((h1: Element) => h1.textContent || '');
+    const h2s = Array.from(doc.getElementsByTagName('h2')).map((h2: Element) => h2.textContent || '');
+    const h3s = Array.from(doc.getElementsByTagName('h3')).map((h3: Element) => h3.textContent || '');
+
+    // 檢查 H1 一致性
+    const h1Consistency = h1s.length > 0 && h1s.every(h1 => 
+      h1.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    // 準備分析結果 - 不包含完整 HTML
+    const htmlAnalysis = {
+      h1: h1s,
+      h2: h2s,
+      h3: h3s,
+      h1Consistency,
+      html: '' // 保持字段但不存儲內容
+    };
+
+    // 更新 SERP 結果
+    await updateSerpResultWithHtmlAnalysis(cacheId, keyword, url, htmlAnalysis);
+
+    return htmlAnalysis;
+  } catch (error) {
+    console.error('分析 HTML 內容時出錯:', error);
+    throw error;
+  }
+}
+
+// 批量分析 SERP 結果的 HTML 內容
+export async function analyzeSerpResultsHtml(keywords: string[], region: string, language: string) {
+  try {
+    const cacheId = generateCacheId(keywords, region, language);
+    const results = await getCachedSerpResults(keywords, region, language);
+    
+    if (!results) {
+      throw new Error('找不到 SERP 結果');
+    }
+
+    const analysisPromises: Promise<any>[] = [];
+
+    // 對每個關鍵詞的前 10 個結果進行分析
+    for (const keyword of keywords) {
+      if (results[keyword]?.results) {
+        const topResults = results[keyword].results.slice(0, 10);
+        
+        for (const result of topResults) {
+          analysisPromises.push(
+            analyzeHtmlContent(result.url, keyword, cacheId)
+              .catch(error => {
+                console.error(`分析 ${result.url} 時出錯:`, error);
+                return null;
+              })
+          );
+        }
+      }
+    }
+
+    // 等待所有分析完成
+    await Promise.all(analysisPromises);
+
+    return {
+      success: true,
+      message: 'HTML 內容分析完成',
+    };
+  } catch (error) {
+    console.error('批量分析 HTML 內容時出錯:', error);
+    throw error;
   }
 } 

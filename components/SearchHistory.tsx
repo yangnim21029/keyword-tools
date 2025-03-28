@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { fetchSearchHistory, fetchSearchHistoryDetail } from '../actions';
+import { fetchSearchHistory, fetchSearchHistoryDetail } from '@/app/actions';
 
 // 搜索历史列表项的类型
 interface SearchHistoryItem {

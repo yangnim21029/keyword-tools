@@ -45,8 +45,10 @@ const COLLECTIONS = {
   KEYWORD_SUGGESTIONS: 'keywordSuggestions',
   SEARCH_VOLUMES: 'searchVolumes',
   URL_SUGGESTIONS: 'urlSuggestions',
-  KEYWORD_METADATA: 'keywordMetadata',  // 新增：单个关键词元数据集合
-  SEARCH_HISTORY: 'searchHistory',      // 新增：搜索历史记录集合
+  KEYWORD_METADATA: 'keywordMetadata',
+  SEARCH_HISTORY: 'searchHistory',
+  SERP_RESULTS: 'serpResults',
+  HTML_CONTENTS: 'htmlContents',  // 新增：HTML 內容集合
 };
 
 /**
@@ -386,7 +388,14 @@ export async function getSearchHistoryList(limit: number = 50) {
     
     return historyList;
   } catch (error) {
-    console.error("獲取搜索歷史列表時出錯:", error);
+    // 檢查是否為配額錯誤
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      console.warn("Firebase 配額已用盡，無法獲取搜索歷史。請考慮升級計劃或等待配額重置。");
+    } else {
+      console.error("搜索歷史數據獲取失敗:", error);
+    }
     return [];
   }
 }
@@ -415,8 +424,150 @@ export async function getSearchHistoryDetail(historyId: string) {
       timestamp: data.timestamp.toDate(),
     };
   } catch (error) {
-    console.error("獲取搜索歷史詳細數據時出錯:", error);
+    // 檢查是否為配額錯誤
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      console.warn("Firebase 配額已用盡，無法獲取搜索歷史詳情。請考慮升級計劃或等待配額重置。");
+    } else {
+      console.error("搜索歷史詳情獲取失敗:", error);
+    }
     return null;
+  }
+}
+
+// 生成 URL 的哈希值作為文檔 ID
+function generateUrlHash(url: string): string {
+  // 使用簡單的哈希函數
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(36); // Convert to base36 string
+}
+
+// 保存 HTML 內容到 Firebase
+export async function saveHtmlContent(url: string, content: any) {
+  if (!db) return;
+  
+  try {
+    // 使用 URL 的哈希值作為文檔 ID
+    const docId = generateUrlHash(url);
+    const docRef = db.collection(COLLECTIONS.HTML_CONTENTS).doc(docId);
+    
+    await docRef.set({
+      ...content,
+      timestamp: Timestamp.now(),
+      url: url, // 保存原始 URL
+      docId: docId // 保存文檔 ID 以便查詢
+    });
+    
+    console.log(`已保存 HTML 內容: ${url}`);
+  } catch (error) {
+    console.error('保存 HTML 內容時出錯:', error);
+    throw error;
+  }
+}
+
+// 獲取 HTML 內容
+export async function getHtmlContent(url: string) {
+  if (!db) return null;
+  
+  try {
+    // 使用 URL 的哈希值作為文檔 ID
+    const docId = generateUrlHash(url);
+    
+    // 首先嘗試通過 docId 查詢
+    const docRef = await db.collection(COLLECTIONS.HTML_CONTENTS).doc(docId).get();
+    
+    if (docRef.exists) {
+      const data = docRef.data();
+      if (!data) return null;
+      
+      // 驗證 URL 是否匹配
+      if (data.url !== url) {
+        console.warn(`URL 不匹配: 期望 ${url}, 實際 ${data.url}`);
+        return null;
+      }
+      
+      const timestamp = data.timestamp.toDate();
+      const now = new Date();
+      
+      // 檢查緩存是否過期 (7天)
+      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
+        return data;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("獲取 HTML 內容時出錯:", error);
+    return null;
+  }
+}
+
+// 更新 SERP 結果，添加 HTML 分析
+export async function updateSerpResultWithHtmlAnalysis(
+  cacheId: string,
+  keyword: string,
+  url: string,
+  htmlAnalysis: {
+    h1: string[];
+    h2: string[];
+    h3: string[];
+    h1Consistency: boolean;
+    html: string;
+  }
+) {
+  if (!db) return;
+  
+  try {
+    const serpRef = db.collection(COLLECTIONS.SERP_RESULTS).doc(cacheId);
+    const serpDoc = await serpRef.get();
+    
+    if (!serpDoc.exists) {
+      console.error('找不到 SERP 結果文檔:', cacheId);
+      return;
+    }
+    
+    const serpData = serpDoc.data();
+    if (!serpData || !serpData.results || !serpData.results[keyword]) {
+      console.error('找不到關鍵詞的 SERP 結果:', keyword);
+      return;
+    }
+    
+    // 找到對應的搜索結果
+    const results = serpData.results[keyword].results;
+    const resultIndex = results.findIndex((r: any) => r.url === url);
+    
+    if (resultIndex === -1) {
+      console.error('找不到對應的搜索結果:', url);
+      return;
+    }
+    
+    // 只保存分析結果，不保存完整 HTML
+    const analysisToSave = {
+      h1: htmlAnalysis.h1,
+      h2: htmlAnalysis.h2,
+      h3: htmlAnalysis.h3,
+      h1Consistency: htmlAnalysis.h1Consistency,
+      // 移除 html 字段以減少文檔大小
+    };
+    
+    // 更新搜索結果中的 htmlAnalysis
+    results[resultIndex].htmlAnalysis = analysisToSave;
+    
+    // 更新 Firebase 文檔
+    await serpRef.update({
+      [`results.${keyword}.results`]: results,
+      lastUpdated: Timestamp.now()
+    });
+    
+    console.log(`已更新搜索結果的 HTML 分析: ${url}`);
+  } catch (error) {
+    console.error('更新 SERP 結果時出錯:', error);
+    throw error;
   }
 }
 

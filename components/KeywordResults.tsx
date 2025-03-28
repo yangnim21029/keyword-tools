@@ -251,46 +251,55 @@ const KeywordResults: React.FC<KeywordResultsProps> = ({ suggestions, region }) 
                   )}
                 </div>
 
-                <button 
-                  onClick={fetchSearchVolume}
-                  disabled={isLoadingVolume || selectedKeywords.length === 0}
-                  className={`btn btn-primary ${isLoadingVolume ? 'btn-disabled' : ''}`}
-                >
-                  {isLoadingVolume ? (
-                    <span className="flex items-center">
-                      <span className="loading loading-spinner loading-sm mr-2"></span>
-                      處理中...
-                    </span>
-                  ) : (
-                    <>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3m0 0l3 3m-3-3v12m6-6l3 3m0 0l3-3m-3 3V6" />
-                      </svg>
-                      取得搜尋量
-                    </>
-                  )}
-                </button>
+                {isLoadingVolume ? (
+                  <div className="flex justify-center items-center h-32">
+                    <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
+                    <span>獲取搜尋量數據中...</span>
+                  </div>
+                ) : null}
                 
-                <button 
-                  onClick={fetchSemanticClusters}
-                  disabled={isLoadingClusters || selectedKeywords.length < 5}
-                  className={`btn btn-secondary ${isLoadingClusters ? 'btn-disabled' : ''}`}
-                >
-                  {isLoadingClusters ? (
-                    <span className="flex items-center">
-                      <span className="loading loading-spinner loading-sm mr-2"></span>
-                      分析中...
-                    </span>
-                  ) : (
-                    <>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
-                      </svg>
-                      語義聚類分析
-                    </>
-                  )}
-                </button>
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <button 
+                    onClick={fetchSearchVolume}
+                    disabled={isLoadingVolume || selectedKeywords.length === 0}
+                    className={`btn btn-primary ${isLoadingVolume ? 'btn-disabled' : ''}`}
+                  >
+                    {isLoadingVolume ? (
+                      <span className="flex items-center">
+                        <span className="loading loading-spinner loading-sm mr-2"></span>
+                        處理中...
+                      </span>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3m0 0l3 3m-3-3v12m6-6l3 3m0 0l3-3m-3 3V6" />
+                        </svg>
+                        取得搜尋量
+                      </>
+                    )}
+                  </button>
+                  
+                  <button 
+                    onClick={fetchSemanticClusters}
+                    disabled={isLoadingClusters || selectedKeywords.length < 5}
+                    className={`btn btn-secondary ${isLoadingClusters ? 'btn-disabled' : ''}`}
+                  >
+                    {isLoadingClusters ? (
+                      <span className="flex items-center">
+                        <span className="loading loading-spinner loading-sm mr-2"></span>
+                        分析中...
+                      </span>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+                        </svg>
+                        語義聚類分析
+                      </>
+                    )}
+                  </button>
+                </div>
                 
                 {selectedKeywords.length > 0 && selectedKeywords.length < 5 && (
                   <p className="text-sm text-amber-600 mt-2 w-full flex items-center">

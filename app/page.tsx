@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { getKeywordSuggestions, getRegions, getSearchVolume, getSemanticClustering, getUrlSuggestions, getFirebaseStats, getSerpAnalysis } from './actions';
+import { getKeywordSuggestions, getRegions, getSearchVolume, getSemanticClustering, getUrlSuggestions, getFirebaseStats, getSerpAnalysis, analyzeSerpResultsHtml } from './actions';
 import { SuggestionsResult, SearchVolumeResult, KeywordVolumeResult, SerpAnalysisResult } from '@/app/types';
-import SearchHistory from './components/SearchHistory';
-import SerpAnalysisComponent from './components/SerpAnalysisComponent';
+import SearchHistory from '@/components/SearchHistory';
+import SerpAnalysisComponent from '@/components/SerpAnalysisComponent';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'keyword' | 'url' | 'settings' | 'serp'>('keyword');
@@ -35,6 +35,10 @@ export default function Home() {
   // 搜索历史侧边栏相关状态
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const searchHistoryContainerRef = useRef<Element | null>(null);
+
+  // 新增：分析 HTML 內容相關狀態
+  const [isAnalyzingHtml, setIsAnalyzingHtml] = useState(false);
+  const [htmlAnalysisStatus, setHtmlAnalysisStatus] = useState<string>('');
 
   // 獲取可用地區
   useEffect(() => {
@@ -281,7 +285,7 @@ export default function Home() {
       return;
     }
     
-    // 將輸入的關鍵詞文本分割成數組
+    // 將輸入的關鍵詞文本分割成數組，並過濾掉空行
     const keywordList = serpKeywords
       .split('\n')
       .map(k => k.trim())
@@ -292,8 +296,8 @@ export default function Home() {
       return;
     }
     
-    if (keywordList.length > 10) {
-      alert('一次最多只能分析 10 個關鍵詞');
+    if (keywordList.length > 100) {
+      alert('一次最多只能分析 100 個關鍵詞');
       return;
     }
     
@@ -302,7 +306,7 @@ export default function Home() {
     setSerpResults(null);
     
     try {
-      const results = await getSerpAnalysis(keywordList, region, language, 10);
+      const results = await getSerpAnalysis(keywordList, region, language, 100);
       setSerpResults(results);
       console.log('SERP 分析結果:', results);
       
@@ -326,6 +330,35 @@ export default function Home() {
       alert('SERP 分析失敗，請稍後再試');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 分析 HTML 內容
+  const handleAnalyzeHtml = async () => {
+    if (!serpResults) {
+      alert('請先進行 SERP 分析');
+      return;
+    }
+
+    setIsAnalyzingHtml(true);
+    setHtmlAnalysisStatus('正在分析 HTML 內容...');
+
+    try {
+      const keywords = Object.keys(serpResults.results);
+      await analyzeSerpResultsHtml(keywords, region, language);
+      
+      // 重新獲取更新後的 SERP 結果
+      const updatedResults = await getSerpAnalysis(keywords, region, language);
+      setSerpResults(updatedResults);
+      
+      setHtmlAnalysisStatus('HTML 內容分析完成');
+      alert('HTML 內容分析完成');
+    } catch (error) {
+      console.error('HTML 分析失敗:', error);
+      setHtmlAnalysisStatus('分析失敗');
+      alert('HTML 內容分析失敗，請稍後再試');
+    } finally {
+      setIsAnalyzingHtml(false);
     }
   };
 
@@ -662,7 +695,7 @@ export default function Home() {
         </div>
         
         {/* 關鍵詞建議區塊 */}
-        {suggestions.suggestions.length > 0 && (
+        {suggestions.suggestions.length > 0 && (activeTab === 'keyword' || activeTab === 'url') && (
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">
               <h2 className="text-xl font-bold">關鍵詞建議</h2>
@@ -706,7 +739,7 @@ export default function Home() {
         )}
         
         {/* 搜索量數據表格 */}
-        {volumeData.results.length > 0 && (
+        {volumeData.results.length > 0 && (activeTab === 'keyword' || activeTab === 'url') && (
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">
               <h2 className="text-xl font-bold">搜索量數據</h2>
@@ -723,16 +756,16 @@ export default function Home() {
                 {step === 'volumes' && '資料已從' + (volumeData.fromCache ? '緩存' : 'API') + '加載'}
               </span>
             </p>
-            <div className="overflow-auto max-h-80 border rounded">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-gray-100 sticky top-0">
+            <div className="border rounded">
+              <table className="w-full border-collapse">
+                <thead className="bg-gray-100">
                   <tr>
-                    <th className="border px-4 py-2 text-left">#</th>
+                    <th className="border px-4 py-2 text-left w-16">#</th>
                     <th className="border px-4 py-2 text-left">關鍵詞</th>
-                    <th className="border px-4 py-2 text-left">月搜索量</th>
-                    <th className="border px-4 py-2 text-left">競爭程度</th>
-                    <th className="border px-4 py-2 text-left">競爭指數</th>
-                    <th className="border px-4 py-2 text-left">CPC (點擊價格)</th>
+                    <th className="border px-4 py-2 text-left w-32">月搜索量</th>
+                    <th className="border px-4 py-2 text-left w-32">競爭程度</th>
+                    <th className="border px-4 py-2 text-left w-32">競爭指數</th>
+                    <th className="border px-4 py-2 text-left w-32">CPC</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -782,7 +815,22 @@ export default function Home() {
         {/* SERP 分析結果 */}
         {serpResults && activeTab === 'serp' && (
           <div className="mb-6">
-            <h2 className="text-xl font-bold mb-4">SERP 分析結果</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">SERP 分析結果</h2>
+              <button
+                onClick={handleAnalyzeHtml}
+                disabled={isAnalyzingHtml}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded disabled:bg-gray-400"
+              >
+                {isAnalyzingHtml ? '分析中...' : '分析 HTML 內容'}
+              </button>
+            </div>
+            
+            {htmlAnalysisStatus && (
+              <div className="mb-4 p-2 bg-blue-100 text-blue-800 rounded">
+                {htmlAnalysisStatus}
+              </div>
+            )}
             
             {serpResults.results && Object.keys(serpResults.results).length > 0 ? (
               <>
@@ -791,7 +839,11 @@ export default function Home() {
                   {serpResults.fromCache && " (來自緩存)"}
                 </div>
                 
-                <SerpAnalysisComponent data={serpResults.results} language={language} />
+                <SerpAnalysisComponent 
+                  data={serpResults.results} 
+                  language={language}
+                  showHtmlAnalysis={true}
+                />
               </>
             ) : (
               <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg">
