@@ -1,858 +1,246 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import Link from 'next/link';
-import { getKeywordSuggestions, getRegions, getSearchVolume, getSemanticClustering, getUrlSuggestions, getFirebaseStats, getSerpAnalysis, analyzeSerpResultsHtml } from './actions';
-import { SuggestionsResult, SearchVolumeResult, KeywordVolumeResult, SerpAnalysisResult } from '@/app/types';
-import SearchHistory from '@/components/SearchHistory';
-import SerpAnalysisComponent from '@/components/SerpAnalysisComponent';
+import { ModeToggle } from '@/components/common/ModeToggle';
+import KeywordSearchTab from '@/components/keyword-tool/keyword-search-tab';
+import SerpAnalysisTab from '@/components/serp-tool/serp-analysis-tab';
+import SettingsTab from '@/components/settings-tool/settings-tab';
+import { Input } from "@/components/ui/input";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import UrlAnalysisTab from '@/components/url-tool/url-analysis-tab';
+import { useHistoryStore } from '@/store/historyStore';
+import { useSearchStore } from '@/store/searchStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useTabStore } from '@/store/tabStore';
+import { Search } from "lucide-react";
+import { useEffect } from 'react';
+import { getRegions } from './actions';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'keyword' | 'url' | 'settings' | 'serp'>('keyword');
-  const [query, setQuery] = useState('');
-  const [url, setUrl] = useState('');
-  const [region, setRegion] = useState('HK'); // 默認香港
-  const [language, setLanguage] = useState('zh-TW');
-  const [regions, setRegions] = useState<Record<string, string>>({});
-  const [languages, setLanguages] = useState<Record<string, string>>({});
-  const [suggestions, setSuggestions] = useState<SuggestionsResult>({ suggestions: [], estimatedProcessingTime: 0 });
-  const [volumeData, setVolumeData] = useState<SearchVolumeResult>({ results: [], processingTime: { estimated: 0, actual: 0 } });
-  const [clusters, setClusters] = useState<any>(null);
-  const [serpResults, setSerpResults] = useState<SerpAnalysisResult | null>(null);
-  const [serpKeywords, setSerpKeywords] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingText, setLoadingText] = useState('');
-  const [step, setStep] = useState<'input' | 'suggestions' | 'volumes' | 'clusters'>('input');
-  const [estimatedTime, setEstimatedTime] = useState<number>(0);
+  // 使用 TabStore
+  const activeTab = useTabStore(state => state.state.activeTab);
+  const setActiveTab = useTabStore(state => state.actions.setActiveTab);
   
-  // 設定選項
-  const [useAlphabet, setUseAlphabet] = useState(false);
-  const [useSymbols, setUseSymbols] = useState(false);
-  const [filterZeroVolume, setFilterZeroVolume] = useState(true);
-  const [maxResults, setMaxResults] = useState(40);
+  // 使用 SettingsStore - 通過新的Provider模式訪問
+  const settingsState = useSettingsStore(store => store.state);
+  const settingsActions = useSettingsStore(store => store.actions);
   
-  // 搜索历史侧边栏相关状态
-  const [sidebarMounted, setSidebarMounted] = useState(false);
-  const searchHistoryContainerRef = useRef<Element | null>(null);
-
-  // 新增：分析 HTML 內容相關狀態
-  const [isAnalyzingHtml, setIsAnalyzingHtml] = useState(false);
-  const [htmlAnalysisStatus, setHtmlAnalysisStatus] = useState<string>('');
+  // 從設置Store中解構需要的值和操作方法
+  const {
+    region, language, regions, languages,
+    useAlphabet, useSymbols, filterZeroVolume, maxResults
+  } = settingsState;
+  
+  const {
+    setRegion, setLanguage, setRegions, setLanguages,
+    setUseAlphabet, setUseSymbols, setFilterZeroVolume, setMaxResults
+  } = settingsActions;
+  
+  // 使用 SearchStore
+  const searchInput = useSearchStore(store => store.state.searchInput);
+  const isLoading = useSearchStore(store => store.state.isLoading);
+  const loadingMessage = useSearchStore(store => store.state.loadingMessage);
+  const setSearchInput = useSearchStore(store => store.actions.setSearchInput);
+  const handleSearchSubmit = useSearchStore(store => store.actions.handleSearchSubmit);
+  
+  // 使用 HistoryStore
+  const historyState = useHistoryStore(store => store.state);
+  const historyActions = useHistoryStore(store => store.actions);
+  
+  const selectedHistoryDetail = historyState.selectedHistoryDetail;
 
   // 獲取可用地區
   useEffect(() => {
     async function fetchRegions() {
       try {
-        const { regions, languages } = await getRegions();
-        setRegions(regions);
-        setLanguages(languages || {});
+        const response = await getRegions();
+        setRegions(response.regions);
+        setLanguages(response.languages || {});
       } catch (error) {
         console.error('Error fetching regions:', error);
       }
     }
     fetchRegions();
-    
-    // 查找侧边栏容器并设置 ref
-    const sidebarContainer = document.getElementById('search-history-container');
-    if (sidebarContainer) {
-      searchHistoryContainerRef.current = sidebarContainer;
-      setSidebarMounted(true);
-    }
-  }, []);
-
-  // 处理从历史记录中加载数据
+  }, [setRegions, setLanguages]);
+  
+  // 處理從歷史記錄中載入數據
   const handleSelectHistory = (historyDetail: any) => {
     if (!historyDetail) return;
     
-    // 加载历史记录中的数据
-    setQuery(historyDetail.mainKeyword);
+    // 載入基本設定
     setRegion(historyDetail.region);
-    setLanguage(historyDetail.language);
+    setLanguage(convertToLanguage(historyDetail.language));
     
-    // 设置建议和搜索量数据
-    if (historyDetail.suggestions?.length > 0) {
-      setSuggestions({
-        suggestions: historyDetail.suggestions,
-        estimatedProcessingTime: 0,
-        fromCache: true
-      });
-      setStep('suggestions');
-    }
+    // 根據數據類型切換到相應的標籤頁
+    const targetTab = historyDetail.type === 'url' ? 'url' :
+                     historyDetail.type === 'serp' ? 'serp' :
+                     'keyword'; // 默認為 keyword
+    setActiveTab(targetTab as any);
     
-    if (historyDetail.searchResults?.length > 0) {
-      setVolumeData({
-        results: historyDetail.searchResults,
-        processingTime: { estimated: 0, actual: 0 },
-        fromCache: true
-      });
-      setStep('volumes');
-    }
+    // 設置歷史詳情數據
+    historyActions.setSelectedHistoryDetail(historyDetail);
   };
 
-  // 搜索關鍵詞建議
-  const handleGetSuggestions = async () => {
-    if (activeTab === 'keyword' && !query.trim()) {
-      alert('請輸入關鍵詞');
-      return;
+  // 添加函數轉換 TabType 到組件使用的類型
+  const convertTabType = (tab: string): 'keyword' | 'url' | 'serp' | 'settings' => {
+    if (tab === 'keyword' || tab === 'url' || tab === 'serp' || tab === 'settings') {
+      return tab;
     }
-    
-    if (activeTab === 'url' && !url.trim()) {
-      alert('請輸入網址');
-      return;
-    }
-    
-    setIsLoading(true);
-    setLoadingText(activeTab === 'keyword' ? '獲取關鍵詞建議中...' : '分析URL中...');
-    setSuggestions({ suggestions: [], estimatedProcessingTime: 0 });
-    setVolumeData({ results: [], processingTime: { estimated: 0, actual: 0 } });
-    setClusters(null);
-    setStep('input');
-    
-    try {
-      let result;
-      
-      if (activeTab === 'keyword') {
-        result = await getKeywordSuggestions(
-          query, 
-          region, 
-          language, 
-          useAlphabet,
-          useSymbols
-        );
-      } else {
-        result = await getUrlSuggestions({
-          url,
-          region,
-          language
-        });
-      }
-      
-      setSuggestions(result);
-      setEstimatedTime(result.estimatedProcessingTime || 0);
-      setStep('suggestions');
-      
-      // 显示数据来源信息
-      console.log(`資料來源: ${result.fromCache ? '緩存' : 'API'}`);
-      if (result.fromCache) {
-        // 如果数据来自缓存，可以显示一个提示
-        alert('資料已從緩存中快速加載');
-      }
-    } catch (error) {
-      console.error('搜索失敗:', error);
-      alert('搜索失敗，請稍後再試');
-    } finally {
-      setIsLoading(false);
-    }
+    // 默認返回 keyword
+    return 'keyword';
   };
 
-  // 獲取搜索量數據
-  const handleGetVolumes = async () => {
-    if (suggestions.suggestions.length === 0) {
-      alert('沒有可用的關鍵詞建議');
-      return;
+  // 添加一個語言字符串轉換函數，將字符串轉換為Language類型
+  const convertToLanguage = (lang: string): 'zh-TW' | 'en-US' => {
+    if (lang === 'zh-TW' || lang === 'en-US') {
+      return lang;
     }
-    
-    setIsLoading(true);
-    setLoadingText(`獲取搜索量數據中...\n預估需時：${estimatedTime} 秒`);
-    
-    try {
-      // 使用與原始 app.py 相同的方式處理批量請求
-      const mainKeyword = activeTab === 'keyword' ? query : url;
-      const result = await getSearchVolume(suggestions.suggestions, region, mainKeyword, language);
-      
-      // 按搜索量降序排序，與 app.py 中的邏輯一致
-      let sortedResults = [...result.results].sort((a, b) => b.searchVolume - a.searchVolume);
-      
-      // 根據設定過濾零搜索量
-      if (filterZeroVolume) {
-        sortedResults = sortedResults.filter(item => item.searchVolume > 0);
-      }
-      
-      // 限制結果數量
-      if (maxResults > 0 && sortedResults.length > maxResults) {
-        sortedResults = sortedResults.slice(0, maxResults);
-      }
-      
-      setVolumeData({
-        ...result,
-        results: sortedResults
-      });
-      setStep('volumes');
-      
-      // 如果有處理時間資訊，更新估計時間
-      if (result.processingTime && result.processingTime.actual) {
-        console.log(`實際處理時間: ${result.processingTime.actual} 秒 (預估: ${result.processingTime.estimated} 秒)`);
-      }
-      
-      // 显示数据来源信息
-      console.log(`搜索量數據來源: ${result.fromCache ? '緩存' : 'API'}`);
-      if (result.fromCache) {
-        // 如果数据来自缓存，可以显示一个提示
-        alert('搜索量數據已從緩存中快速加載');
-      }
-    } catch (error) {
-      console.error('獲取搜索量失敗:', error);
-      alert('獲取搜索量失敗，請稍後再試');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 生成語意分群
-  const handleClustering = async () => {
-    if (volumeData.results.length < 5) {
-      alert('至少需要 5 個關鍵詞才能進行分群');
-      return;
-    }
-    
-    setIsLoading(true);
-    setLoadingText('進行語意分群中...');
-    setClusters(null);
-    
-    try {
-      // 獲取關鍵詞文本
-      const keywords = volumeData.results.map(item => item.text);
-      
-      // 直接調用 API 端點，而不是使用 server action
-      const response = await fetch('/api/semantic-clustering', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ keywords }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API 請求失敗: ${response.status}`);
-      }
-      
-      // 處理流式回應
-      const responseBody = response.body;
-      if (!responseBody) {
-        throw new Error('API 回應沒有 body');
-      }
-      
-      const reader = responseBody.getReader();
-      const decoder = new TextDecoder();
-      let result = '';
-      
-      // 更新讀取狀態以顯示流式處理進度
-      setLoadingText('接收 AI 分群結果中...');
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        // 解碼接收到的數據塊
-        const chunk = decoder.decode(value, { stream: true });
-        result += chunk;
-        
-        // 嘗試解析部分 JSON，並在 UI 中顯示進度
-        try {
-          // 純粹的 text/event-stream 中尋找有效的 JSON
-          const jsonData = JSON.parse(result);
-          if (jsonData.clusters) {
-            // 更新加載狀態以顯示有多少類別已經收到
-            setLoadingText(`已收到 ${Object.keys(jsonData.clusters).length} 個主題分類...`);
-          }
-        } catch (e) {
-          // 繼續收集數據直到有一個完整的 JSON
-        }
-      }
-      
-      // 當流完成時，解析最終結果
-      try {
-        const jsonData = JSON.parse(result);
-        setClusters(jsonData);
-        setStep('clusters');
-      } catch (e) {
-        console.error('無法解析分群結果:', e);
-        throw new Error('解析語意分群回應時出錯');
-      }
-    } catch (error) {
-      console.error('Error clustering:', error);
-      alert('分群失敗，請稍後再試');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 分析 SERP 結果
-  const handleSerpAnalysis = async () => {
-    if (!serpKeywords.trim()) {
-      alert('請輸入要分析的關鍵詞');
-      return;
-    }
-    
-    // 將輸入的關鍵詞文本分割成數組，並過濾掉空行
-    const keywordList = serpKeywords
-      .split('\n')
-      .map(k => k.trim())
-      .filter(k => k.length > 0);
-    
-    if (keywordList.length === 0) {
-      alert('請輸入至少一個有效的關鍵詞');
-      return;
-    }
-    
-    if (keywordList.length > 100) {
-      alert('一次最多只能分析 100 個關鍵詞');
-      return;
-    }
-    
-    setIsLoading(true);
-    setLoadingText('分析 SERP 結果中...');
-    setSerpResults(null);
-    
-    try {
-      const results = await getSerpAnalysis(keywordList, region, language, 100);
-      setSerpResults(results);
-      console.log('SERP 分析結果:', results);
-      
-      // 更新提示訊息以顯示實際處理的關鍵詞數量
-      const inputCount = keywordList.length;
-      const actualCount = results.totalKeywords || Object.keys(results.results).length;
-      
-      let message = `已分析 ${actualCount} 個關鍵詞的 SERP 結果`;
-      if (results.fromCache) {
-        message += ' (來自緩存)';
-      }
-      
-      // 如果實際處理數量與輸入數量不同，添加說明
-      if (inputCount !== actualCount) {
-        message += `\n注意：您輸入了 ${inputCount} 個關鍵詞，但只有 ${actualCount} 個成功獲取結果`;
-      }
-      
-      alert(message);
-    } catch (error) {
-      console.error('SERP 分析失敗:', error);
-      alert('SERP 分析失敗，請稍後再試');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 分析 HTML 內容
-  const handleAnalyzeHtml = async () => {
-    if (!serpResults) {
-      alert('請先進行 SERP 分析');
-      return;
-    }
-
-    setIsAnalyzingHtml(true);
-    setHtmlAnalysisStatus('正在分析 HTML 內容...');
-
-    try {
-      const keywords = Object.keys(serpResults.results);
-      await analyzeSerpResultsHtml(keywords, region, language);
-      
-      // 重新獲取更新後的 SERP 結果
-      const updatedResults = await getSerpAnalysis(keywords, region, language);
-      setSerpResults(updatedResults);
-      
-      setHtmlAnalysisStatus('HTML 內容分析完成');
-      alert('HTML 內容分析完成');
-    } catch (error) {
-      console.error('HTML 分析失敗:', error);
-      setHtmlAnalysisStatus('分析失敗');
-      alert('HTML 內容分析失敗，請稍後再試');
-    } finally {
-      setIsAnalyzingHtml(false);
-    }
+    return 'zh-TW'; // 默認繁體中文
   };
 
   return (
-    <>
-      {/* 将搜索历史组件渲染到侧边栏 */}
-      {sidebarMounted && searchHistoryContainerRef.current && 
-        createPortal(
-          <SearchHistory onSelectHistory={handleSelectHistory} />,
-          searchHistoryContainerRef.current
-        )
-      }
-      
-      <main className="container mx-auto p-4">      
-        {/* 載入覆蓋層 */}
-        {isLoading && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-              <div className="mb-4">
-                <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-              </div>
-              <p>{loadingText}</p>
-              {estimatedTime > 0 && (
-                <p className="mt-2 text-sm text-gray-500">預估處理時間: {estimatedTime} 秒</p>
-              )}
-            </div>
+    <div className="w-full h-full overflow-auto">
+      <Tabs 
+        value={convertTabType(activeTab)}
+        onValueChange={(val) => setActiveTab(val as any)} 
+        className="w-full h-full"
+      >
+        <div className="flex items-center border-b border-gray-200 dark:border-gray-800 py-3 px-4 gap-4 shadow-sm">
+          <div className="flex-shrink-0 text-sm text-gray-600 dark:text-gray-400 hidden md:flex items-center gap-1 whitespace-nowrap">
+            <span className="px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs border border-gray-200 dark:border-gray-800">{region}</span> 
+            <span className="px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs border border-gray-200 dark:border-gray-800">{language}</span>
           </div>
-        )}
-        
-        {/* 頂部選項卡 */}
-        <div className="border-b mb-6">
-          <div className="flex">
-            <button 
-              onClick={() => setActiveTab('keyword')} 
-              className={`px-4 py-3 ${activeTab === 'keyword' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg mr-1`}
-            >
-              關鍵詞搜索
-            </button>
-            <button 
-              onClick={() => setActiveTab('url')} 
-              className={`px-4 py-3 ${activeTab === 'url' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg mr-1`}
-            >
-              URL 分析
-            </button>
-            <button 
-              onClick={() => setActiveTab('serp')} 
-              className={`px-4 py-3 ${activeTab === 'serp' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg mr-1`}
-            >
-              SERP 分析
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')} 
-              className={`px-4 py-3 ${activeTab === 'settings' ? 'bg-blue-500 text-white' : 'bg-gray-100'} rounded-t-lg`}
-            >
-              設定選項
-            </button>
+          
+          <div className="relative flex-1 max-w-lg">
+            <Input
+              type="text"
+              placeholder={
+                activeTab === 'keyword' ? "輸入關鍵詞搜索..." : 
+                activeTab === 'url' ? "輸入網址分析..." :
+                activeTab === 'serp' ? "輸入SERP查詢詞..." : 
+                "搜索..."
+              }
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="pl-9 pr-24 h-10 border-gray-200 dark:border-gray-800 shadow-sm focus:border-blue-300 dark:focus:border-blue-600 focus:ring-1 focus:ring-blue-300 dark:focus:ring-blue-600 rounded-full transition-colors"
+              onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <LoadingButton 
+                    onClick={handleSearchSubmit}
+                    className="absolute right-1 top-1 h-8 bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 rounded-full transition-colors shadow-sm"
+                    isLoading={isLoading}
+                    loadingText={loadingMessage || "處理中..."}
+                  >
+                    {activeTab === 'keyword' ? "獲取建議" : 
+                     activeTab === 'url' ? "分析URL" :
+                     activeTab === 'serp' ? "分析SERP" : "搜索"}
+                  </LoadingButton>
+                </TooltipTrigger>
+                <TooltipContent className="bg-gray-800 dark:bg-gray-900 text-white shadow-lg">
+                  <p className="text-xs">
+                    {activeTab === 'keyword' ? "搜索相關關鍵詞" : 
+                     activeTab === 'url' ? "分析URL關鍵詞" :
+                     activeTab === 'serp' ? "分析搜索結果頁" : "搜索"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+            <TabsList className="backdrop-blur-sm p-1 rounded-full border border-gray-200 dark:border-gray-800 shadow-sm">
+              <TabsTrigger 
+                value="keyword" 
+                className="text-sm font-medium px-4 py-1.5 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+              >
+                關鍵詞工具
+              </TabsTrigger>
+              <TabsTrigger 
+                value="url" 
+                className="text-sm font-medium px-4 py-1.5 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+              >
+                URL分析
+              </TabsTrigger>
+              <TabsTrigger 
+                value="serp" 
+                className="text-sm font-medium px-4 py-1.5 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+              >
+                SERP分析
+              </TabsTrigger>
+              <TabsTrigger 
+                value="settings" 
+                className="text-sm font-medium px-4 py-1.5 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+              >
+                設置
+              </TabsTrigger>
+            </TabsList>
           </div>
         </div>
         
-        {/* 表單區域 */}
-        <div className="mb-6">
-          {/* 關鍵詞搜索面板 */}
-          {activeTab === 'keyword' && (
-            <div>
-              <div className="mb-4">
-                <label className="block mb-2">主要關鍵詞</label>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="輸入關鍵詞"
-                  className="w-full p-2 border border-gray-300 rounded"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block mb-2">地區</label>
-                  <select 
-                    value={region}
-                    onChange={(e) => setRegion(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(regions).map(([name, code]) => (
-                      <option key={code} value={code}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block mb-2">語言</label>
-                  <select 
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(languages).length > 0 ? (
-                      Object.entries(languages).map(([code, name]) => (
-                        <option key={code} value={code}>{name} ({code})</option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="zh-TW">繁體中文 (zh-TW)</option>
-                        <option value="zh-CN">簡體中文 (zh-CN)</option>
-                        <option value="en">英文 (en)</option>
-                        <option value="ms">馬來文 (ms)</option>
-                        <option value="ko">韓文 (ko)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <button 
-                  onClick={handleGetSuggestions}
-                  disabled={isLoading}
-                  className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
-                >
-                  獲取建議
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="px-6 pt-4 overflow-auto h-[calc(100%-56px)]">
+          <TabsContent value="keyword" className="mt-0 h-full">
+            <KeywordSearchTab 
+              activeTab={convertTabType(activeTab)}
+              region={region}
+              language={language}
+              regions={regions}
+              languages={languages}
+              onRegionChange={setRegion}
+              onLanguageChange={(val) => setLanguage(convertToLanguage(val))}
+              filterZeroVolume={filterZeroVolume}
+              maxResults={maxResults}
+              onHistoryUpdate={(newHistory) => {
+                console.log('歷史記錄已更新:', newHistory);
+              }}
+              globalSearchInput={searchInput}
+              useAlphabet={useAlphabet}
+              useSymbols={useSymbols}
+            />
+          </TabsContent>
           
-          {/* URL 分析面板 */}
-          {activeTab === 'url' && (
-            <div>
-              <div className="mb-4">
-                <label className="block mb-2">網址</label>
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="輸入URL (例如: https://example.com)"
-                  className="w-full p-2 border border-gray-300 rounded"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block mb-2">地區</label>
-                  <select 
-                    value={region}
-                    onChange={(e) => setRegion(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(regions).map(([name, code]) => (
-                      <option key={code} value={code}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block mb-2">語言</label>
-                  <select 
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(languages).length > 0 ? (
-                      Object.entries(languages).map(([code, name]) => (
-                        <option key={code} value={code}>{name} ({code})</option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="zh-TW">繁體中文 (zh-TW)</option>
-                        <option value="zh-CN">簡體中文 (zh-CN)</option>
-                        <option value="en">英文 (en)</option>
-                        <option value="ms">馬來文 (ms)</option>
-                        <option value="ko">韓文 (ko)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <button 
-                  onClick={handleGetSuggestions}
-                  disabled={isLoading}
-                  className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
-                >
-                  分析 URL
-                </button>
-              </div>
-            </div>
-          )}
+          <TabsContent value="url" className="mt-0 h-full">
+            <UrlAnalysisTab 
+              activeTab={convertTabType(activeTab)}
+              region={region}
+              language={language}
+              regions={regions}
+              languages={languages}
+              onRegionChange={setRegion}
+              onLanguageChange={(val: string) => setLanguage(convertToLanguage(val))}
+              filterZeroVolume={filterZeroVolume}
+              maxResults={maxResults}
+              selectedHistoryDetail={selectedHistoryDetail}
+              onHistoryLoaded={() => {}} // 暫時保留以避免報錯，稍後也可以採用 store 方式重構
+              globalSearchInput={searchInput}
+            />
+          </TabsContent>
           
-          {/* SERP 分析面板 */}
-          {activeTab === 'serp' && (
-            <div>
-              <div className="mb-4">
-                <label className="block mb-2">輸入關鍵詞（每行一個，最多10個）</label>
-                <textarea
-                  value={serpKeywords}
-                  onChange={(e) => setSerpKeywords(e.target.value)}
-                  placeholder="輸入要分析的關鍵詞，每行一個"
-                  className="w-full p-2 border border-gray-300 rounded h-40"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block mb-2">地區</label>
-                  <select 
-                    value={region}
-                    onChange={(e) => setRegion(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(regions).map(([name, code]) => (
-                      <option key={code} value={code}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block mb-2">語言</label>
-                  <select 
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded"
-                  >
-                    {Object.entries(languages).length > 0 ? (
-                      Object.entries(languages).map(([code, name]) => (
-                        <option key={code} value={code}>{name} ({code})</option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="zh-TW">繁體中文 (zh-TW)</option>
-                        <option value="zh-CN">簡體中文 (zh-CN)</option>
-                        <option value="en">英文 (en)</option>
-                        <option value="ms">馬來文 (ms)</option>
-                        <option value="ko">韓文 (ko)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <button 
-                  onClick={handleSerpAnalysis}
-                  disabled={isLoading}
-                  className="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded"
-                >
-                  分析 SERP 結果
-                </button>
-              </div>
-            </div>
-          )}
+          <TabsContent value="serp" className="mt-0 h-full">
+            <SerpAnalysisTab 
+              activeTab={convertTabType(activeTab)}
+              region={region}
+              language={language}
+              regions={regions}
+              languages={languages}
+              onRegionChange={setRegion}
+              onLanguageChange={(val: string) => setLanguage(convertToLanguage(val))}
+              selectedHistoryDetail={selectedHistoryDetail}
+              onHistoryLoaded={() => {}} // 暫時保留以避免報錯，稍後也可以採用 store 方式重構
+              globalSearchInput={searchInput}
+            />
+          </TabsContent>
           
-          {/* 設定選項面板 */}
-          {activeTab === 'settings' && (
-            <div className="p-6 border border-gray-200 rounded-lg bg-white shadow-sm mb-4">
-              <h3 className="text-xl font-semibold mb-6">搜索設定選項</h3>
-              
-              <div className="mb-8">
-                <h4 className="text-base font-medium text-gray-700 mb-4">關鍵詞搜索設定</h4>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="mr-3">
-                      <input
-                        type="checkbox"
-                        id="useAlphabet"
-                        checked={useAlphabet}
-                        onChange={(e) => setUseAlphabet(e.target.checked)}
-                        className="w-5 h-5 accent-blue-500"
-                      />
-                    </div>
-                    <label htmlFor="useAlphabet" className="text-gray-700">
-                      使用英文字母輔助搜索 (a-z)
-                    </label>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="mr-3">
-                      <input
-                        type="checkbox"
-                        id="useSymbols"
-                        checked={useSymbols}
-                        onChange={(e) => setUseSymbols(e.target.checked)}
-                        className="w-5 h-5 accent-blue-500"
-                      />
-                    </div>
-                    <label htmlFor="useSymbols" className="text-gray-700">
-                      使用特殊符號輔助搜索
-                    </label>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mb-6">
-                <h4 className="text-base font-medium text-gray-700 mb-4">搜索結果設定</h4>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="mr-3">
-                      <input
-                        type="checkbox"
-                        id="filterZeroVolume"
-                        checked={filterZeroVolume}
-                        onChange={(e) => setFilterZeroVolume(e.target.checked)}
-                        className="w-5 h-5 accent-blue-500"
-                      />
-                    </div>
-                    <label htmlFor="filterZeroVolume" className="text-gray-700">
-                      過濾零搜索量的關鍵詞
-                    </label>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <label htmlFor="maxResults" className="text-gray-700 w-40">
-                      最大顯示結果數:
-                    </label>
-                    <div className="flex items-center">
-                      <input
-                        type="number"
-                        id="maxResults"
-                        value={maxResults}
-                        onChange={(e) => setMaxResults(parseInt(e.target.value) || 0)}
-                        min="0"
-                        max="1000"
-                        className="w-28 p-2 border border-gray-300 rounded-lg text-right focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                      <span className="text-gray-500 text-sm ml-3">(0 表示不限制)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <TabsContent value="settings" className="mt-0 h-full">
+            <SettingsTab />
+          </TabsContent>
         </div>
-        
-        {/* 關鍵詞建議區塊 */}
-        {suggestions.suggestions.length > 0 && (activeTab === 'keyword' || activeTab === 'url') && (
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-xl font-bold">關鍵詞建議</h2>
-              <div className="flex items-center gap-2">
-                {estimatedTime > 0 && (
-                  <span className="text-gray-500 text-sm">預估處理時間: {estimatedTime} 秒</span>
-                )}
-                <button
-                  onClick={handleGetVolumes}
-                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded"
-                >
-                  獲取搜索量
-                </button>
-              </div>
-            </div>
-            <p className="mb-2">
-              找到 {suggestions.suggestions.length} 個關鍵詞建議
-              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
-                {step === 'suggestions' && '資料已從' + (suggestions.fromCache ? '緩存' : 'API') + '加載'}
-              </span>
-            </p>
-            <div className="overflow-auto max-h-80 border rounded">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-gray-100 sticky top-0">
-                  <tr>
-                    <th className="border px-4 py-2 text-left">#</th>
-                    <th className="border px-4 py-2 text-left">關鍵詞</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suggestions.suggestions.map((suggestion, index) => (
-                    <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                      <td className="border px-4 py-2">{index + 1}</td>
-                      <td className="border px-4 py-2">{suggestion}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-        
-        {/* 搜索量數據表格 */}
-        {volumeData.results.length > 0 && (activeTab === 'keyword' || activeTab === 'url') && (
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-xl font-bold">搜索量數據</h2>
-              <button
-                onClick={handleClustering}
-                className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded"
-              >
-                生成語意分群
-              </button>
-            </div>
-            <p className="mb-2">
-              找到 {volumeData.results.length} 個關鍵詞的搜索量數據
-              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
-                {step === 'volumes' && '資料已從' + (volumeData.fromCache ? '緩存' : 'API') + '加載'}
-              </span>
-            </p>
-            <div className="border rounded">
-              <table className="w-full border-collapse">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="border px-4 py-2 text-left w-16">#</th>
-                    <th className="border px-4 py-2 text-left">關鍵詞</th>
-                    <th className="border px-4 py-2 text-left w-32">月搜索量</th>
-                    <th className="border px-4 py-2 text-left w-32">競爭程度</th>
-                    <th className="border px-4 py-2 text-left w-32">競爭指數</th>
-                    <th className="border px-4 py-2 text-left w-32">CPC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {volumeData.results.map((item, index) => (
-                    <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                      <td className="border px-4 py-2">{index + 1}</td>
-                      <td className="border px-4 py-2">{item.text}</td>
-                      <td className="border px-4 py-2">{item.searchVolume}</td>
-                      <td className="border px-4 py-2">{item.competition}</td>
-                      <td className="border px-4 py-2">
-                        {typeof item.competitionIndex === 'number' 
-                          ? item.competitionIndex.toFixed(2) 
-                          : (item.competitionIndex || '-')}
-                      </td>
-                      <td className="border px-4 py-2">
-                        {typeof item.cpc === 'number' 
-                          ? `$${item.cpc.toFixed(2)}` 
-                          : (item.cpc || '-')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-        
-        {/* 語意分群結果 */}
-        {clusters && (
-          <div className="mb-6">
-            <h2 className="text-xl font-bold mb-2">語意分群結果</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(clusters.clusters).map(([clusterName, keywords], index) => (
-                <div key={index} className="border rounded p-4">
-                  <h3 className="font-bold mb-2">{clusterName}</h3>
-                  <ul className="list-disc list-inside">
-                    {(keywords as string[]).map((keyword, idx) => (
-                      <li key={idx}>{keyword}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* SERP 分析結果 */}
-        {serpResults && activeTab === 'serp' && (
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">SERP 分析結果</h2>
-              <button
-                onClick={handleAnalyzeHtml}
-                disabled={isAnalyzingHtml}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded disabled:bg-gray-400"
-              >
-                {isAnalyzingHtml ? '分析中...' : '分析 HTML 內容'}
-              </button>
-            </div>
-            
-            {htmlAnalysisStatus && (
-              <div className="mb-4 p-2 bg-blue-100 text-blue-800 rounded">
-                {htmlAnalysisStatus}
-              </div>
-            )}
-            
-            {serpResults.results && Object.keys(serpResults.results).length > 0 ? (
-              <>
-                <div className="mb-4 p-2 bg-gray-100 rounded text-xs overflow-auto">
-                  <strong>調試信息:</strong> 找到 {Object.keys(serpResults.results).length} 個關鍵詞的 SERP 結果
-                  {serpResults.fromCache && " (來自緩存)"}
-                </div>
-                
-                <SerpAnalysisComponent 
-                  data={serpResults.results} 
-                  language={language}
-                  showHtmlAnalysis={true}
-                />
-              </>
-            ) : (
-              <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg">
-                無法獲取SERP分析數據。請確保您的關鍵詞有效並嘗試再次分析。
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-    </>
+      </Tabs>
+    </div>
   );
 }

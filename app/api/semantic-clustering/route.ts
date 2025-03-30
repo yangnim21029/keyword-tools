@@ -1,12 +1,13 @@
 // New file content placeholder
-import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { streamText } from 'ai';
+import { revalidateTag } from 'next/cache';
 import { NextRequest } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
     // Parse JSON body from the request
-    const { keywords } = await req.json();
+    const { keywords, historyId } = await req.json();
     
     // Validate input
     if (!keywords || !Array.isArray(keywords) || keywords.length < 5) {
@@ -22,8 +23,15 @@ export async function POST(req: NextRequest) {
     }
     
     // Limit number of keywords to prevent large requests
-    const MAX_CLUSTERING_KEYWORDS = 100;
+    const MAX_CLUSTERING_KEYWORDS = 80;
     const limitedKeywords = keywords.slice(0, MAX_CLUSTERING_KEYWORDS);
+    
+    // 如果提供了歷史記錄ID，重新驗證對應的標籤
+    if (historyId && typeof historyId === 'string') {
+      revalidateTag('history');
+      revalidateTag(`history-${historyId}`);
+      console.log(`[API] 已重新驗證歷史記錄標籤: history-${historyId}`);
+    }
     
     // Same prompt as the original function
     const prompt = `請根據以下關鍵詞進行語意分群。目標是將相關的關鍵詞歸類到主題中。

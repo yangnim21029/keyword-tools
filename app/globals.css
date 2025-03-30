@@ -1,114 +1,60 @@
 @import "tailwindcss";
-@plugin "daisyui";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* :root a保留字体变量，移除颜色变量 */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 255, 255, 255;
-  
-  /* Apple-style variables */
-  --apple-blue: #0071e3;
-  --apple-light-gray: #f5f5f7;
-  --apple-dark-gray: #86868b;
   --apple-font: var(--font-roboto), var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  /* 添加 shadcn/ui 需要的 radius 变量 */
+  --radius: 0.5rem; /* 你可以根据需要调整这个值 */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
-}
+/* 移除旧的颜色模式媒体查询 */
+/* @media (prefers-color-scheme: dark) { ... } */
 
+/* 移除 body 颜色设置，让 tailwind config 接管 */
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-start-rgb));
+  /* color: rgb(var(--foreground-rgb)); */
+  /* background: rgb(var(--background-start-rgb)); */
   font-family: var(--apple-font);
   padding: 0;
   margin: 0;
 }
 
-/* 简洁基本样式 */
+/* 移除或简化样式，优先使用 Tailwind 类 */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--apple-font);
-  font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-family: var(--apple-font); /* 保留字体 */
+  /* 其他样式通过 Tailwind 类添加，例如 text-2xl font-semibold mb-2 */
 }
 
-h1 {
-  font-size: 2rem;
-  letter-spacing: -0.015em;
-}
+/* button 样式由 ui/button.tsx 处理 */
+/* button { ... } */
 
-/* 标签页样式 */
-button {
-  font-family: var(--apple-font);
-  cursor: pointer;
-}
+/* .rounded-t-lg 由 Tailwind 处理 */
 
-.rounded-t-lg {
-  border-top-left-radius: 0.25rem;
-  border-top-right-radius: 0.25rem;
-}
+/* 表格样式简化，后续应使用 ui/table 或 Tailwind 类 */
+/* table { ... } */
+/* th, td { border: 1px solid #e2e8f0; ... } */ /* 移除硬编码边框 */
+/* th { background-color: #f8f9fa; ... } */ /* 移除硬编码背景 */
+/* tr:nth-child(even) { background-color: #f8f9fa; ... } */ /* 移除硬编码背景 */
 
-/* 表格样式简化 */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 1rem;
-}
+/* 表单元素样式简化，后续应使用 ui/input, ui/select, ui/label 或 Tailwind 类 */
+/* input, select { border: 1px solid #e2e8f0; ... } */ /* 移除硬编码边框 */
+/* label { ... } */
 
-th, td {
-  padding: 0.5rem;
-  text-align: left;
-  border: 1px solid #e2e8f0;
-}
+/* 移除自定义按钮样式 */
+/* .bg-blue-500 { ... } */
+/* .bg-blue-500:hover { ... } */
 
-th {
-  font-weight: 600;
-  background-color: #f8f9fa;
-}
-
-tr:nth-child(even) {
-  background-color: #f8f9fa;
-}
-
-/* 表单元素样式 */
-input, select {
-  padding: 0.5rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.25rem;
-  width: 100%;
-}
-
-label {
-  font-weight: 500;
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-/* 按钮样式简化 */
-.bg-blue-500 {
-  background-color: #0071e3;
-}
-
-.bg-blue-500:hover {
-  background-color: #0064cc;
-}
-
-/* 加载覆盖层 */
+/* 加载覆盖层样式，移除硬编码颜色，后续用 Tailwind 类重构 */
 .loading-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  /* background-color: rgba(0, 0, 0, 0.5); */ /* 用 bg-black/50 替代 */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -116,110 +62,38 @@ label {
 }
 
 .loading-content {
-  background-color: white;
-  padding: 1.5rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.1);
+  /* background-color: white; */ /* 用 bg-background 替代 */
+  padding: 1.5rem; /* 保留 padding */
+  border-radius: 0.5rem; /* 用 rounded-lg 替代 */
+  /* box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.1); */ /* 用 shadow-lg 替代 */
   text-align: center;
 }
 
-/* 适配简洁设计 */
+/* 容器类可以保留或移除，看是否在 layout 中使用 */
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1rem;
 }
 
-/* 覆盖tailwind样式，使按钮更简洁 */
-.rounded {
-  border-radius: 0.25rem !important;
-}
+/* 移除圆角覆盖 */
+/* .rounded { ... } */
 
-/* Apple-style typography */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--apple-font);
-  font-weight: 600;
-}
+/* Apple-style typography 字体已在 h 标签设置 */
 
-h1 {
-  font-size: 2.5rem;
-  letter-spacing: -0.015em;
-}
+/* Chart styles 移除硬编码颜色，后续用 Tailwind 类或组件重构 */
+/* .chart-container { background-color: var(--apple-light-gray); ... } */
+/* .chart-item { border-bottom: 1px solid rgba(0, 0, 0, 0.08); ... } */
 
-/* Chart styles */
-.chart-container {
-  background-color: var(--apple-light-gray);
-  border-radius: 12px;
-  padding: 20px;
-}
+/* Chat results area styles 移除硬编码颜色，后续用 Tailwind 类或组件重构 */
+/* .chat-results { ... } */
+/* .chat-result-card { background-color: #f8f9fa; border-left: 4px solid #6c757d; ... } */
+/* .chat-result-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.1); } */
+/* .chat-question { background-color: #e9ecef; border-bottom: 1px solid #dee2e6; ... } */
+/* .chat-answer { ... } */
+/* .ai-badge { background-color: #17a2b8; color: white; ... } */
 
-.chart-item {
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.chart-item:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-}
-
-/* Chat results area styles */
-.chat-results {
-  margin-top: 2rem;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.chat-result-card {
-  background-color: #f8f9fa;
-  border-left: 4px solid #6c757d;
-  margin-bottom: 1rem;
-  transition: all 0.3s ease;
-}
-
-.chat-result-card:hover {
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-.chat-question {
-  background-color: #e9ecef;
-  padding: 0.75rem 1rem;
-  font-weight: 500;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.chat-answer {
-  padding: 1rem;
-}
-
-.ai-badge {
-  background-color: #17a2b8;
-  color: white;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  margin-left: 0.5rem;
-  vertical-align: middle;
-}
-
-/* Table styles */
-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-th {
-  font-weight: 600;
-  color: #1d1d1f;
-  border-top: none;
-}
-
-.table-striped > tbody > tr:nth-of-type(odd) > * {
-  background-color: rgba(245, 245, 247, 0.5);
-}
-
-.table-hover > tbody > tr:hover > * {
-  background-color: rgba(0, 113, 227, 0.05);
-}
+/* Table styles 移除硬编码颜色，后续用 Tailwind 类或 ui/table 重构 */
+/* th { color: #1d1d1f; ... } */
+/* .table-striped > tbody > tr:nth-of-type(odd) > * { background-color: rgba(245, 245, 247, 0.5); } */
+/* .table-hover > tbody > tr:hover > * { background-color: rgba(0, 113, 227, 0.05); } */

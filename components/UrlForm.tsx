@@ -1,5 +1,6 @@
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { UrlFormData, RegionOption, LanguageOption } from '@/types';
+import { LoadingButton } from "@/components/ui/loading-button";
+import { LanguageOption, RegionOption, UrlFormData } from '@/types';
+import { useForm } from 'react-hook-form';
 
 interface UrlFormProps {
   onSubmit: (data: UrlFormData) => void;
@@ -101,18 +102,15 @@ const UrlForm: React.FC<UrlFormProps> = ({ onSubmit, isLoading, regions }) => {
       </div>
 
       <div className="mt-8">
-        <button
+        <LoadingButton
           type="submit"
-          className={`btn btn-primary w-full ${isLoading ? 'btn-disabled' : ''}`}
-          disabled={isLoading}
+          className="w-full"
+          variant="default"
+          isLoading={isLoading}
+          loadingText="處理中..."
         >
-          {isLoading ? (
-            <span className="flex items-center justify-center">
-              <span className="loading loading-spinner loading-sm mr-2"></span>
-              處理中...
-            </span>
-          ) : '分析網頁關鍵詞'}
-        </button>
+          分析網頁關鍵詞
+        </LoadingButton>
         <p className="text-xs text-base-content/70 mt-2 text-center">
           點擊按鈕後，系統將抓取網頁內容，擷取可能的關鍵詞並分析搜尋量數據。
         </p>

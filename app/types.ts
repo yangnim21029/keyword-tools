@@ -1,3 +1,5 @@
+import type { SearchHistoryItem } from '@/lib/schemas'; // Update path
+
 export interface KeywordFormData {
   query: string;
   region: string;
@@ -29,6 +31,7 @@ export interface SuggestionsResult {
   estimatedProcessingTime: number;
   fromCache?: boolean;
   error?: string;
+  sourceInfo?: string;
 }
 
 export interface SearchVolumeResult {
@@ -39,6 +42,8 @@ export interface SearchVolumeResult {
   };
   fromCache?: boolean;
   historyId?: string | null;
+  sourceInfo?: string;
+  error?: string;
 }
 
 export interface KeywordVolumeResult {
@@ -76,4 +81,34 @@ export interface SerpKeywordResult {
 export interface SerpAnalysisResult {
   results: Record<string, SerpKeywordResult>;
   fromCache: boolean;
+  sourceInfo?: string;
+  error?: string;
+}
+
+// --- 搜索歷史相關類型 ---
+
+// 移除假設的 SearchHistoryItem 接口
+/*
+export interface SearchHistoryItem {
+  id: string;
+  mainKeyword: string;
+  region: string;
+  language: string;
+  timestamp: any; // 建議使用 Date 或 Firestore Timestamp 類型
+  // ... 可能還有 suggestions, searchResults, clusters 等字段
+}
+*/
+
+// fetchSearchHistory 的返回類型
+export interface SearchHistoryListResult {
+  data: SearchHistoryItem[]; // 使用從 schema 導入的類型
+  sourceInfo?: string;
+  error?: string;
+}
+
+// fetchSearchHistoryDetail 的返回類型
+export interface SearchHistoryDetailResult {
+  data: SearchHistoryItem | null; // 使用從 schema 導入的類型
+  sourceInfo?: string;
+  error?: string;
 } 

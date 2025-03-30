@@ -1,6 +1,6 @@
 // Firebase 配置和初始化
-import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
-import { getFirestore, Timestamp, Firestore } from 'firebase-admin/firestore';
+import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // Firebase Admin 凭证（应该从环境变量加载，这里为了简化直接使用）
 const serviceAccount = {
@@ -332,37 +332,6 @@ export async function getDatabaseStats() {
   }
 }
 
-// 保存搜索历史
-export async function saveSearchHistory(
-  mainKeyword: string, 
-  region: string, 
-  language: string, 
-  suggestions: string[], 
-  searchResults: any[]
-): Promise<string | null> {
-  if (!db) return null;
-  
-  try {
-    const historyData = {
-      mainKeyword,
-      region,
-      language,
-      suggestions: suggestions.slice(0, 100), // 限制存储数量
-      searchResults: searchResults.slice(0, 100), // 限制存储数量
-      timestamp: Timestamp.now(),
-    };
-    
-    // 使用自动ID来避免覆盖
-    const docRef = await db.collection(COLLECTIONS.SEARCH_HISTORY).add(historyData);
-    
-    console.log(`已保存搜索歷史: "${mainKeyword}" (${region})`);
-    return docRef.id;
-  } catch (error) {
-    console.error("保存搜索歷史時出錯:", error);
-    return null;
-  }
-}
-
 // 获取搜索历史列表（按时间倒序，最新的在前）
 export async function getSearchHistoryList(limit: number = 50) {
   if (!db) return [];
@@ -571,4 +540,4 @@ export async function updateSerpResultWithHtmlAnalysis(
   }
 }
 
-export { db }; 
+export { db };

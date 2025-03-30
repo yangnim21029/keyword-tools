@@ -1,199 +1,119 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { fetchSearchHistory, fetchSearchHistoryDetail } from '@/app/actions';
+import { useHistoryStore } from '@/store/historyStore'; // 導入 Zustand Hook
+import { useEffect, useState } from 'react';
+import { SearchHistoryHeader } from './search-history/SearchHistoryHeader';
+import { SearchHistoryList } from './search-history/SearchHistoryList';
 
-// 搜索历史列表项的类型
-interface SearchHistoryItem {
-  id: string;
-  mainKeyword: string;
-  region: string;
-  language: string;
-  timestamp: Date;
-  suggestionCount: number;
-  resultsCount: number;
-}
-
-// 搜索历史组件的属性
+// 搜索历史组件的属性 - onSelectHistory 可能不再需要傳遞 data，因為詳情由 Store 加載
 interface SearchHistoryProps {
-  onSelectHistory: (historyDetail: any) => void;
+  onSelectHistory?: (historyId: string) => void; // 改為只通知選擇的 ID，或完全移除
+  searchFilter?: string;
+  isRefreshing?: boolean; // 仍然可以保留，讓父元件觸發刷新
 }
 
-export default function SearchHistory({ onSelectHistory }: SearchHistoryProps) {
-  const [historyList, setHistoryList] = useState<SearchHistoryItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
+export default function SearchHistory({ onSelectHistory, searchFilter = '', isRefreshing = false }: SearchHistoryProps) {
+  // --- 從 Zustand Store 讀取狀態 ---
+  const histories = useHistoryStore((state) => state.state.histories);
+  const loading = useHistoryStore((state) => state.state.loading);
+  const error = useHistoryStore((state) => state.state.error);
+  const selectedHistoryId = useHistoryStore((state) => state.state.selectedHistoryId);
+  const quotaExceeded = Boolean(error?.includes('配額超出') || error?.includes('Quota exceeded')); // 使用Boolean()明確轉換
 
-  // 加载历史数据
+  // --- 從 Zustand Store 讀取 Actions ---
+  const historyActions = useHistoryStore((state) => state.actions);
+
+  // --- 本地狀態只保留刪除中的 ID ---
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // --- 初始加載 (如果 Store Provider 不自動加載) ---
+  // 通常 Provider 會在初始化時加載，或者父元件觸發
+  // 如果需要確保這裡加載，可以保留一個簡化的 useEffect
   useEffect(() => {
-    async function loadHistory() {
-      try {
-        setLoading(true);
-        const history = await fetchSearchHistory(50);
-        setHistoryList(history);
-        setError(null);
-        setQuotaExceeded(false);
-      } catch (err) {
-        console.error('加載歷史記錄失敗', err);
-        
-        // 檢查是否是配額問題
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        const isQuotaError = errorMessage.includes('RESOURCE_EXHAUSTED') || 
-                             errorMessage.includes('Quota exceeded');
-        
-        if (isQuotaError) {
-          console.log('Firebase 配額已用盡，歷史記錄功能暫時不可用');
-          setQuotaExceeded(true);
-          setError('Firebase 配額已用盡，歷史記錄功能暫時不可用');
-        } else {
-          setError('無法加載歷史記錄');
-        }
-      } finally {
-        setLoading(false);
-      }
+    // 檢查是否已有數據，避免不必要的重複加載
+    if (histories.length === 0 && !loading) {
+       console.log('[SearchHistory] Store 中無歷史記錄，觸發初始加載');
+       historyActions.fetchHistories(false); // 初始加載可能不需要強制刷新
     }
+  }, [historyActions, histories.length, loading]); // 添加依賴項
 
-    loadHistory();
-  }, []);
+  // 監聽外部刷新狀態
+  useEffect(() => {
+    if (isRefreshing && !loading) {
+      console.log('[SearchHistory] 外部觸發刷新');
+      historyActions.fetchHistories(true); // 強制刷新
+    }
+  }, [isRefreshing, historyActions, loading]); // 添加依賴項
 
-  // 处理点击历史记录
-  const handleSelectHistory = async (historyId: string) => {
+  // 处理选择历史记录 - 現在只調用 Store Action
+  const handleSelectHistory = (historyId: string) => {
+    if (selectedHistoryId === historyId) return; // 如果已選中，則不重複操作
+    console.log('[SearchHistory] 選擇歷史記錄 ID:', historyId);
+    historyActions.setSelectedHistoryId(historyId); // Store Action 會處理詳情加載
+    // 可選：如果父組件仍需要知道選擇了哪個 ID
+    if (onSelectHistory) {
+      onSelectHistory(historyId);
+    }
+  };
+
+  // 處理刪除歷史記錄 - 現在只調用 Store Action
+  const handleDeleteHistory = async (historyId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (deletingId) return;
+
+    setDeletingId(historyId); // 仍然設置本地狀態以顯示刪除中的 UI
     try {
-      setLoading(true);
-      const historyDetail = await fetchSearchHistoryDetail(historyId);
-      if (historyDetail) {
-        onSelectHistory(historyDetail);
-      } else {
-        setError('無法載入該歷史記錄');
-      }
+       console.log('[SearchHistory] 準備刪除歷史記錄 ID:', historyId);
+      // 調用 Store action，它內部會處理 API 調用和狀態更新
+      await historyActions.deleteHistory(historyId);
+       console.log('[SearchHistory] deleteHistory Action 調用完成');
+      // 刪除成功後，Store 會自動更新 histories 列表，無需手動 setHistoryList
     } catch (err) {
-      console.error('載入歷史記錄詳情失敗', err);
-      
-      // 檢查是否是配額問題
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isQuotaError = errorMessage.includes('RESOURCE_EXHAUSTED') || 
-                           errorMessage.includes('Quota exceeded');
-      
-      if (isQuotaError) {
-        setQuotaExceeded(true);
-        setError('Firebase 配額已用盡，歷史記錄功能暫時不可用');
-      } else {
-        setError('載入歷史記錄詳情失敗');
-      }
+      // Store action 內部已經有 toast 處理，這裡可以只 log
+      console.error('[SearchHistory] 刪除歷史記錄過程中捕獲到錯誤 (可能已被 toast 處理):', err);
     } finally {
-      setLoading(false);
+      setDeletingId(null);
     }
   };
 
-  // 格式化时间
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
+  // 刷新处理 - 調用 Store Action
+  const handleRefresh = () => {
+    if (loading) return;
+    console.log('[SearchHistory] 手動觸發刷新');
+    historyActions.fetchHistories(true); // Store Action 會處理加載狀態
   };
 
-  // 刷新历史记录
-  const refreshHistory = async () => {
-    try {
-      setLoading(true);
-      setQuotaExceeded(false);
-      const history = await fetchSearchHistory(50);
-      setHistoryList(history);
-      setError(null);
-    } catch (err) {
-      console.error('刷新歷史記錄失敗', err);
-      
-      // 檢查是否是配額問題
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isQuotaError = errorMessage.includes('RESOURCE_EXHAUSTED') || 
-                           errorMessage.includes('Quota exceeded');
-      
-      if (isQuotaError) {
-        setQuotaExceeded(true);
-        setError('Firebase 配額已用盡，歷史記錄功能暫時不可用');
-      } else {
-        setError('刷新歷史記錄失敗');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 過濾歷史記錄列表 - 從 Store 讀取的數據進行過濾
+  const filteredHistoryList = searchFilter
+    ? histories.filter(item =>
+        item.mainKeyword.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        (item.region && item.region.toLowerCase().includes(searchFilter.toLowerCase())) ||
+        (item.language && item.language.toLowerCase().includes(searchFilter.toLowerCase()))
+      )
+    : histories;
+
+   console.log('[SearchHistory] 渲染 - loading:', loading, 'error:', error, 'selectedId:', selectedHistoryId, 'filteredList count:', filteredHistoryList.length);
 
   return (
     <div className="h-full flex flex-col">
-      {/* 历史记录标题 */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-        <h2 className="text-lg font-semibold">搜索歷史</h2>
-        <button 
-          onClick={refreshHistory}
-          disabled={loading}
-          className={`text-sm ${loading ? 'bg-gray-400' : 'bg-blue-500 hover:bg-blue-600'} text-white px-2 py-1 rounded`}
-        >
-          {loading ? '加載中...' : '刷新'}
-        </button>
-      </div>
-      
-      {/* 历史记录列表 */}
-      <div className="flex-grow overflow-y-auto">
-        {loading && historyList.length === 0 ? (
-          <div className="flex justify-center items-center h-20">
-            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
-            <p>加載中...</p>
-          </div>
-        ) : quotaExceeded ? (
-          <div className="p-4">
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-yellow-700">
-                    Firebase 配額已用盡，歷史記錄功能暫時不可用。
-                  </p>
-                  <p className="text-xs text-yellow-600 mt-1">
-                    您可以繼續使用其他功能。配額將在下個計費週期重置。
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : error && !quotaExceeded ? (
-          <div className="p-4 text-red-500">{error}</div>
-        ) : historyList.length === 0 ? (
-          <div className="p-4 text-gray-500">暫無搜索歷史記錄</div>
-        ) : (
-          <ul className="divide-y divide-gray-200">
-            {historyList.map((item) => (
-              <li 
-                key={item.id}
-                className="hover:bg-blue-50 transition-colors cursor-pointer"
-                onClick={() => handleSelectHistory(item.id)}
-              >
-                <div className="p-3">
-                  <div className="font-medium truncate">{item.mainKeyword}</div>
-                  <div className="text-sm text-gray-500 flex justify-between mt-1">
-                    <span>{item.region} | {item.language}</span>
-                    <span>{formatDate(item.timestamp)}</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    <span>{item.suggestionCount} 個關鍵詞</span>
-                    {item.resultsCount > 0 && (
-                      <span className="ml-2">{item.resultsCount} 個搜索結果</span>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <SearchHistoryHeader
+        isLoading={loading && deletingId === null}
+        // 可以考慮從 store 獲取刷新 action 傳遞給 Header
+        // onRefresh={handleRefresh}
+      />
+
+      <div className="flex-grow overflow-auto">
+        <SearchHistoryList
+          isLoading={loading}
+          historyList={filteredHistoryList} // <-- 傳遞從 Store 來的數據 (已過濾)
+          error={error}
+          selectedHistoryId={selectedHistoryId} // <-- 傳遞從 Store 來的選中 ID
+          deletingId={deletingId} // 本地狀態
+          onSelectHistory={handleSelectHistory} // 傳遞更新後的處理函數
+          onDeleteHistory={handleDeleteHistory} // 傳遞更新後的處理函數
+          onRefreshHistory={handleRefresh} // 傳遞更新後的處理函數
+          quotaExceeded={quotaExceeded} // 添加缺少的必需属性
+        />
       </div>
     </div>
   );
