@@ -1,6 +1,5 @@
 'use client';
 
-import { debounce } from 'lodash';
 import {
     BarChart2
 } from "lucide-react";
@@ -591,15 +590,40 @@ export default function KeywordSearchTab({
     setShowClustering(false);
   }, [step]);
 
-  // 同步全局搜索輸入
+  // 修改同步全局搜索输入的useEffect
   useEffect(() => {
     if (globalSearchInput !== undefined && activeTab === 'keyword') {
+      // 只更新query值，但不自动触发搜索
       setQuery(globalSearchInput);
     }
   }, [globalSearchInput, activeTab]);
 
+  // 添加新的useEffect监听搜索按钮点击
+  useEffect(() => {
+    // 如果全局搜索状态正在加载且在keyword标签页，我们应该触发搜索
+    if (isLoading && activeTab === 'keyword' && query.trim()) {
+      // 这里不触发搜索，只准备好状态
+      console.log('[KeywordSearchTab] 准备搜索:', query);
+    }
+  }, [isLoading, activeTab, query]);
+
+  // 添加搜索按钮的监听器
+  useEffect(() => {
+    const handleSearchButtonClick = () => {
+      if (activeTab === 'keyword' && query.trim()) {
+        handleGetSuggestions(query);
+      }
+    };
+    
+    // 添加自定义事件监听器
+    window.addEventListener('search-button-click', handleSearchButtonClick);
+    
+    return () => {
+      window.removeEventListener('search-button-click', handleSearchButtonClick);
+    };
+  }, [activeTab, query, handleGetSuggestions]);
+
   const hasVolumeResults = (volumeData?.length ?? 0) > 0;
-  const debouncedHandleGetSuggestions = debounce(handleGetSuggestions, 300);
 
   // 移除與補充關鍵詞相關的舊狀態
   const [selectedKeyword, setSelectedKeyword] = useState<string>('');

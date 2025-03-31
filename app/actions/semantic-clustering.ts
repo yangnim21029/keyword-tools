@@ -14,7 +14,12 @@ export async function performSemanticClustering(keywords: string[]) {
       throw new Error('至少需要5个关键词进行分群')
     }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/semantic-clustering`, {
+    // 如果没有VERCEL_URL，则使用本地开发环境的URL
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'http://localhost:3000';
+      
+    const response = await fetch(`${baseUrl}/api/semantic-clustering`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

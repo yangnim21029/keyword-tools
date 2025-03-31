@@ -9,7 +9,6 @@ import { LoadingButton } from "@/components/ui/loading-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import UrlAnalysisTab from '@/components/url-tool/url-analysis-tab';
-import type { SearchSettings } from '@/providers/search-provider';
 import { useHistoryStore } from '@/store/historyStore';
 import { useSearchStore } from '@/store/searchStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -43,7 +42,6 @@ export default function Home() {
   const isLoading = useSearchStore(store => store.state.isLoading);
   const loadingMessage = useSearchStore(store => store.state.loadingMessage);
   const searchActions = useSearchStore(store => store.actions);
-  const handleSearchSubmitAction = searchActions.handleSearchSubmit;
   const setSearchInput = searchActions.setSearchInput;
   
   // 使用 HistoryStore
@@ -104,16 +102,20 @@ export default function Home() {
     return 'zh-TW'; // 默認繁體中文
   };
 
-  // Create the new function to trigger search with settings
+  // 修改triggerSearch函数，使用自定义事件触发搜索
   const triggerSearch = () => {
-    const currentSettings: SearchSettings = {
-      region: settingsState.region, // Use state directly
-      language: settingsState.language, // Use state directly
-      useAlphabet: settingsState.useAlphabet, // Use state directly
-      useSymbols: settingsState.useSymbols, // Use state directly
-    };
-    // Call the action from the store with the settings object
-    handleSearchSubmitAction(currentSettings);
+    if (activeTab === 'keyword') {
+      // 触发自定义事件，让KeywordSearchTab组件处理搜索
+      const event = new CustomEvent('search-button-click');
+      window.dispatchEvent(event);
+      console.log('触发搜索：发送搜索按钮点击事件');
+    } else if (activeTab === 'url') {
+      // URL分析相关处理
+      console.log('触发URL分析');
+    } else if (activeTab === 'serp') {
+      // SERP分析相关处理
+      console.log('触发SERP分析');
+    }
   };
 
   return (
