@@ -14,7 +14,7 @@ import {
   deleteSearchHistory,
   saveSearchHistory,
   updateSearchHistoryWithClusters,
-  updateSearchHistoryWithPersonas
+  updateSearchHistoryWithPersonas as updateFirebaseHistoryWithPersonas
 } from '@/app/services/firebase/history';
 import { estimateProcessingTime } from '@/lib/utils-common';
 import { revalidateTag } from 'next/cache';
@@ -536,9 +536,8 @@ export async function updateSearchHistoryWithPersonas(
       throw new Error('historyId 為空');
     }
 
-    // 導入 Firebase 服務
-    const { updateSearchHistoryWithPersonas } = await import('@/app/services/firebase/history');
-    const success = await updateSearchHistoryWithPersonas(historyId, personas);
+    // 使用重命名後的導入函數
+    const success = await updateFirebaseHistoryWithPersonas(historyId, personas);
 
     if (!success) {
       throw new Error('更新用戶畫像失敗');
