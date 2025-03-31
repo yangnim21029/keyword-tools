@@ -14,31 +14,23 @@ import type { SuggestionsResult } from '@/app/types';
 import KeywordClustering from "@/components/keyword-tool/keyword-clustering";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { SearchHistoryItem } from '@/lib/schemas'; // Assume type includes 'type'
 import { KeywordVolumeItem } from '@/lib/schemas';
-import { useHistoryStore } from '@/store/historyStore';
-import { useSearchStore } from '@/store/searchStore';
+import { useSearchStore, type SearchStore } from '@/store/searchStore';
 import { useSettingsStore } from "@/store/settingsStore";
 import { SortField, SortState } from "@/types/keywordTool.d";
 import { detectChineseType } from '@/utils/chineseDetector';
 import { SupplementalKeywordPanel } from './supplemental-keyword-panel';
 
+// Assume SearchHistoryItem includes 'type' (keyword, url, serp)
+interface ExtendedSearchHistoryItem extends SearchHistoryItem {
+    type: 'keyword' | 'url' | 'serp';
+}
+
+// Add historyDetail prop
 interface KeywordSearchTabProps {
-  activeTab: 'keyword' | 'url' | 'serp' | 'settings';
-  onHistoryUpdate?: (newHistory: any) => void;
+  researchDetail?: ExtendedSearchHistoryItem | null;
   globalSearchInput?: string;
-  
-  // 這些屬性是從父組件傳遞的，但實際上我們可以直接從Provider獲取
-  // 以下屬性可以在組件內部從Provider獲取，但為了向後兼容性暫時保留
-  region?: string;
-  language?: string;
-  regions?: Record<string, string>;
-  languages?: Record<string, string>;
-  onRegionChange?: (region: string) => void;
-  onLanguageChange?: (language: string) => void;
-  filterZeroVolume?: boolean;
-  maxResults?: number;
-  useAlphabet?: boolean;
-  useSymbols?: boolean;
 }
 
 const MAX_KEYWORDS_FOR_VOLUME = 100;
@@ -120,20 +112,8 @@ const KeywordCard = memo(({
 KeywordCard.displayName = 'KeywordCard';
 
 export default function KeywordSearchTab({
-  activeTab,
-  onHistoryUpdate,
+  researchDetail,
   globalSearchInput,
-  // 使用可選參數，如果不提供會從Provider獲取
-  region: propRegion,
-  language: propLanguage,
-  regions: propRegions,
-  languages: propLanguages,
-  onRegionChange,
-  onLanguageChange,
-  filterZeroVolume: propFilterZeroVolume,
-  maxResults: propMaxResults,
-  useAlphabet: propUseAlphabet,
-  useSymbols: propUseSymbols,
 }: KeywordSearchTabProps) {
   // 狀態管理
   const [query, setQuery] = useState("");
@@ -142,139 +122,48 @@ export default function KeywordSearchTab({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [volumeData, setVolumeData] = useState<KeywordVolumeItem[]>([]);
   const [sortState, setSortState] = useState<SortState>({ field: 'searchVolume' as SortField, direction: 'desc' });
-  const [clusterSource, setClusterSource] = useState<'new' | 'history' | null>(null);
-  const [clusteringContext, setClusteringContext] = useState<ClusteringContext | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>("volume");
 
-  // 從Provider獲取設置，但如果props提供了則優先使用props
+  // 從Provider獲取設置
   const settingsState = useSettingsStore(state => state.state);
   const settingsActions = useSettingsStore(state => state.actions);
   
-  // 優先使用props，如果沒有則從Provider獲取
-  const region = propRegion ?? settingsState.region;
-  const language = propLanguage ?? settingsState.language;
-  const regions = propRegions ?? settingsState.regions;
-  const languages = propLanguages ?? settingsState.languages;
-  const filterZeroVolume = propFilterZeroVolume ?? settingsState.filterZeroVolume;
-  const maxResults = propMaxResults ?? settingsState.maxResults;
-  const useAlphabet = propUseAlphabet ?? settingsState.useAlphabet;
-  const useSymbols = propUseSymbols ?? settingsState.useSymbols;
+  const {
+    region,
+    language,
+    filterZeroVolume,
+    maxResults,
+    useAlphabet,
+    useSymbols,
+  } = settingsState;
   
-  const isLoading = useSearchStore((state) => state.state.isLoading);
-  const loadingText = useSearchStore((state) => state.state.loadingMessage) ?? '';
-  const setGlobalLoading = useSearchStore((state) => state.actions.setLoading);
-  
-  const historyState = useHistoryStore(store => store.state);
-  const historyActions = useHistoryStore(store => store.actions);
-
-  const selectedHistoryDetail = historyState.selectedHistoryDetail;
-
-  // 處理區域和語言變更
-  const handleRegionChange = (newRegion: string) => {
-    if (onRegionChange) {
-      onRegionChange(newRegion);
-    } else {
-      settingsActions.setRegion(newRegion);
-    }
-  };
-  
-  const handleLanguageChange = (newLanguage: string) => {
-    if (onLanguageChange) {
-      onLanguageChange(newLanguage);
-    } else {
-      // 這裡需要處理類型轉換，因為設置Store期望一個特定的Language類型
-      if (newLanguage === 'zh-TW' || newLanguage === 'en-US') {
-        settingsActions.setLanguage(newLanguage);
-      }
-    }
-  };
+  const isLoading = useSearchStore((store: SearchStore) => store.state.isLoading);
+  const loadingText = useSearchStore((store: SearchStore) => store.state.loadingMessage) ?? '';
+  const setGlobalLoading = useSearchStore((store: SearchStore) => store.actions.setLoading);
 
   // 重設搜索狀態
   const resetSearchState = useCallback(() => {
     setError(null);
     setStep('input');
-    setClusterSource(null);
-    setClusteringContext(null);
-    historyActions.clearSelectedHistoryDetail();
-  }, [historyActions]);
-
-  // 重新添加 syncSessionStorage 函數
-  const syncSessionStorage = useCallback((dataToSync: KeywordVolumeItem[]) => {
-    if (typeof window !== 'undefined' && dataToSync.length > 0) {
-      try {
-        // 保存volumeData到session storage
-        sessionStorage.setItem('keyword-volume-data', JSON.stringify(dataToSync));
-        
-        // 保存關鍵詞列表到session storage
-        const keywordsForClustering = dataToSync.map(item => item.text || '').filter(Boolean);
-        sessionStorage.setItem('clustering-keywords', JSON.stringify(keywordsForClustering));
-        
-        console.log('同步session storage成功，共同步了', dataToSync.length, '個關鍵詞');
-      } catch (error) {
-        console.error('同步session storage失敗:', error);
-      }
-    }
   }, []);
 
-  // 與歷史記錄同步狀態
-  const syncStateWithHistory = useCallback((history: any) => {
-    if (history) {
-      console.log('[Component] Syncing state with history:', history.id);
-      setQuery(history.mainKeyword || '');
-      const nextStep = history.clustersCount && history.clustersCount > 0
-        ? 'clusters'
-        : (history.resultsCount && history.resultsCount > 0
-          ? 'volumes'
-          : (history.suggestionCount && history.suggestionCount > 0 ? 'suggestions' : 'input'));
+  // Load data from researchDetail prop
+  useEffect(() => {
+    if (researchDetail && researchDetail.type === 'keyword') {
+      console.log("Keyword Tab received detail:", researchDetail);
+      setQuery(researchDetail.mainKeyword || '');
+      setSuggestions(researchDetail.suggestions || []);
+      setVolumeData(researchDetail.searchResults || []);
+      
+      // Determine the initial step based on loaded data
+      const nextStep = researchDetail.clusters ? 'clusters' 
+                       : researchDetail.searchResults?.length ? 'volumes' 
+                       : researchDetail.suggestions?.length ? 'suggestions' 
+                       : 'input';
       setStep(nextStep);
-      setClusterSource('history');
       setError(null);
-      
-      // 重置排序狀態為搜索量降序
-      setSortState({ field: 'searchVolume', direction: 'desc' });
-      
-      // 如果有搜索結果，從歷史中設置
-      let loadedVolumeData: KeywordVolumeItem[] = [];
-      if (history.searchResults && Array.isArray(history.searchResults)) {
-        loadedVolumeData = history.searchResults;
-        setVolumeData(loadedVolumeData);
-      } else {
-        setVolumeData([]);
-      }
-      
-      // 如果有建議，從歷史中設置
-      if (history.suggestions && Array.isArray(history.suggestions)) {
-        setSuggestions(history.suggestions);
-      } else {
-        setSuggestions([]);
-      }
-      
-      // 設置聚類上下文，確保可以正確保存聚類結果
-      const currentContext: ClusteringContext = {
-        query: history.mainKeyword || '',
-        region: history.region || region,
-        language: history.language || language,
-        historyIdToUpdate: history.id,
-        suggestions: history.suggestions || [],
-        volumeData: history.searchResults || [],
-      };
-      setClusteringContext(currentContext);
-      
-      // *** 新增: 在這裡調用 syncSessionStorage ***
-      if (loadedVolumeData.length > 0) {
-        syncSessionStorage(loadedVolumeData);
-      }
-      
-      console.log('History data loaded with context');
-    } else {
-      setStep('input');
-      setClusterSource(null);
-      setError(null);
-      setSuggestions([]);
-      setVolumeData([]);
-      setClusteringContext(null);
     }
-  }, [historyActions, region, language, syncSessionStorage]);
+  }, [researchDetail]);
 
   // 處理獲取搜索量
   const handleGetVolumes = useCallback(async (keywordStrings: string[], currentQuery: string) => {
@@ -319,68 +208,7 @@ export default function KeywordSearchTab({
       
       setVolumeData(volumeDataResults);
       setError(null);
-
-      const currentContext: ClusteringContext = {
-        query: currentQuery,
-        region: region,
-        language: language,
-        historyIdToUpdate: selectedHistoryDetail?.id,
-        suggestions: keywordStrings,
-        volumeData: volumeDataResults,
-      };
-      setClusteringContext(currentContext);
-      console.log('[Component Context Captured]');
       
-      // 同步到 sessionStorage
-      syncSessionStorage(volumeDataResults);
-
-      // 自動保存到歷史記錄
-      try {
-        setGlobalLoading(true, '正在保存搜索數據...');
-        
-        // 使用 server action 保存完整數據
-        const { saveClustersToHistory } = await import('@/app/actions');
-        const result = await saveClustersToHistory(
-          currentQuery,        // 主關鍵詞
-          region,              // 地區
-          language,            // 語言
-          keywordStrings,      // 建議關鍵詞
-          volumeDataResults,   // 搜索量數據
-          {}                   // 暫時沒有分群結果
-        );
-        
-        if (result.success) {
-          console.log('[Component] 自動儲存 Ad Planner 數據成功:', result.historyId);
-          toast.success('搜索量數據已自動保存');
-          
-          // 刷新歷史記錄列表
-          await historyActions.fetchHistories();
-          
-          // 可選：直接選擇新創建的歷史記錄
-          if (result.historyId) {
-            historyActions.setSelectedHistoryId(result.historyId);
-          }
-        } else {
-          console.error('[Component] 自動儲存數據失敗:', result.error);
-        }
-      } catch (saveError) {
-        console.error('[Component] 自動儲存過程中出錯:', saveError);
-        // 不中斷主流程，僅記錄錯誤
-      } finally {
-        setGlobalLoading(false);
-      }
-
-      // 更新歷史記錄（保留原有的回調）
-      if (onHistoryUpdate) {
-        onHistoryUpdate({
-          mainKeyword: currentQuery,
-          region,
-          language,
-          suggestions: keywordStrings,
-          searchResults: volumeDataResults
-        });
-      }
-
     } catch (err: any) {
       console.error("[Component Error] Getting volumes:", err);
       const errorMessage = err.message || '獲取搜索量錯誤';
@@ -389,31 +217,12 @@ export default function KeywordSearchTab({
       setStep(keywordStrings.length > 0 ? 'suggestions' : 'input');
       setGlobalLoading(false);
     }
-  }, [
-    region, language, setGlobalLoading, selectedHistoryDetail?.id, onHistoryUpdate, syncSessionStorage, historyActions
-  ]);
+  }, [region, language, setGlobalLoading]);
 
   // 處理保存當前上下文
   const handleSaveCurrentContext = useCallback(() => {
-    if (clusteringContext) {
-      console.log('[Component Triggering Save]');
-      const clustersToSave = {};
-      historyActions.saveClusteringResults(clusteringContext as any, clustersToSave)
-        .then(() => {
-          setStep('volumes');
-          setClusterSource('history');
-        })
-        .catch((err: any) => {
-          console.error('[Component UI Error] Invoking saveClusteringResults:', err);
-          setError('保存結果時出錯');
-        });
-    } else {
-      console.error('[Component Error] Context missing, cannot save!');
-      setError('無法保存結果：缺少上下文。');
-      toast.error('無法保存結果：缺少上下文。');
-      setGlobalLoading(false);
-    }
-  }, [clusteringContext, historyActions, setGlobalLoading]);
+    // Implementation needed
+  }, []);
 
   // 處理獲取建議
   const handleGetSuggestions = useCallback(async (searchQuery?: string) => {
@@ -422,7 +231,6 @@ export default function KeywordSearchTab({
       setError('請輸入關鍵詞並選擇地區和語言');
       return;
     }
-    historyActions.clearSelectedHistoryDetail();
     resetSearchState();
     setGlobalLoading(true, '正在獲取建議...');
     setError(null);
@@ -452,7 +260,7 @@ export default function KeywordSearchTab({
       setStep('input');
       setGlobalLoading(false);
     }
-  }, [region, language, useAlphabet, useSymbols, query, historyActions, resetSearchState, setGlobalLoading, handleGetVolumes]);
+  }, [region, language, useAlphabet, useSymbols, query, resetSearchState, setGlobalLoading, handleGetVolumes]);
 
   // 排序邏輯
   const handleSort = useCallback((field: SortField) => {
@@ -567,11 +375,6 @@ export default function KeywordSearchTab({
     return integrated;
   }, [suggestions, volumeData]);
 
-  // 同步歷史記錄
-  useEffect(() => {
-    syncStateWithHistory(selectedHistoryDetail);
-  }, [selectedHistoryDetail, syncStateWithHistory]);
-
   // 修改更新結果選項卡的 useEffect，去掉與 clusters 相關的條件
   useEffect(() => {
     // 所有情況下都設置為 volume
@@ -580,10 +383,10 @@ export default function KeywordSearchTab({
 
   // 同步全局搜索輸入
   useEffect(() => {
-    if (globalSearchInput !== undefined && activeTab === 'keyword') {
+    if (globalSearchInput !== undefined) {
       setQuery(globalSearchInput);
     }
-  }, [globalSearchInput, activeTab]);
+  }, [globalSearchInput]);
 
   const hasVolumeResults = (volumeData?.length ?? 0) > 0;
   const debouncedHandleGetSuggestions = debounce(handleGetSuggestions, 300);
@@ -604,7 +407,6 @@ export default function KeywordSearchTab({
   const handleVolumeUpdateFromPanel = useCallback((updatedVolumes: KeywordVolumeItem[]) => {
     if (!updatedVolumes || updatedVolumes.length === 0) return;
 
-    // 創建映射以便快速查找更新的數據 (鍵為小寫)
     const updatedVolumeMap = new Map<string, KeywordVolumeItem>();
     updatedVolumes.forEach(item => {
       if (item.text) {
@@ -612,35 +414,23 @@ export default function KeywordSearchTab({
       }
     });
     
-    // 更新主視圖的volumeData狀態
     setVolumeData(prevVolumeData => {
-      // 記錄現有詞的小寫形式
       const existingKeywordTexts = new Set(prevVolumeData.map(item => item.text?.toLowerCase()).filter(Boolean));
 
-      // 1. 更新現有詞
       const updatedExistingData = prevVolumeData.map(currentItem => {
         if (!currentItem.text) return currentItem;
-        
         const lowerCaseText = currentItem.text.toLowerCase();
         if (updatedVolumeMap.has(lowerCaseText)) {
           const updatedItemData = updatedVolumeMap.get(lowerCaseText)!;
-          // 返回更新後的對象
-          return {
-            ...currentItem,
-            searchVolume: updatedItemData.searchVolume,
-            competition: updatedItemData.competition,
-          };
+          return { ...currentItem, searchVolume: updatedItemData.searchVolume, competition: updatedItemData.competition };
         }
-        // 保持不變
         return currentItem;
       });
 
-      // 2. 查找並收集新詞
       const newKeywordsToAppend = updatedVolumes.filter(item => 
         item.text && !existingKeywordTexts.has(item.text.toLowerCase())
       );
 
-      // 3. 合併結果
       const newVolumeData = [...updatedExistingData, ...newKeywordsToAppend];
 
       // 計算更新和添加的數量 (可選，用於更詳細的提示)
@@ -663,25 +453,9 @@ export default function KeywordSearchTab({
         toast.success(message);
       }
 
-      // 同步 Firebase
-      const historyId = clusteringContext?.historyIdToUpdate;
-      if (historyId) {
-        (async () => {
-          try {
-            await historyActions.updateHistorySearchResults(historyId, newVolumeData);
-            console.log(`Firebase歷史記錄更新成功: ${historyId}`);
-          } catch (error) {
-            console.error(`更新Firebase歷史記錄失敗: ${historyId}`, error);
-            toast.error(`更新搜索歷史失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
-          }
-        })();
-      } else {
-        console.log('沒有歷史記錄ID，無法更新Firebase');
-      }
-
-      return newVolumeData; // 返回包含新詞的完整數組
+      return newVolumeData;
     });
-  }, [clusteringContext, historyActions]);
+  }, []);
 
   // 使用Memo優化關鍵詞列表渲染
   const sortedVolumeData = useMemo(() => {
@@ -901,6 +675,12 @@ export default function KeywordSearchTab({
         }}
         onVolumeUpdate={handleVolumeUpdateFromPanel}
       />
+
+      {researchDetail && (
+        <div className="mt-4 p-2 bg-yellow-100 dark:bg-yellow-900 rounded border border-yellow-300 dark:border-yellow-700">
+          <p className="text-sm">Loaded from Research: {researchDetail.mainKeyword}</p>
+        </div>
+      )}
     </div>
   );
 }

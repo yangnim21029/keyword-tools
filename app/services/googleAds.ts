@@ -52,13 +52,29 @@ export async function getAccessToken(): Promise<string> {
  */
 export async function fetchKeywordIdeas(keywords: string[], locationId: number, languageId: number): Promise<any> {
   try {
+    // 檢查必要的環境變量
+    if (!CUSTOMER_ID || !LOGIN_CUSTOMER_ID) {
+      throw new Error('缺少必要的環境變量: CUSTOMER_ID 或 LOGIN_CUSTOMER_ID');
+    }
+
+    // 檢查輸入參數
+    if (!keywords.length) {
+      throw new Error('關鍵詞列表不能為空');
+    }
+    if (!locationId) {
+      throw new Error('locationId 不能為空');
+    }
+    if (!languageId) {
+      throw new Error('languageId 不能為空');
+    }
+
     // 獲取訪問令牌
     const accessToken = await getAccessToken();
     
     // API URL 格式
     const apiUrl = `https://googleads.googleapis.com/${API_VERSION}/customers/${CUSTOMER_ID}:generateKeywordIdeas`;
     
-    // 構建請求體 - 按照 curl 命令格式
+    // 構建請求體
     const requestBody = {
       language: `languageConstants/${languageId}`,
       geoTargetConstants: [
@@ -71,7 +87,14 @@ export async function fetchKeywordIdeas(keywords: string[], locationId: number, 
       }
     };
     
-    console.log(`發送請求到 Google Ads API: ${apiUrl}`);
+    console.log('發送請求到 Google Ads API:', {
+      url: apiUrl,
+      customerId: CUSTOMER_ID,
+      loginCustomerId: LOGIN_CUSTOMER_ID,
+      keywords: keywords.length,
+      locationId,
+      languageId
+    });
     
     // 發送請求
     const response = await fetch(apiUrl, {
@@ -88,7 +111,7 @@ export async function fetchKeywordIdeas(keywords: string[], locationId: number, 
     // 檢查響應狀態
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`完整錯誤響應: ${errorText}`);
+      console.error('完整錯誤響應:', errorText);
       
       // 嘗試從錯誤響應中提取更多信息
       let detailedError;
@@ -108,7 +131,7 @@ export async function fetchKeywordIdeas(keywords: string[], locationId: number, 
     return data;
   } catch (error) {
     console.error('發送 API 請求過程中發生錯誤:', error);
-    throw error; // 直接向上傳播錯誤
+    throw error;
   }
 }
 

@@ -9,8 +9,10 @@ export type Language = 'zh-TW' | 'en-US';
 export interface SettingsState {
   language: Language;
   region: string;
-  languages: Record<string, string>;
-  regions: Record<string, string>;
+  languages: Record<string, string[]>;
+  regions: string[];
+  regionMap: Record<string, string>;
+  languageMap: Record<string, string>;
   isGoogleAdsConnected: boolean;
   isSerperConnected: boolean;
   googleTokenExpiry: Date | null;
@@ -25,8 +27,10 @@ export interface SettingsState {
 interface SettingsActions {
   setLanguage: (language: Language) => void;
   setRegion: (region: string) => void;
-  setLanguages: (languages: Record<string, string>) => void;
-  setRegions: (regions: Record<string, string>) => void;
+  setLanguages: (languages: Record<string, string[]>) => void;
+  setRegions: (regions: string[]) => void;
+  setRegionMap: (map: Record<string, string>) => void;
+  setLanguageMap: (map: Record<string, string>) => void;
   setGoogleAdsConnected: (connected: boolean) => void;
   setSerperConnected: (connected: boolean) => void;
   setGoogleTokenExpiry: (expiry: Date | null) => void;
@@ -48,7 +52,9 @@ export const defaultSettings: SettingsState = {
   language: 'zh-TW',
   region: 'TW',
   languages: {},
-  regions: {},
+  regions: [],
+  regionMap: {},
+  languageMap: {},
   isGoogleAdsConnected: false,
   isSerperConnected: false,
   googleTokenExpiry: null,
@@ -97,6 +103,22 @@ const createSettingsStore = (initState: SettingsState = defaultSettings) => {
           state: { 
             ...store.state, 
             regions 
+          } 
+        })),
+      
+      setRegionMap: (regionMap) => 
+        set((store) => ({ 
+          state: { 
+            ...store.state, 
+            regionMap 
+          } 
+        })),
+      
+      setLanguageMap: (languageMap) => 
+        set((store) => ({ 
+          state: { 
+            ...store.state, 
+            languageMap 
           } 
         })),
       

@@ -1,6 +1,5 @@
-import HistorySidebar from "@/components/client-wrappers/HistorySidebar";
 import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay";
-import { HistoryProvider } from '@/providers/history-provider';
+import KeywordResearchSidebar from "@/components/keyword-research/keyword-research-sidebar";
 import { SearchProvider } from '@/providers/search-provider';
 import { SettingsProvider } from '@/providers/settings-provider';
 import { TabProvider } from '@/providers/tab-provider';
@@ -22,8 +21,8 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "关键词杀手",
-  description: "关键词工具",
+  title: "關鍵字 Killer",
+  description: "關鍵字工具",
 };
 
 export default function RootLayout({
@@ -34,15 +33,14 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" suppressHydrationWarning>
       <body className={`${inter.variable} ${roboto.variable} bg-background text-foreground antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <SettingsProvider>
             <TabProvider>
               <SearchProvider>
-                <HistoryProvider>
                   <div className="flex min-h-screen max-h-screen overflow-hidden bg-background">
                     {/* 搜索歷史側邊欄 - 固定寬度，全高 */}
                     <aside className="hidden md:block w-64 lg:w-72 border-r border-gray-200 dark:border-gray-800 bg-card shadow-sm flex-shrink-0 h-screen">
-                      <HistorySidebar />
+                      <KeywordResearchSidebar />
                     </aside>
                       
                     {/* 主內容區域 - 獨立滾動 */}
@@ -65,7 +63,6 @@ export default function RootLayout({
                   
                   {/* 全局加載遮罩 */}
                   <GlobalLoadingOverlay />
-                </HistoryProvider>
               </SearchProvider>
             </TabProvider>
           </SettingsProvider>

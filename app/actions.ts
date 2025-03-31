@@ -4,19 +4,23 @@ import { ALPHABET, LANGUAGES, REGIONS, SYMBOLS } from '@/app/config/constants';
 import { fetchAutocomplete, fetchSuggestionWithDelay, getSearchVolume } from '@/app/services/googleAds';
 import { analyzeHtmlContent, analyzeSerpResultsHtml, getSerpAnalysis } from '@/app/services/serp';
 import { SearchHistoryDetailResult, SearchHistoryListResult, SuggestionsResult } from '@/app/types';
+import type { KeywordResearchItem } from '@/lib/schemas';
 import { UrlFormData } from '@/types';
 // import { OpenAI } from 'openai'; // 保持註釋
 import {
-  getDatabaseStats,
-  getSearchHistoryList
-} from '@/app/services/firebase';
-import {
-  deleteSearchHistory,
-  saveSearchHistory,
+  deleteSearchHistory, getSearchHistoryDetail, saveSearchHistory,
   updateSearchHistoryWithClusters
 } from '@/app/services/firebase/history';
 import { estimateProcessingTime } from '@/lib/utils-common';
 import { revalidateTag } from 'next/cache';
+import {
+  deleteKeywordResearch,
+  getKeywordResearchDetail,
+  getKeywordResearchList,
+  saveKeywordResearch,
+  updateKeywordResearchClusters,
+  updateKeywordResearchResults
+} from './services/firebase/keyword-research';
 
 // --- Vercel AI SDK Imports ---
 // --- End Vercel AI SDK Imports ---
@@ -24,17 +28,6 @@ import { revalidateTag } from 'next/cache';
 // const openai_legacy = new OpenAI({ // 保持註釋
 //   apiKey: process.env.OPENAI_API_KEY,
 // });
-
-// 获取数据库统计信息
-export async function getFirebaseStats() {
-  try {
-    const stats = await getDatabaseStats();
-    return stats;
-  } catch (error) {
-    console.error('獲取數據庫統計信息失敗:', error);
-    return { error: '獲取數據庫統計信息失敗' };
-  }
-}
 
 // Get available regions
 export async function getRegions() {
@@ -191,26 +184,12 @@ export async function getUrlSuggestions(formData: UrlFormData): Promise<Suggesti
 }
 
 // 获取搜索历史列表
-export async function fetchSearchHistory(limit: number = 50, forceRefresh: boolean = false): Promise<SearchHistoryListResult> {
+export async function fetchSearchHistory(limit: number = 50): Promise<SearchHistoryListResult> {
   'use server';
   const sourceInfo = '數據來源: Firebase Firestore';
   try {
     const historyList = await getSearchHistoryList(limit);
-    
-    // 如果強制刷新，重置緩存
-    if (forceRefresh) {
-      revalidateTag('history');
-      fetch('/api/revalidate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ tags: ['history'] }),
-      });
-      
-      console.log('[Server] 搜索歷史列表緩存已重置');
-    }
-    
+  
     return { data: historyList, sourceInfo };
   } catch (error) {
     console.error('獲取搜索歷史失敗:', error);
@@ -402,13 +381,6 @@ export async function getHistoryDetail(historyId: string) {
     }
 
     console.log(`[Server] 正在獲取歷史記錄詳情 ID: ${historyId} (始終清除緩存)`);
-    const { getSearchHistoryDetail } = await import('@/app/services/firebase/history');
-
-    // 使用標籤重置相關緩存
-    revalidateTag('history');
-    revalidateTag(`history-${historyId}`);
-    console.log(`[Server] 歷史記錄詳情緩存已重置，historyId: ${historyId}`);
-
     const result = await getSearchHistoryDetail(historyId);
 
     console.log(`[Server] 歷史記錄詳情獲取 ${result ? '成功' : '失敗'} (無緩存)`);
@@ -501,11 +473,6 @@ export async function updateSearchHistoryWithResults(
       throw new Error('更新搜索結果失敗');
     }
 
-    // 重置相關標籤
-    revalidateTag('history');  // 主歷史標籤
-    revalidateTag(`history-${historyId}`);  // 特定歷史記錄標籤
-    console.log(`[Server] 搜索結果更新後緩存標籤已重置，historyId: ${historyId}`);
-
     return { success: true, historyId };
   } catch (error) {
     console.error('更新搜索歷史結果失敗:', error);
@@ -521,6 +488,212 @@ export async function updateSearchHistoryWithResults(
       success: false, 
       error: error instanceof Error ? error.message : '更新搜索結果失敗' 
     };
+  }
+}
+
+// 獲取關鍵詞研究列表
+export async function fetchKeywordResearchList(limit: number = 50) {
+  'use server';
+  const sourceInfo = '數據來源: Firebase Firestore';
+  try {
+    const researchList = await getKeywordResearchList(limit);
+    return { data: researchList, sourceInfo };
+  } catch (error) {
+    console.error('獲取關鍵詞研究列表失敗:', error);
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      return { 
+        data: [], 
+        sourceInfo, 
+        error: `配額超出: ${error.message}`
+      };
+    }
+    return { 
+      data: [], 
+      sourceInfo, 
+      error: error instanceof Error ? error.message : '獲取關鍵詞研究列表失敗' 
+    };
+  }
+}
+
+// 獲取關鍵詞研究詳情
+export async function fetchKeywordResearchDetail(researchId: string): Promise<{ 
+  data: KeywordResearchItem | null; 
+  sourceInfo: string; 
+  error?: string; 
+}> {
+  'use server';
+  const sourceInfo = '數據來源: Firebase Firestore';
+  try {
+    if (!researchId) {
+      throw new Error('researchId 為空');
+    }
+
+    // 重置相關緩存
+    revalidateTag('keyword-research');
+    revalidateTag(`keyword-research-${researchId}`);
+    
+    const researchDetail = await getKeywordResearchDetail(researchId);
+    
+    if (!researchDetail) {
+      return { 
+        data: null, 
+        sourceInfo,
+        error: '未找到對應的研究記錄'
+      };
+    }
+    
+    return { 
+      data: researchDetail, 
+      sourceInfo 
+    };
+  } catch (error) {
+    console.error('獲取關鍵詞研究詳情失敗:', error);
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      return { 
+        data: null, 
+        sourceInfo, 
+        error: `配額超出: ${error.message}`
+      };
+    }
+    return { 
+      data: null, 
+      sourceInfo, 
+      error: error instanceof Error ? error.message : '獲取關鍵詞研究詳情失敗' 
+    };
+  }
+}
+
+// 刪除關鍵詞研究記錄
+export async function deleteKeywordResearchRecord(researchId: string) {
+  'use server';
+  try {
+    const success = await deleteKeywordResearch(researchId);
+    
+    if (success) {
+      // 重置相關緩存
+      revalidateTag('keyword-research');
+      revalidateTag(`keyword-research-${researchId}`);
+    }
+    
+    return { success };
+  } catch (error) {
+    console.error('刪除關鍵詞研究失敗:', error);
+    
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    
+    return { success: false, error: '刪除關鍵詞研究失敗' };
+  }
+}
+
+// 保存關鍵詞研究記錄
+export async function saveKeywordResearchRecord(
+  mainKeyword: string,
+  region: string,
+  language: string,
+  suggestions: string[],
+  searchResults: any[],
+  clusters?: Record<string, string[]>
+) {
+  'use server';
+  try {
+    const researchId = await saveKeywordResearch(
+      mainKeyword,
+      region,
+      language,
+      suggestions,
+      searchResults,
+      clusters
+    );
+    
+    if (!researchId) {
+      throw new Error('保存關鍵詞研究失敗：未能獲取 researchId');
+    }
+
+    // 重置相關緩存
+    revalidateTag('keyword-research');
+    revalidateTag(`keyword-research-${researchId}`);
+
+    console.log('已保存完整關鍵詞研究到 Firebase', researchId);
+    return { success: true, researchId };
+  } catch (error) {
+    console.error('保存關鍵詞研究失敗:', error);
+    
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '保存關鍵詞研究失敗'
+    };
+  }
+}
+
+// 更新關鍵詞研究的分群結果
+export async function updateResearchClusters(
+  researchId: string,
+  clusters: Record<string, string[]>
+) {
+  'use server';
+  try {
+    const success = await updateKeywordResearchClusters(researchId, clusters);
+    
+    if (success) {
+      // 重置相關緩存
+      revalidateTag('keyword-research');
+      revalidateTag(`keyword-research-${researchId}`);
+    }
+    
+    return { success, researchId };
+  } catch (error) {
+    console.error('更新關鍵詞研究分群結果失敗:', error);
+    
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    
+    return { success: false, error: '更新分群結果失敗' };
+  }
+}
+
+// 更新關鍵詞研究的搜索結果
+export async function updateResearchResults(
+  researchId: string,
+  searchResults: any[]
+) {
+  'use server';
+  try {
+    const success = await updateKeywordResearchResults(researchId, searchResults);
+    
+    if (success) {
+      // 重置相關緩存
+      revalidateTag('keyword-research');
+      revalidateTag(`keyword-research-${researchId}`);
+    }
+    
+    return { success, researchId };
+  } catch (error) {
+    console.error('更新關鍵詞研究搜索結果失敗:', error);
+    
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    
+    return { success: false, error: '更新搜索結果失敗' };
   }
 }
 

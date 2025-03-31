@@ -17,15 +17,15 @@ if (!getApps().length) {
     // 從環境變量獲取 Firebase 憑證
     const serviceAccount = {
       "type": "service_account",
-      "project_id": process.env.FIREBASE_PROJECT_ID || "",
-      "private_key": process.env.FIREBASE_PRIVATE_KEY ? 
-                    process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : "",
-      "client_email": process.env.FIREBASE_CLIENT_EMAIL || "",
-      "client_id": process.env.FIREBASE_CLIENT_ID || "",
+      "project_id": "seo-preogic",
+      "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
+      "private_key": process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      "client_email": "firebase-adminsdk-fbsvc@seo-preogic.iam.gserviceaccount.com",
+      "client_id": "106865783745185249700",
       "auth_uri": "https://accounts.google.com/o/oauth2/auth",
       "token_uri": "https://oauth2.googleapis.com/token",
       "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-      "client_x509_cert_url": process.env.FIREBASE_CLIENT_X509_CERT_URL || "",
+      "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40seo-preogic.iam.gserviceaccount.com",
       "universe_domain": "googleapis.com"
     };
 
@@ -49,25 +49,34 @@ export const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7天的毫秒數
 
 // 只保留實際使用的集合
 export const COLLECTIONS = {
-  SEARCH_HISTORY: 'searchHistory',
-  SERP_RESULTS: 'serpResults'
+  KEYWORD_RESEARCH: 'keywordResearch',
+  SERP_RESULTS: 'serpResults',
+  HTML_CONTENTS: 'htmlContents',
+  MARKDOWN: 'markdown'
 };
 
 /**
  * Firebase 文檔結構說明:
  * 
- * 1. searchHistory 集合:
+ * 1. keywordResearch 集合:
  *    - 文檔ID: 自動生成
  *    - 字段:
  *      - mainKeyword: 主關鍵詞
  *      - region: 地區代碼
  *      - language: 語言代碼
  *      - suggestions: 關鍵詞建議數組
- *      - searchResults: 搜索量結果數組
- *      - timestamp: 搜索時間戳
+ *      - searchResults: 搜索結果數組
+ *      - clusters: 分群結果
+ *      - timestamp: 創建時間戳
  * 
  * 2. serpResults 集合:
  *    - 緩存搜索引擎結果頁面數據
+ * 
+ * 3. htmlContents 集合:
+ *    - 緩存網頁 HTML 內容
+ * 
+ * 4. markdown 集合:
+ *    - 存儲 Markdown 格式的內容
  */
 
 // 導出 Firebase 實例

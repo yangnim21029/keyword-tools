@@ -1,3 +1,5 @@
+import "server-only"; // Mark this module as server-only
+
 import type { SearchHistoryItem } from '@/lib/schemas'; // Update path and combine types
 import { Timestamp } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from './config';

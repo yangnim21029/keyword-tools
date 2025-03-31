@@ -1,28 +1,30 @@
 'use client';
 
 import {
-    analyzeSerpResultsHtml,
-    getSerpAnalysis
+  analyzeSerpResultsHtml,
+  getSerpAnalysis
 } from '@/app/actions';
 import { SerpAnalysisResult } from '@/app/types';
 import SerpAnalysisComponent from '@/components/SerpAnalysisComponent';
 import { LoadingButton } from "@/components/ui/loading-button";
+import type { SearchHistoryItem } from '@/lib/schemas'; // Assume type includes 'type'
 import { processedSerpResultSchema } from '@/lib/schemas';
 import { useSearchStore } from '@/store/searchStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+// Extend SearchHistoryItem locally
+interface ExtendedSearchHistoryItem extends SearchHistoryItem {
+    type: 'keyword' | 'url' | 'serp';
+    // Add potential fields stored in SERP history
+    serpResults?: SerpAnalysisResult | null; 
+    analysisResult?: any; // Or a more specific type if available
+}
+
 interface SerpAnalysisTabProps {
-  activeTab: 'keyword' | 'url' | 'serp' | 'settings';
-  region: string;
-  language: string;
-  regions: Record<string, string>;
-  languages: Record<string, string>;
-  onRegionChange: (value: string) => void;
-  onLanguageChange: (value: string) => void;
-  selectedHistoryDetail: any | null;
-  onHistoryLoaded: (history: any) => void;
+  researchDetail?: ExtendedSearchHistoryItem | null;
   globalSearchInput?: string;
 }
 
@@ -30,57 +32,45 @@ interface SerpAnalysisTabProps {
 type ProcessedSerpData = z.infer<typeof processedSerpResultSchema>;
 
 export default function SerpAnalysisTab({
-  activeTab,
-  region,
-  language,
-  regions,
-  languages,
-  onRegionChange,
-  onLanguageChange,
-  selectedHistoryDetail,
-  onHistoryLoaded,
-  globalSearchInput
+  researchDetail,
+  globalSearchInput,
 }: SerpAnalysisTabProps) {
   // 本地狀態
   const [serpKeywords, setSerpKeywords] = useState<string>('');
   const [serpResults, setSerpResults] = useState<SerpAnalysisResult | null>(null);
   const [isAnalyzingHtml, setIsAnalyzingHtml] = useState(false);
   const [htmlAnalysisStatus, setHtmlAnalysisStatus] = useState<string>('');
-  const [keyword, setKeyword] = useState('');
-  const [serpData, setSerpData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 使用全局加載狀態
   const isLoading = useSearchStore(store => store.state.isLoading);
   const setGlobalLoading = useSearchStore(store => store.actions.setLoading);
 
-  // 監聽 selectedHistoryDetail 變化，加載歷史數據
-  useEffect(() => {
-    if (selectedHistoryDetail && activeTab === 'serp') {
-      loadSerpData(selectedHistoryDetail);
-      // 通知父組件歷史記錄已加載
-      onHistoryLoaded(selectedHistoryDetail);
-    }
-  }, [selectedHistoryDetail, activeTab, onHistoryLoaded]);
+  // 從 Provider 獲取設置
+  const settingsState = useSettingsStore(state => state.state);
+  const {
+    region,
+    language,
+  } = settingsState;
 
   // 監聽全局搜索輸入變化 - 只更新 serpKeywords 狀態
   useEffect(() => {
-    if (globalSearchInput !== undefined && activeTab === 'serp') {
+    if (globalSearchInput !== undefined) {
       setSerpKeywords(globalSearchInput);
       // 不再自動觸發分析，由全局按鈕觸發
     }
-  }, [globalSearchInput, activeTab]);
+  }, [globalSearchInput]);
 
-  // 加載 SERP 分析歷史數據
-  const loadSerpData = (historyDetail: any) => {
-    if (!historyDetail || historyDetail.type !== 'serp') return;
-    
-    setKeyword(historyDetail.mainKeyword || '');
-    
-    if (historyDetail.serpResults) {
-      setSerpData(historyDetail.serpResults);
+  // Load data from researchDetail prop
+  useEffect(() => {
+    if (researchDetail && researchDetail.type === 'serp') {
+      console.log("SERP Tab received detail:", researchDetail);
+      setSerpKeywords(researchDetail.mainKeyword || '');
+      setSerpResults(researchDetail.serpResults || null); 
+      setError(null);
+      setHtmlAnalysisStatus(''); 
     }
-  };
+  }, [researchDetail]);
 
   // SERP 分析處理函數
   const handleSerpAnalysis = async () => {
@@ -216,6 +206,11 @@ export default function SerpAnalysisTab({
               />
             </div>
           ))}
+        </div>
+      )}
+      {researchDetail && researchDetail.type === 'serp' && (
+        <div className="mt-4 p-2 bg-green-100 dark:bg-green-900 rounded border border-green-300 dark:border-green-700">
+          <p className="text-sm">Loaded from Research: {researchDetail.mainKeyword}</p>
         </div>
       )}
     </div>
