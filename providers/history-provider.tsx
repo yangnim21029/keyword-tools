@@ -32,6 +32,8 @@ interface SearchHistoryItem {
   searchResults?: any[];
   clusters?: Record<string, string[]> | null;
   clustersCount?: number;
+  personas?: any[]; // 新增：用戶畫像
+  personasLastUpdated?: Date; // 新增：用戶畫像最後更新時間
   
   // 用於顯示預覽的字段（僅在列表項目中使用）
   suggestionsPreview?: string[];
@@ -80,6 +82,8 @@ interface HistoryActions {
   clearCache: (historyId?: string) => void;
   // 新增：強制重新加載歷史詳情
   forceRefreshHistoryDetail: (historyId: string) => Promise<void>;
+  // 新增：更新用戶畫像
+  updateHistoryPersonas: (historyId: string, personas: any[]) => Promise<{ success: boolean } | void>;
 }
 
 export type HistoryStore = {
@@ -500,6 +504,71 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           loading: '正在更新搜索結果...',
           success: '搜索結果已成功更新！',
           error: (err) => `更新搜索結果失敗: ${err instanceof Error ? err.message : String(err)}`,
+        });
+
+        // 返回 promise，以便調用方可以選擇等待
+        return promise;
+      },
+      // 新增：更新用戶畫像
+      updateHistoryPersonas: async (historyId: string, personas: any[]) => {
+        // 使用 toast.promise 包裹異步操作
+        const promise = (async () => {
+          try {
+            // 使用 server action 更新 Firebase 中的數據
+            const { updateSearchHistoryWithPersonas } = await import('@/app/actions');
+            const result = await updateSearchHistoryWithPersonas(historyId, personas);
+            
+            if (!result.success) {
+              throw new Error(result.error || '更新用戶畫像失敗');
+            }
+            
+            // 更新 Zustand store 狀態
+            const currentState = get().state;
+            
+            // 更新當前選中的歷史記錄詳情（如果是當前選中的歷史記錄）
+            if (currentState.selectedHistoryDetail && currentState.selectedHistoryDetail.id === historyId) {
+              set((state) => ({
+                state: {
+                  ...state.state,
+                  selectedHistoryDetail: {
+                    ...state.state.selectedHistoryDetail!,
+                    personas: personas,
+                    personasLastUpdated: new Date()
+                  }
+                }
+              }));
+            }
+            
+            // 更新歷史記錄列表中的對應項目
+            set((state) => ({
+              state: {
+                ...state.state,
+                histories: state.state.histories.map(item => 
+                  item.id === historyId 
+                    ? { 
+                        ...item, 
+                        personas: personas,
+                        personasLastUpdated: new Date()
+                      } 
+                    : item
+                )
+              }
+            }));
+            
+            // 返回成功信息
+            return { success: true };
+          } catch (error) {
+            console.error('更新用戶畫像失敗:', error);
+            throw error;
+          }
+        })();
+
+        // 配置 toast.promise
+        const { toast } = await import('sonner');
+        toast.promise(promise, {
+          loading: '正在更新用戶畫像...',
+          success: '用戶畫像已成功更新！',
+          error: (err) => `更新用戶畫像失敗: ${err instanceof Error ? err.message : String(err)}`,
         });
 
         // 返回 promise，以便調用方可以選擇等待

@@ -233,4 +233,40 @@ export async function updateSearchHistoryWithResults(
     console.error('更新搜索歷史搜索結果失敗:', error);
     return false;
   }
+}
+
+/**
+ * 更新現有搜索歷史記錄的用戶畫像
+ * @param historyId 歷史記錄ID
+ * @param personas 用戶畫像數據
+ * @returns 是否成功更新
+ */
+export async function updateSearchHistoryWithPersonas(
+  historyId: string, 
+  personas: any[]
+): Promise<boolean> {
+  if (!db) return false;
+  
+  try {
+    // 檢查歷史記錄是否存在
+    const docRef = db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId);
+    const docSnap = await docRef.get();
+    
+    if (!docSnap.exists) {
+      console.log(`找不到指定 ID 的搜索歷史: ${historyId}`);
+      return false;
+    }
+    
+    // 更新用戶畫像和時間戳
+    await docRef.update({
+      personas: personas,
+      personasLastUpdated: Timestamp.now()
+    });
+    
+    console.log(`已更新搜索歷史的用戶畫像: ${historyId}, 共 ${personas.length} 個畫像`);
+    return true;
+  } catch (error) {
+    console.error('更新搜索歷史用戶畫像失敗:', error);
+    return false;
+  }
 } 

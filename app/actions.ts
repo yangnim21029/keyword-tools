@@ -13,7 +13,8 @@ import {
 import {
   deleteSearchHistory,
   saveSearchHistory,
-  updateSearchHistoryWithClusters
+  updateSearchHistoryWithClusters,
+  updateSearchHistoryWithPersonas
 } from '@/app/services/firebase/history';
 import { estimateProcessingTime } from '@/lib/utils-common';
 import { revalidateTag } from 'next/cache';
@@ -520,6 +521,48 @@ export async function updateSearchHistoryWithResults(
     return { 
       success: false, 
       error: error instanceof Error ? error.message : '更新搜索結果失敗' 
+    };
+  }
+}
+
+// 更新搜索歷史的用戶畫像
+export async function updateSearchHistoryWithPersonas(
+  historyId: string,
+  personas: any[]
+) {
+  'use server';
+  try {
+    if (!historyId) {
+      throw new Error('historyId 為空');
+    }
+
+    // 導入 Firebase 服務
+    const { updateSearchHistoryWithPersonas } = await import('@/app/services/firebase/history');
+    const success = await updateSearchHistoryWithPersonas(historyId, personas);
+
+    if (!success) {
+      throw new Error('更新用戶畫像失敗');
+    }
+
+    // 重置相關標籤
+    revalidateTag('history');  // 主歷史標籤
+    revalidateTag(`history-${historyId}`);  // 特定歷史記錄標籤
+    console.log(`[Server] 用戶畫像更新後緩存標籤已重置，historyId: ${historyId}`);
+
+    return { success: true, historyId };
+  } catch (error) {
+    console.error('更新搜索歷史用戶畫像失敗:', error);
+    
+    // 檢查是否為配額錯誤，如果是，將錯誤向上傳播以便前端處理
+    if (error instanceof Error && 
+        (error.message.includes('RESOURCE_EXHAUSTED') || 
+         error.message.includes('Quota exceeded'))) {
+      throw error;
+    }
+    
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '更新用戶畫像失敗' 
     };
   }
 }
