@@ -8,6 +8,8 @@ import { useSearchStore } from '@/store/searchStore';
 import { BarChart2, Check, Copy, LayoutGrid, Sparkles } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // 直接從store和全局環境獲取數據而不是props
 export default function KeywordClustering() {
@@ -16,6 +18,7 @@ export default function KeywordClustering() {
   const [clusteringText, setClusteringText] = useState<string>("");
   const [clusters, setClusters] = useState<Record<string, string[]> | null>(null);
   const [copiedClusterIndex, setCopiedClusterIndex] = useState<number | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>("gpt-4");
 
   // 從store獲取狀態和操作
   const setGlobalLoading = useSearchStore(state => state.actions.setLoading);
@@ -35,6 +38,10 @@ export default function KeywordClustering() {
   // 在組件加載時從session storage獲取關鍵詞或從歷史記錄中獲取
   useEffect(() => {
     try {
+      // 重置狀態
+      setIsClustering(false);
+      setClusteringText("");
+      
       // 優先從當前歷史記錄中獲取
       if (selectedHistoryDetail) {
         // 檢查是否有 clusters 數據
@@ -67,6 +74,7 @@ export default function KeywordClustering() {
       } else {
         // 清空聚類結果，如果沒有選中任何歷史記錄
         setClusters(null);
+        setKeywords([]);
       }
       
       // 後備選項：從 session storage 中獲取
@@ -78,6 +86,8 @@ export default function KeywordClustering() {
       }
     } catch (error) {
       console.error('獲取關鍵詞或聚類結果失敗:', error);
+      setClusters(null);
+      setKeywords([]);
     }
   }, [selectedHistoryDetail]);
   
@@ -108,12 +118,16 @@ export default function KeywordClustering() {
           
           setVolumeData(volumeMap);
           console.log('Volume data loaded efficiently:', Object.keys(volumeMap).length, 'keywords');
+        } else {
+          // 如果沒有存儲的數據，清空 volumeData
+          setVolumeData({});
         }
       }
     } catch (error) {
       console.error('獲取搜索量數據失敗:', error);
+      setVolumeData({});
     }
-  }, []); // 依賴項為空，只在組件掛載時執行一次
+  }, [selectedHistoryDetail]); // 添加 selectedHistoryDetail 作為依賴項
   
   // 計算群組總搜索量 - 優化性能
   const calculateClusterTotalVolume = (keywords: string[]): number => {
@@ -202,7 +216,7 @@ export default function KeywordClustering() {
     setClusteringText("");
     setClusters(null);
     
-    // 設置全局加載狀態，依靠全局 GlobalLoadingOverlay 顯示加載狀態
+    // 設置全局加載狀態
     setGlobalLoading(true, '正在進行語意分群...');
     
     // 設置請求超時控制
@@ -215,7 +229,7 @@ export default function KeywordClustering() {
     }, 60000);
     
     try {
-      // 更新進度提示（僅內部記錄，不顯示）
+      // 更新進度提示
       setClusteringText('請求 AI 分群中...');
       
       // 調用 API
@@ -223,8 +237,9 @@ export default function KeywordClustering() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          keywords: keywords.slice(0, 100), // 限制關鍵詞數量為 100
-          historyId: historyId // 添加歷史記錄 ID，用於更新緩存標籤
+          keywords: keywords.slice(0, 80),
+          historyId: historyId,
+          model: selectedModel
         }),
         signal: controller.signal,
       });
@@ -490,76 +505,103 @@ export default function KeywordClustering() {
   // 在組件的頂部添加一個判斷函數
   const hasKeywordsButNoClusters = keywords.length > 0 && (!clusters || Object.keys(clusters).length === 0);
 
+  // 添加骨架屏組件
+  const renderSkeleton = () => {
+    return (
+      <div className="space-y-4">
+        {/* 分群卡片骨架屏 */}
+        <div className="space-y-4">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="w-full">
+              <div className="p-6 rounded-lg shadow-md bg-gray-50 dark:bg-gray-900/50">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <Skeleton className="h-6 w-48" />
+                  </div>
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                </div>
+                <div className="mt-3">
+                  <div className="flex flex-wrap gap-2">
+                    {[...Array(5)].map((_, idx) => (
+                      <Skeleton key={idx} className="h-8 w-24 rounded-md" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
-      {/* 強制顯示一個按鈕在頂部，只要有關鍵詞且數量大於5個即可點擊 */}
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-base font-medium text-gray-700 dark:text-gray-200">語意分群</h3>
-          {clusters && Object.keys(clusters).length > 0 && (
-            <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-              - 共 {Object.keys(clusters).length} 個分群，包含 {keywords.length} 個關鍵詞
-            </span>
-          )}
-        </div>
-        <Button 
-          onClick={handleClustering} 
-          disabled={keywords.length < 5 || isClustering}
-          className="bg-blue-500 hover:bg-blue-600 text-white shadow-md px-8 py-3 text-base rounded-md font-medium transition-all duration-200 hover:scale-105 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-        >
-          {isClustering ? (
-            <span>處理中...</span>
-          ) : clusters && Object.keys(clusters).length > 0 ? (
-            <>
-              <Sparkles className="h-5 w-5 mr-2" />
-              <span>重新分群</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-5 w-5 mr-2" />
-              <span>開始關鍵詞分群{keywords.length > 0 ? ` (${keywords.length})` : ''}</span>
-            </>
-          )}
-        </Button>
-      </div>
-
       {/* 關鍵詞數量不足5個的提示 */}
       {keywords.length > 0 && keywords.length < 5 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 p-3 rounded-md text-sm border border-amber-100 dark:border-amber-800">
           <p>需要至少 5 個關鍵詞才能進行分群，當前只有 {keywords.length} 個</p>
         </div>
       )}
-      
-      {/* 分群結果顯示 */}
-      {clusters && Object.keys(clusters).length > 0 && (
-        <div>
-          {/* 分群卡片網格 */}
-          <div className="grid grid-cols-1 gap-4">
-            {Object.keys(clusters).map((clusterName, index) => {
-              // 直接獲取keywordList，無需使用Object.entries
-              const keywordList = clusters[clusterName] || [];
-              
-              return (
-                <div key={`cluster-${index}`}>
-                  {renderClusterCard(clusterName, keywordList, index)}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      {/* 空白狀態 - 沒有關鍵詞或沒有結果且不在處理中 */}
-      {keywords.length === 0 && !clusters && !isClustering && (
-        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 p-12 text-center shadow-sm">
-          <div className="flex flex-col items-center">
-            <LayoutGrid className="h-10 w-10 text-gray-300 dark:text-gray-700 mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">尚未生成分群</h3>
-            <p className="text-gray-500 dark:text-gray-400 max-w-md mb-6">
-              請先進行關鍵詞研究，系統將對關鍵詞進行智能分類，找出相關主題
-            </p>
-          </div>
-        </div>
+      {/* 分群按鈕和模型選擇 */}
+      <div className="flex items-center gap-4">
+        <Button 
+          onClick={handleClustering} 
+          disabled={isClustering || (!selectedHistoryDetail?.clusters && keywords.length < 5)}
+          className="flex items-center gap-2"
+        >
+          <Sparkles className="h-4 w-4" />
+          {selectedHistoryDetail?.clusters ? "重新分群" : "開始語意分群"}
+        </Button>
+        
+        <Select value={selectedModel} onValueChange={setSelectedModel}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="選擇模型" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="gpt-4">GPT-4 (最佳質量)</SelectItem>
+            <SelectItem value="gpt-3.5-turbo">GPT-3.5 (更快)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 加載狀態顯示骨架屏 */}
+      {isClustering ? (
+        renderSkeleton()
+      ) : (
+        <>
+          {/* 分群結果顯示 */}
+          {clusters && Object.keys(clusters).length > 0 && (
+            <div className="w-full">
+              {/* 分群卡片網格 */}
+              <div className="grid grid-cols-1 gap-4">
+                {Object.keys(clusters).map((clusterName, index) => {
+                  const keywordList = clusters[clusterName] || [];
+                  return (
+                    <div key={`cluster-${index}`} className="w-full">
+                      {renderClusterCard(clusterName, keywordList, index)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 空白狀態 - 沒有關鍵詞或沒有結果且不在處理中 */}
+          {keywords.length === 0 && !clusters && !isClustering && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 p-12 text-center shadow-sm">
+              <div className="flex flex-col items-center">
+                <LayoutGrid className="h-10 w-10 text-gray-300 dark:text-gray-700 mb-4" />
+                <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">尚未生成分群</h3>
+                <p className="text-gray-500 dark:text-gray-400 max-w-md mb-6">
+                  請先進行關鍵詞研究，系統將對關鍵詞進行智能分類，找出相關主題
+                </p>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

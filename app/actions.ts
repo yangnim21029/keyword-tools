@@ -206,6 +206,7 @@ export async function fetchSearchHistory(limit: number = 50, forceRefresh: boole
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ tags: ['history'] }),
+        next: { tags: ['history'] }
       });
       
       console.log('[Server] 搜索歷史列表緩存已重置');
@@ -374,7 +375,6 @@ export async function saveHistoryClusteringResults(historyId: string, clusters: 
     // 重置歷史記錄相關的標籤
     revalidateTag('history');  // 主歷史標籤
     revalidateTag(`history-${historyId}`);  // 特定歷史記錄標籤
-    
     console.log(`[Server] 緩存標籤已重置，historyId: ${historyId}`);
     
     return { success: true, historyId };

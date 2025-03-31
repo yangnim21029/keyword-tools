@@ -7,7 +7,7 @@ import { NextRequest } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     // Parse JSON body from the request
-    const { keywords, historyId } = await req.json();
+    const { keywords, historyId, model = 'gpt-4' } = await req.json();
     
     // Validate input
     if (!keywords || !Array.isArray(keywords) || keywords.length < 5) {
@@ -59,7 +59,7 @@ ${limitedKeywords.join(', ')}`;
     
     // Use the streamText function from the ai package to create a streaming response
     const response = streamText({
-      model: openai('gpt-4o-mini'),
+      model: openai(model),
       messages: [
         { role: "system", content: prompt }
       ]

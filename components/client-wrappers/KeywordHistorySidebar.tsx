@@ -1,6 +1,6 @@
 'use client';
 
-import KeywordHistoryList from "@/components/SearchHistory";
+import KeywordHistoryList from "@/components/KeywordHistoryList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";

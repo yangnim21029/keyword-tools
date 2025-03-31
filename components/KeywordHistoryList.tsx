@@ -1,9 +1,17 @@
 'use client';
 
 import { useHistoryStore } from '@/store/historyStore'; // 導入 Zustand Hook
+import { useTabStore } from '@/providers/tab-provider';
 import { useEffect, useState } from 'react';
 import { SearchHistoryHeader } from './search-history/SearchHistoryHeader';
 import { SearchHistoryList } from './search-history/SearchHistoryList';
+import { formatDistanceToNow } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
+import { Clock, Trash2 } from 'lucide-react';
+import { Button } from './ui/button';
+import { ScrollArea } from './ui/scroll-area';
+import { Skeleton } from './ui/skeleton';
+import { toast } from 'sonner';
 
 // 搜索历史组件的属性 - onSelectHistory 可能不再需要傳遞 data，因為詳情由 Store 加載
 interface KeywordHistoryListProps {
@@ -14,10 +22,10 @@ interface KeywordHistoryListProps {
 
 export default function KeywordHistoryList({ onSelectHistory, searchFilter = '', isRefreshing = false }: KeywordHistoryListProps) {
   // --- 從 Zustand Store 讀取狀態 ---
-  const histories = useHistoryStore((state) => state.state.histories);
-  const loading = useHistoryStore((state) => state.state.loading);
+  const { histories, loading, selectedHistoryId } = useHistoryStore(store => store.state);
+  const { setSelectedHistoryId, deleteHistory } = useHistoryStore(store => store.actions);
+  const { setActiveTab } = useTabStore(store => store.actions);
   const error = useHistoryStore((state) => state.state.error);
-  const selectedHistoryId = useHistoryStore((state) => state.state.selectedHistoryId);
   const quotaExceeded = Boolean(error?.includes('配額超出') || error?.includes('Quota exceeded')); // 使用Boolean()明確轉換
 
   // --- 從 Zustand Store 讀取 Actions ---
@@ -45,32 +53,30 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
     }
   }, [isRefreshing, historyActions, loading]); // 添加依賴項
 
-  // 处理选择历史记录 - 現在只調用 Store Action
-  const handleSelectHistory = (historyId: string) => {
-    if (selectedHistoryId === historyId) return; // 如果已選中，則不重複操作
-    console.log('[SearchHistory] 選擇歷史記錄 ID:', historyId);
-    historyActions.setSelectedHistoryId(historyId); // Store Action 會處理詳情加載
-    // 可選：如果父組件仍需要知道選擇了哪個 ID
-    if (onSelectHistory) {
-      onSelectHistory(historyId);
-    }
+  // 處理歷史記錄點擊
+  const handleHistoryClick = (historyId: string) => {
+    setSelectedHistoryId(historyId);
+    // 切換到關鍵詞工具標籤
+    setActiveTab('keyword');
   };
 
-  // 處理刪除歷史記錄 - 現在只調用 Store Action
-  const handleDeleteHistory = async (historyId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
+  // 處理刪除歷史記錄
+  const handleDelete = async (e: React.MouseEvent, historyId: string) => {
+    e.stopPropagation();
     if (deletingId) return;
 
     setDeletingId(historyId); // 仍然設置本地狀態以顯示刪除中的 UI
     try {
        console.log('[SearchHistory] 準備刪除歷史記錄 ID:', historyId);
       // 調用 Store action，它內部會處理 API 調用和狀態更新
-      await historyActions.deleteHistory(historyId);
+      await deleteHistory(historyId);
        console.log('[SearchHistory] deleteHistory Action 調用完成');
       // 刪除成功後，Store 會自動更新 histories 列表，無需手動 setHistoryList
+      toast.success('歷史記錄已刪除');
     } catch (err) {
       // Store action 內部已經有 toast 處理，這裡可以只 log
       console.error('[SearchHistory] 刪除歷史記錄過程中捕獲到錯誤 (可能已被 toast 處理):', err);
+      toast.error('刪除歷史記錄失敗');
     } finally {
       setDeletingId(null);
     }
@@ -94,6 +100,84 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
 
    console.log('[SearchHistory] 渲染 - loading:', loading, 'error:', error, 'selectedId:', selectedHistoryId, 'filteredList count:', filteredHistoryList.length);
 
+  // 渲染歷史記錄項目
+  const renderHistoryItem = (history: any) => {
+    const isSelected = history.id === selectedHistoryId;
+    const timeAgo = formatDistanceToNow(new Date(history.timestamp), { 
+      addSuffix: true,
+      locale: zhTW 
+    });
+
+    return (
+      <div
+        key={history.id}
+        className={`
+          p-4 rounded-lg cursor-pointer transition-all
+          ${isSelected 
+            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50' 
+            : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 border border-transparent hover:border-gray-100 dark:hover:border-gray-700/50'
+          }
+        `}
+        onClick={() => handleHistoryClick(history.id)}
+      >
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex-1">
+            <h3 className="font-medium text-gray-900 dark:text-gray-100">
+              {history.mainKeyword}
+            </h3>
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <Clock className="h-3 w-3" />
+              <span>{timeAgo}</span>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+            onClick={(e) => handleDelete(e, history.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+          <span>{history.suggestionCount} 個建議</span>
+          <span>{history.resultsCount} 個結果</span>
+          {history.clustersCount > 0 && (
+            <span>{history.clustersCount} 個分群</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 渲染加載狀態
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="p-4 rounded-lg border border-gray-100 dark:border-gray-800">
+            <div className="flex justify-between items-start mb-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-8 w-8 rounded-full" />
+            </div>
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-4 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 渲染空狀態
+  if (!loading && histories.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        暫無歷史記錄
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       <SearchHistoryHeader
@@ -103,17 +187,11 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
       />
 
       <div className="flex-grow overflow-auto">
-        <SearchHistoryList
-          isLoading={loading}
-          historyList={filteredHistoryList} // <-- 傳遞從 Store 來的數據 (已過濾)
-          error={error}
-          selectedHistoryId={selectedHistoryId} // <-- 傳遞從 Store 來的選中 ID
-          deletingId={deletingId} // 本地狀態
-          onSelectHistory={handleSelectHistory} // 傳遞更新後的處理函數
-          onDeleteHistory={handleDeleteHistory} // 傳遞更新後的處理函數
-          onRefreshHistory={handleRefresh} // 傳遞更新後的處理函數
-          quotaExceeded={quotaExceeded} // 添加缺少的必需属性
-        />
+        <ScrollArea className="h-[calc(100vh-12rem)]">
+          <div className="space-y-4 p-4">
+            {filteredHistoryList.map(renderHistoryItem)}
+          </div>
+        </ScrollArea>
       </div>
     </div>
   );

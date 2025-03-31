@@ -2,21 +2,6 @@
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
 
-// Firebase Admin 凭证（应该从环境变量加载，这里为了简化直接使用）
-const serviceAccount = {
-  "type": "service_account",
-  "project_id": "seo-preogic",
-  "private_key_id": "f43e8d9f3ee2b0e80645285b296db2c68f56dc46",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnbNQnlYL53iRa\n4fSy89KRHeSrEIldtpmm7/PEQ8HIxJRmssyMemdcckPuyfZq6UPDs95DReWx97N/\nk10EisTKgc/TkXTI/YE38M+xI2SaPBvoYA1O6c0cVI21bJDjj2MkrPjuf3nkMRzC\nCLeIefBS0kkv0Q2n2aJaB0zBZ9oQXv2HgwM8wwYOMXEE/DHIaYJJdAGd8ExRpd4N\nfCZngWj6CNDPiTRozAnHWlNwRzT0MktGiXwQ0tL2/7PPTOjdmYJeZPCZk5/6e+W/\nJy1d0hR+YrVxWGDCV9EOr1T4YxDSrcUOABa93wxVluTQ/3FQ3HSzE6+koqfqO9LN\nzohx++nvAgMBAAECggEALgdX7kgG+a3uXcQIM5if18CZqMQDl+2HIaOPZ3JfWNRe\nnjtiy+4s83gAoCoLIopd1HRjUyhoxTw9r4GyjXifMLNukRJIwqcbOudsGh2KX3LO\nE10w23SgrLy8NtgRn1ZA4gjh6SPHvYoZB2lBF/a6MPLaJxi4weAt58Vg/z0PcPdS\nqeFKYSGPJmmKnDnDiMiVfzppo5wyR7Ss2aR6piYYe0YK445qxQv7jgSLOSmEiMxu\nfAMsAL+1mv4ZfUAhbRcMXackKHEFAEsJ3ubK7w5/y1NVlnP1PAlIwcuHumXz97SJ\nuX66Hke+6sL59xZO1agNhpRlaftx0/n9t01y3f0QBQKBgQDUcXLJvKR3/rylA2Br\nH/4KaF2RMaASgVTtaqHaq1MSLwGWTejt5u1tJgJInqvTri1ZGYLcuZtYxJTLiKCL\n3MCvX3n+sV0GXtJYSxl42tL27qvjR8hgqIJSsoPcQ1FbhFnqRFDO/s4kebeXzdoZ\nRqoAmHSzhdWXYrSkOBaLkXZHewKBgQDJwIISqbN9lgy9xdQSuNCK/DEEkuffrU6q\ndNATaxGfOrowMIxtwi/9Mpv58YBcIfdJppc+FAIHAapnq7jHaC2QU7pG2AGNwsqt\nWE8uCACd2DB9IMfzUDzZNu6+lAK/qWHO7GANdMz1UjynaZIGbzEqQtFW677AlkAj\nHyA5snAjHQKBgQCsqMeyTi8dl1uagXQLnKTLsKbbKon+gD6V9uQ05KlPTgTsM8Xs\nFJNC8nFItCzSje0tTR6eZftr2dlU0mYpRfEUl3R/G4ePdeFfASpinvZ22uO4hM7G\nQC4rKAsjKVMmHhs12vASS+UeoA4mwpdPk673bPDsNwmxT/egwDUSmdaXoQKBgHqL\n9HZhniUqf5LGF4tHt2S0yxF8KlwzaRUg30LsRkfx5CZhVutUiNHDa/rmNpHAD/Us\nu7F5dcHLwTY3mIWHQiXotb1Sd58kMvgYLABJ3BYEu29F+i5RDqTiOSKJxSGmQULv\nUWjbCaP5z93gwlImODbzXzTs/XD90veCcJCbUoIBAoGBAJccyS3Pw6AF9NOEIeth\nbFr1EWGwbyyHkS5Cqwrmc7viYCSoMAhOm3/xEHqw13kgUob1LKl5iiTk1aUtaBWu\n5qxRSKXVf7A6bCv0jdT30X9hSBDgqN7Q4snan0v+qgeqNDtvOxCIUhkrZk3CJ5CX\nLODBBlAR8Xq4jXApGFPrSNR8\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-fbsvc@seo-preogic.iam.gserviceaccount.com",
-  "client_id": "106865783745185249700",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40seo-preogic.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-};
-
 // 初始化 Firebase Admin
 let app: App | undefined;
 let db: Firestore | undefined;
@@ -24,6 +9,26 @@ let db: Firestore | undefined;
 // 确保 Firebase Admin 只初始化一次
 if (!getApps().length) {
   try {
+    // 检查必要的环境变量是否存在
+    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
+      console.error("Firebase 環境變量未設置，請在 .env.local 中配置 FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY 和 FIREBASE_CLIENT_EMAIL");
+    }
+    
+    // 从环境变量获取 Firebase 凭证
+    const serviceAccount = {
+      "type": "service_account",
+      "project_id": process.env.FIREBASE_PROJECT_ID || "",
+      "private_key": process.env.FIREBASE_PRIVATE_KEY ? 
+                    process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : "",
+      "client_email": process.env.FIREBASE_CLIENT_EMAIL || "",
+      "client_id": process.env.FIREBASE_CLIENT_ID || "",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": process.env.FIREBASE_CLIENT_X509_CERT_URL || "",
+      "universe_domain": "googleapis.com"
+    };
+
     app = initializeApp({
       credential: cert(serviceAccount as any),
       databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`

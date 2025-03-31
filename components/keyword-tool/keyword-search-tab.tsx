@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { getKeywordSuggestions, getSearchVolume } from '@/app/actions';
 import type { SuggestionsResult } from '@/app/types';
@@ -216,65 +217,56 @@ export default function KeywordSearchTab({
     }
   }, []);
 
-  // 與歷史記錄同步狀態
-  const syncStateWithHistory = useCallback((history: any) => {
-    if (history) {
-      console.log('[Component] Syncing state with history:', history.id);
-      setQuery(history.mainKeyword || '');
-      const nextStep = history.clustersCount && history.clustersCount > 0
-        ? 'clusters'
-        : (history.resultsCount && history.resultsCount > 0
-          ? 'volumes'
-          : (history.suggestionCount && history.suggestionCount > 0 ? 'suggestions' : 'input'));
-      setStep(nextStep);
-      setClusterSource('history');
-      setError(null);
+  // 同步歷史記錄
+  useEffect(() => {
+    if (selectedHistoryDetail) {
+      console.log('[Component] Syncing state with history:', selectedHistoryDetail.id);
       
-      // 重置排序狀態為搜索量降序
-      setSortState({ field: 'searchVolume', direction: 'desc' });
+      // 重置狀態
+      setError(null);
+      setStep('volumes'); // 直接設置為 volumes 步驟
+      
+      // 設置查詢
+      setQuery(selectedHistoryDetail.mainKeyword || '');
       
       // 如果有搜索結果，從歷史中設置
-      let loadedVolumeData: KeywordVolumeItem[] = [];
-      if (history.searchResults && Array.isArray(history.searchResults)) {
-        loadedVolumeData = history.searchResults;
-        setVolumeData(loadedVolumeData);
+      if (selectedHistoryDetail.searchResults && Array.isArray(selectedHistoryDetail.searchResults)) {
+        setVolumeData(selectedHistoryDetail.searchResults);
       } else {
         setVolumeData([]);
       }
       
       // 如果有建議，從歷史中設置
-      if (history.suggestions && Array.isArray(history.suggestions)) {
-        setSuggestions(history.suggestions);
+      if (selectedHistoryDetail.suggestions && Array.isArray(selectedHistoryDetail.suggestions)) {
+        setSuggestions(selectedHistoryDetail.suggestions);
       } else {
         setSuggestions([]);
       }
       
-      // 設置聚類上下文，確保可以正確保存聚類結果
+      // 設置聚類上下文
       const currentContext: ClusteringContext = {
-        query: history.mainKeyword || '',
-        region: history.region || region,
-        language: history.language || language,
-        historyIdToUpdate: history.id,
-        suggestions: history.suggestions || [],
-        volumeData: history.searchResults || [],
+        query: selectedHistoryDetail.mainKeyword || '',
+        region: selectedHistoryDetail.region || region,
+        language: selectedHistoryDetail.language || language,
+        historyIdToUpdate: selectedHistoryDetail.id,
+        suggestions: selectedHistoryDetail.suggestions || [],
+        volumeData: selectedHistoryDetail.searchResults || [],
       };
       setClusteringContext(currentContext);
       
-      // *** 新增: 在這裡調用 syncSessionStorage ***
-      if (loadedVolumeData.length > 0) {
-        syncSessionStorage(loadedVolumeData);
+      // 同步到 sessionStorage
+      if (selectedHistoryDetail.searchResults && selectedHistoryDetail.searchResults.length > 0) {
+        syncSessionStorage(selectedHistoryDetail.searchResults);
       }
-      
-      console.log('History data loaded with context');
     } else {
-      setStep('input');
-      setClusterSource(null);
-      setError(null);
-      setSuggestions([]);
+      // 當沒有選中的歷史記錄時，重置狀態
+      setQuery('');
       setVolumeData([]);
+      setSuggestions([]);
       setClusteringContext(null);
+      setStep('input');
     }
-  }, [historyActions, region, language, syncSessionStorage]);
+  }, [selectedHistoryDetail, region, language, syncSessionStorage]);
 
   // 處理獲取搜索量
   const handleGetVolumes = useCallback(async (keywordStrings: string[], currentQuery: string) => {
@@ -567,11 +559,6 @@ export default function KeywordSearchTab({
     return integrated;
   }, [suggestions, volumeData]);
 
-  // 同步歷史記錄
-  useEffect(() => {
-    syncStateWithHistory(selectedHistoryDetail);
-  }, [selectedHistoryDetail, syncStateWithHistory]);
-
   // 修改更新結果選項卡的 useEffect，去掉與 clusters 相關的條件
   useEffect(() => {
     // 所有情況下都設置為 volume
@@ -689,12 +676,43 @@ export default function KeywordSearchTab({
     return [...volumeData].sort((a, b) => (b.searchVolume || 0) - (a.searchVolume || 0));
   }, [volumeData]);
 
-  // 使用Memo優化聚類顯示
+  // 修改 clusteringSection 使用 history state
   const clusteringSection = useMemo(() => {
-    // 如果在分群頁面，顯示完整的分群組件
-    if (step === 'clusters') {
+    // 如果有搜索量數據，顯示分群按鈕和分群組件
+    if (volumeData.length > 0) {
       return (
-        <div className="space-y-6 mb-8">
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-medium text-gray-700 dark:text-gray-200">語意分群</h3>
+              {selectedHistoryDetail?.clusters && Object.keys(selectedHistoryDetail.clusters).length > 0 && (
+                <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
+                  - 共 {Object.keys(selectedHistoryDetail.clusters).length} 個分群
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {selectedHistoryDetail?.clusters && Object.keys(selectedHistoryDetail.clusters).length > 0 && (
+                <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-md border border-amber-100 dark:border-amber-800">
+                  重新分群將覆蓋現有分群結果
+                </div>
+              )}
+              <Button 
+                onClick={() => {
+                  // 使用 historyActions 來處理分群狀態
+                  if (selectedHistoryDetail?.id) {
+                    historyActions.setSelectedHistoryId(selectedHistoryDetail.id);
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                {selectedHistoryDetail?.clusters && Object.keys(selectedHistoryDetail.clusters).length > 0 
+                  ? "重新分群" 
+                  : "開始語意分群"}
+              </Button>
+            </div>
+          </div>
           <div className="max-w-full">
             <KeywordClustering />
           </div>
@@ -702,23 +720,8 @@ export default function KeywordSearchTab({
       );
     }
     
-    // 只要有搜索量數據，無論在哪個步驟，都顯示分群按鈕
-    if (volumeData.length > 0) {
-      return (
-        <div className="flex justify-end mb-4">
-          <Button 
-            onClick={() => setStep('clusters')}
-            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-          >
-            <Sparkles className="h-4 w-4" />
-            開始語意分群
-          </Button>
-        </div>
-      );
-    }
-    
     return null;
-  }, [step, volumeData.length]);
+  }, [volumeData.length, selectedHistoryDetail?.id, selectedHistoryDetail?.clusters, historyActions]);
 
   // 處理頁面內重新整理，保留已有數據
   const handleDataRefresh = useCallback(async () => {
@@ -776,117 +779,115 @@ export default function KeywordSearchTab({
     return null;
   }, []);
 
-  return (
-    <div className="w-full h-full flex flex-col space-y-6 pb-10">
-      {/* 主內容區域 - 不再顯示歷史記錄標頭 */}
-      <div className="space-y-4">
-        {/* 移除了renderHistoryHeader */}
-      </div>
-
-      {error && (
-        <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-md shadow-sm">
-          <p className="font-medium">錯誤:</p>
-          <p>{error}</p>
-          <Button variant="ghost" size="sm" onClick={() => setError(null)} className="mt-2 text-red-700 hover:bg-red-100">
-            關閉
-          </Button>
-        </div>
-      )}
-
-      <button id="keyword-search-submit" onClick={() => debouncedHandleGetSuggestions()} style={{ display: 'none' }}>Submit</button>
-
-      {/* 顯示從側邊欄選定的補充關鍵詞，並提供進行新搜索的按鈕 */}
-      {selectedSupplementalKeyword && (
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-md shadow-sm">
-          <p className="text-blue-700 dark:text-blue-400 font-medium">已選擇補充關鍵詞:</p>
-          <p className="text-blue-800 dark:text-blue-300 font-semibold my-1">{selectedSupplementalKeyword}</p>
-          <div className="flex gap-2 mt-2">
-            <Button 
-              size="sm" 
-              onClick={() => {
-                setQuery(selectedSupplementalKeyword);
-                handleGetSuggestions(selectedSupplementalKeyword);
-                setSelectedSupplementalKeyword('');
-                setIsPanelOpen(false); // 執行主搜索後關閉面板
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              用此關鍵詞進行新搜索
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                setSelectedSupplementalKeyword('');
-              }}
-              className="text-blue-700 dark:text-blue-400"
-            >
-              取消
-            </Button>
+  // 添加骨架屏組件
+  const renderSkeleton = () => {
+    return (
+      <div className="space-y-6">
+        {/* 分群區域骨架屏 */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-9 w-36" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-40 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-lg" />
           </div>
         </div>
-      )}
 
-      {/* 使用memo優化的聚類顯示區 */}
-      {clusteringSection}
-
-      {/* 添加搜索結果標題和重新整理按鈕 */}
-      {(suggestions.length > 0 || volumeData.length > 0) && renderResultsHeader()}
-
-      {/* Tabs 區域 - 移除TabsList */}
-      {(suggestions.length > 0 || volumeData.length > 0) && (
-        <div className="mt-2">
-          {volumeData.length > 0 ? (
-            // 顯示關鍵詞卡片網格，恢復卡片標題和描述
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-lg font-medium">關鍵詞搜索量</CardTitle>
-                  {volumeData.length > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        const keywords = volumeData.map(item => item.text).join('\n');
-                        navigator.clipboard.writeText(keywords);
-                        toast(`已複製 ${volumeData.length} 個關鍵詞到剪貼板`);
-                      }}
-                      className="h-8"
-                    >
-                      <Copy className="h-3.5 w-3.5 mr-1.5" />
-                      複製全部
-                    </Button>
-                  )}
-                </div>
-                <CardDescription>
-                  共 {volumeData.length} 個關鍵詞的搜索量數據
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {sortedVolumeData.map((item, index) => (
-                    <KeywordCard
-                      key={index}
-                      item={item}
-                      index={index}
-                      onClick={handleKeywordCardClick}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-0 shadow-sm">
-              <CardContent className="flex flex-col items-center justify-center text-center" style={{ minHeight: '300px' }}>
-                <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  {isLoading ? "獲取搜索量數據中..." : "尚無搜索量數據"}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+        {/* 搜索結果區域骨架屏 */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-6 w-24" />
+          </div>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+              <Skeleton className="h-4 w-32 mt-2" />
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[...Array(6)].map((_, index) => (
+                  <div key={index} className="rounded-md border border-gray-200 dark:border-gray-800 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Skeleton className="h-6 w-6 rounded-full" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                    <div className="flex items-center gap-2 ml-8">
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      )}
-      
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full h-full flex flex-col space-y-6 pb-10">
+      {/* 主內容區域 */}
+      <div className="space-y-4">
+        {isLoading ? (
+          renderSkeleton()
+        ) : (
+          <>
+            {/* 分群區域 */}
+            {clusteringSection}
+
+            {/* 搜索結果區域 */}
+            {(suggestions.length > 0 || volumeData.length > 0) && (
+              <div className="space-y-4">
+                {renderResultsHeader()}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg font-medium">關鍵詞搜索量</CardTitle>
+                      {volumeData.length > 0 && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            const keywords = volumeData.map(item => item.text).join('\n');
+                            navigator.clipboard.writeText(keywords);
+                            toast(`已複製 ${volumeData.length} 個關鍵詞到剪貼板`);
+                          }}
+                          className="h-8"
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-1.5" />
+                          複製全部
+                        </Button>
+                      )}
+                    </div>
+                    <CardDescription>
+                      共 {volumeData.length} 個關鍵詞的搜索量數據
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {sortedVolumeData.map((item, index) => (
+                        <KeywordCard
+                          key={index}
+                          item={item}
+                          index={index}
+                          onClick={handleKeywordCardClick}
+                        />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* 補充關鍵詞側邊欄 */}
       <SupplementalKeywordPanel
         isOpen={isPanelOpen}
@@ -895,9 +896,7 @@ export default function KeywordSearchTab({
         region={region}
         language={language}
         onKeywordSelect={(keyword) => {
-          // 不再直接觸發新搜索，只存儲選定的關鍵詞
           setSelectedSupplementalKeyword(keyword);
-          // 不關閉側邊欄，讓用戶可以繼續交互
         }}
         onVolumeUpdate={handleVolumeUpdateFromPanel}
       />

@@ -22,8 +22,8 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "关键词杀手",
-  description: "关键词工具",
+  title: "Keyword Killer - Professional Keyword Research Tool",
+  description: "A powerful keyword research tool for SEO professionals. Analyze search volumes, competition, and get semantic clustering insights.",
 };
 
 export default function RootLayout({
