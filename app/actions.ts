@@ -1,7 +1,7 @@
 'use server';
 
 import { ALPHABET, LANGUAGES, REGIONS, SYMBOLS } from '@/app/config/constants';
-import { fetchAutocomplete, fetchSuggestionWithDelay, getSearchVolume } from '@/app/services/googleAds';
+import { getSearchVolume } from '@/app/services/keyword-data.service';
 import { analyzeHtmlContent, analyzeSerpResultsHtml, getSerpAnalysis } from '@/app/services/serp';
 import { SearchHistoryDetailResult, SearchHistoryListResult, SuggestionsResult } from '@/app/types';
 import { UrlFormData } from '@/types';
@@ -13,10 +13,18 @@ import {
 import {
   deleteSearchHistory,
   saveSearchHistory,
-  updateSearchHistoryWithClusters,
-  updateSearchHistoryWithPersonas as updateFirebaseHistoryWithPersonas
+  updateSearchHistoryWithPersonas as updateFirebaseHistoryWithPersonas,
+  updateSearchHistoryWithClusters
 } from '@/app/services/firebase/history';
-import { estimateProcessingTime } from '@/lib/utils-common';
+import { estimateProcessingTime, filterSimplifiedChinese } from '@/app/services/keyword-data.service';
+import {
+  cacheKeywordSuggestions,
+  cacheUrlSuggestions,
+  fetchAutocomplete,
+  fetchSuggestionWithDelay,
+  getCachedKeywordSuggestions,
+  getCachedUrlSuggestions
+} from '@/app/services/suggestion.service';
 import { revalidateTag } from 'next/cache';
 
 // --- Vercel AI SDK Imports ---
@@ -42,147 +50,155 @@ export async function getRegions() {
   return { regions: REGIONS, languages: LANGUAGES };
 }
 
-// Get Google autocomplete suggestions
+// Refactor getKeywordSuggestions to use cache
 export async function getKeywordSuggestions(query: string, region: string, language: string, useAlphabet: boolean = true, useSymbols: boolean = false): Promise<SuggestionsResult> {
   'use server';
-  
+
+  const searchPrefix = query.trim();
+  // Use a base cache key without alphabet/symbols for simple queries
+  const baseCacheKey = `${searchPrefix}_${region}_${language}`;
+
   try {
-    // 直接從API獲取建議數據
-    console.log(`從API獲取關鍵詞建議: ${query}, 區域: ${region}, 語言: ${language}`);
-    
-    // 初始化搜索變數
-    const searchPrefix = query.trim();
+    // 1. Check cache first (only for non-extended searches for simplicity)
+    if (!useAlphabet && !useSymbols) {
+      const cachedSuggestions = await getCachedKeywordSuggestions(searchPrefix, region, language);
+      if (cachedSuggestions) {
+        const estimatedVolumeTime = estimateProcessingTime(cachedSuggestions, true);
+        return {
+          suggestions: cachedSuggestions,
+          estimatedProcessingTime: estimatedVolumeTime,
+          fromCache: true,
+          sourceInfo: `數據來源: 快取 (${baseCacheKey})`
+        };
+      }
+    }
+
+    // 2. If not cached or extended search, fetch from API
+    console.log(`從API獲取關鍵詞建議: ${searchPrefix}, 區域: ${region}, 語言: ${language}, A:${useAlphabet}, S:${useSymbols}`);
+
     let allSuggestions: string[] = [];
-    
-    // 基本搜索 - 使用原始關鍵詞
+
+    // Base search
     const baseResults = await fetchAutocomplete(searchPrefix, region, language);
     allSuggestions = [...baseResults];
-    
-    // 如果啟用了字母擴展搜索
+
+    // Alphabet expansion
     if (useAlphabet) {
-      const alphabetPromises = ALPHABET.map(letter => 
+      const alphabetPromises = ALPHABET.map(letter =>
         fetchAutocomplete(`${searchPrefix} ${letter}`, region, language)
       );
       const alphabetResults = await Promise.all(alphabetPromises);
-      const flatAlphabetResults = alphabetResults.flat();
-      allSuggestions = [...allSuggestions, ...flatAlphabetResults];
+      allSuggestions = [...allSuggestions, ...alphabetResults.flat()];
     }
-    
-    // 如果啟用了符號擴展搜索
+
+    // Symbol expansion
     if (useSymbols) {
-      const symbolPromises = SYMBOLS.map(symbol => 
+      const symbolPromises = SYMBOLS.map(symbol =>
         fetchAutocomplete(`${searchPrefix} ${symbol}`, region, language)
       );
       const symbolResults = await Promise.all(symbolPromises);
-      const flatSymbolResults = symbolResults.flat();
-      allSuggestions = [...allSuggestions, ...flatSymbolResults];
+      allSuggestions = [...allSuggestions, ...symbolResults.flat()];
     }
-    
-    // 始终过滤简体中文，无论语言设置
-    const { filterSimplifiedChinese } = await import('@/utils/chineseDetector');
+
+    // Filter and deduplicate
     let filteredSuggestions = filterSimplifiedChinese(allSuggestions);
-    
-    // 移除重複項
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
-    
-    // 計算獲取搜索量的預估時間
+
+    // 3. Cache the results (only for non-extended searches for simplicity)
+    if (!useAlphabet && !useSymbols && uniqueSuggestions.length > 0) {
+      await cacheKeywordSuggestions(searchPrefix, region, language, uniqueSuggestions);
+    }
+
+    // Calculate estimated time
     const estimatedVolumeTime = estimateProcessingTime(uniqueSuggestions, true);
-    
-    return { 
+
+    return {
       suggestions: uniqueSuggestions,
       estimatedProcessingTime: estimatedVolumeTime,
       fromCache: false,
       sourceInfo: '數據來源: Google Autocomplete API'
     };
+
   } catch (error) {
     console.error('獲取關鍵詞建議時出錯:', error);
-    return { 
-      suggestions: [], 
-      estimatedProcessingTime: 0, 
-      fromCache: false, 
+    return {
+      suggestions: [],
+      estimatedProcessingTime: 0,
+      fromCache: false,
       sourceInfo: '數據來源: 獲取失敗'
     };
   }
 }
 
-// 獲取 URL 建議的函數
+// Refactor getUrlSuggestions to use cache
 export async function getUrlSuggestions(formData: UrlFormData): Promise<SuggestionsResult> {
   'use server';
-  
+
+  const { url, region, language } = formData;
+
+  if (!url) {
+    return { suggestions: [], estimatedProcessingTime: 0, error: 'URL 不能為空', sourceInfo: '數據來源: 輸入驗證失敗' };
+  }
+
   try {
-    const { url, region, language } = formData;
-    
-    if (!url) {
-      return { 
-        suggestions: [], 
-        estimatedProcessingTime: 0, 
-        error: 'URL 不能為空',
-        sourceInfo: '數據來源: 輸入驗證失敗'
+    // 1. Check cache first
+    const cachedSuggestions = await getCachedUrlSuggestions(url, region, language);
+    if (cachedSuggestions) {
+      const estimatedVolumeTime = estimateProcessingTime(cachedSuggestions, true);
+      return {
+        suggestions: cachedSuggestions,
+        estimatedProcessingTime: estimatedVolumeTime,
+        fromCache: true,
+        sourceInfo: `數據來源: URL 快取 (${url.substring(0, 30)}...)`
       };
     }
-    
-    // 直接從API分析URL
+
+    // 2. If not cached, analyze URL and fetch from API
     console.log(`從API分析URL: ${url}, 區域: ${region}, 語言: ${language}`);
-    
-    // 從 URL 解析潛在關鍵詞
+
+    // Extract potential keywords from URL (existing logic)
     const { hostname, pathname } = new URL(url);
-    
-    // 獲取域名部分
     const domain = hostname.replace(/^www\./, '');
-    const domainParts = domain.split('.')
-      .filter(part => !['com', 'org', 'net', 'edu', 'gov', 'io', 'co'].includes(part));
-    
-    // 獲取路徑部分
-    const pathParts = pathname.split('/')
-      .filter(part => part && part.length > 2)
-      .map(part => part.replace(/-|_/g, ' '));
-    
-    // 組合潛在關鍵詞
+    const domainParts = domain.split('.').filter(part => !['com', 'org', 'net', 'edu', 'gov', 'io', 'co'].includes(part));
+    const pathParts = pathname.split('/').filter(part => part && part.length > 2).map(part => part.replace(/-|_/g, ' '));
     const potentialKeywords = [...domainParts, ...pathParts];
-    
-    console.log('從 URL 提取的潛在關鍵詞:', potentialKeywords);
-    
+
     if (potentialKeywords.length === 0) {
-      return { 
-        suggestions: [], 
-        estimatedProcessingTime: 0, 
-        error: '無法從 URL 提取關鍵詞',
-        sourceInfo: '數據來源: URL 解析失敗'
-      };
+      return { suggestions: [], estimatedProcessingTime: 0, error: '無法從 URL 提取關鍵詞', sourceInfo: '數據來源: URL 解析失敗' };
     }
-    
-    // 獲取每個潛在關鍵詞的建議
+
     let allSuggestions: string[] = [];
-    
-    // 為了避免請求過多，只使用前 5 個關鍵詞
+    // Limit keywords used for fetching to avoid too many requests
     for (const keyword of potentialKeywords.slice(0, 5)) {
-      console.log(`從關鍵詞 "${keyword}" 獲取建議`);
       const suggestions = await fetchAutocomplete(keyword, region, language);
       allSuggestions = [...allSuggestions, ...suggestions];
     }
-    
-    // 無論何种語言設置，始终过滤简体中文
-    const { filterSimplifiedChinese } = await import('@/utils/chineseDetector');
+
+    // Filter and deduplicate
     let filteredSuggestions = filterSimplifiedChinese(allSuggestions);
-    
-    // 移除重複項
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
-    
+
     console.log(`從 URL 獲取到 ${uniqueSuggestions.length} 個建議`);
-    
-    // 計算獲取搜索量的預估時間
+
+    // 3. Cache the results
+    if (uniqueSuggestions.length > 0) {
+      await cacheUrlSuggestions(url, region, language, uniqueSuggestions);
+    }
+
+    // Calculate estimated time
     const estimatedVolumeTime = estimateProcessingTime(uniqueSuggestions, true);
-    
-    return { 
+
+    return {
       suggestions: uniqueSuggestions,
       estimatedProcessingTime: estimatedVolumeTime,
       fromCache: false,
       sourceInfo: '數據來源: URL 分析 + Google Autocomplete API'
     };
+
   } catch (error) {
     console.error('獲取 URL 建議時出錯:', error);
-    return { 
-      suggestions: [], 
+    return {
+      suggestions: [],
       estimatedProcessingTime: 0,
       error: error instanceof Error ? error.message : '獲取 URL 建議失敗',
       fromCache: false,
@@ -443,42 +459,36 @@ export async function getHistoryDetail(historyId: string) {
   }
 }
 
-// 獲取關鍵詞建議的函數（帶延遲，專門用於點擊關鍵詞卡片獲取補充關鍵詞）
+// getKeywordSuggestionsWithDelay still uses fetchSuggestionWithDelay directly, seems fine for its purpose.
+// Update import path for fetchSuggestionWithDelay
 export async function getKeywordSuggestionsWithDelay(query: string, region: string, language: string): Promise<SuggestionsResult> {
   'use server';
-  
   try {
-    // 直接從API獲取建議數據，使用帶有延遲的函數
-    console.log(`從API獲取補充關鍵詞建議: ${query}, 區域: ${region}, 語言: ${language}`);
-    
-    // 初始化搜索變數
+    console.log(`使用延遲獲取關鍵詞建議: ${query}, 區域: ${region}, 語言: ${language}`);
     const searchPrefix = query.trim();
     let allSuggestions: string[] = [];
-    
-    // 基本搜索 - 使用原始關鍵詞，使用帶有50ms延遲的API
+
+    // Fetch with delay
     const baseResults = await fetchSuggestionWithDelay(searchPrefix, region, language);
     allSuggestions = [...baseResults];
-    
-    // 始终过滤简体中文，无论语言设置
-    const { filterSimplifiedChinese } = await import('@/utils/chineseDetector');
+
+    // Filter and deduplicate
     let filteredSuggestions = filterSimplifiedChinese(allSuggestions);
-    
-    // 移除重複項
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
-    
-    return { 
+
+    return {
       suggestions: uniqueSuggestions,
-      estimatedProcessingTime: 0,
-      fromCache: false,
+      estimatedProcessingTime: 0, // No volume check here
+      fromCache: false, // Fetched directly
       sourceInfo: '數據來源: Google Autocomplete API (帶延遲)'
     };
   } catch (error) {
-    console.error('獲取補充關鍵詞建議時出錯:', error);
-    return { 
-      suggestions: [], 
-      estimatedProcessingTime: 0, 
-      fromCache: false, 
-      sourceInfo: '數據來源: 獲取失敗'
+    console.error('帶延遲獲取關鍵詞建議時出錯:', error);
+    return {
+      suggestions: [],
+      estimatedProcessingTime: 0,
+      fromCache: false,
+      sourceInfo: '數據來源: 獲取失敗 (帶延遲)'
     };
   }
 }

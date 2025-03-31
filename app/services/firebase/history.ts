@@ -16,14 +16,16 @@ export async function saveSearchHistory(
   if (!db) return null;
   
   try {
-    // 創建歷史記錄
+    // 創建歷史記錄，但不包含 suggestions 數組本身
     const historyData = {
       mainKeyword,
       region,
       language,
-      suggestions,
+      suggestionCount: suggestions.length, // Calculate and store count instead
       searchResults,
-      clusters: clusters || null, // 添加分群結果
+      resultsCount: searchResults.length, // Store results count
+      clusters: clusters || null,
+      clustersCount: clusters ? Object.keys(clusters).length : 0, // Store clusters count
       timestamp: Timestamp.now()
     };
     
@@ -63,7 +65,7 @@ export async function getSearchHistoryList(limit: number = 50) {
       const originalTimestamp = data.timestamp?.toDate() || new Date(); // Provide a default date if timestamp is missing
       
       // 計算分群數量
-      const clustersCount = data.clusters ? Object.keys(data.clusters).length : 0;
+      const clustersCount = data.clustersCount || 0;
       
       return {
         id: doc.id,
@@ -71,10 +73,9 @@ export async function getSearchHistoryList(limit: number = 50) {
         region: data.region || '',
         language: data.language || '',
         timestamp: originalTimestamp, // 返回原始 Date 对象
-        suggestionCount: data.suggestions?.length || 0, // 添加 suggestionCount
-        resultsCount: data.searchResults?.length || 0, // 修正名稱為 resultsCount
-        suggestionsPreview: data.suggestions?.slice(0, 5) || [], // 保留建議預覽，使用不同名稱
-        clustersCount // 添加分群數量
+        suggestionCount: data.suggestionCount || 0, // 使用 stored count
+        resultsCount: data.resultsCount || 0, // 使用 stored results count
+        clustersCount: clustersCount
       };
     });
     
@@ -88,7 +89,7 @@ export async function getSearchHistoryList(limit: number = 50) {
 /**
  * 獲取特定搜索歷史詳情
  */
-export async function getSearchHistoryDetail(historyId: string): Promise<SearchHistoryItem | null> {
+export async function getSearchHistoryDetail(historyId: string): Promise<Omit<SearchHistoryItem, 'suggestions'> | null> {
   if (!db) return null;
   
   try {
@@ -107,18 +108,17 @@ export async function getSearchHistoryDetail(historyId: string): Promise<SearchH
     const timestamp = data.timestamp?.toDate() || new Date(); 
     
     // 計算 Count 字段
-    const suggestionCount = data.suggestions?.length || 0;
-    const resultsCount = data.searchResults?.length || 0;
-    const clustersCount = data.clusters ? Object.keys(data.clusters).length : 0;
+    const suggestionCount = data.suggestionCount || 0;
+    const resultsCount = data.resultsCount || 0;
+    const clustersCount = data.clustersCount || 0;
     
     // 返回完整的歷史記錄數據，包括 clusters
-    const historyDetail: SearchHistoryItem = {
+    const historyDetail = {
       id: historyId,
       mainKeyword: data.mainKeyword || '',
       region: data.region || '',
       language: data.language || '',
       timestamp: timestamp, 
-      suggestions: data.suggestions || [],
       searchResults: data.searchResults || [],
       clusters: data.clusters || null,
       suggestionCount: suggestionCount,
@@ -126,7 +126,7 @@ export async function getSearchHistoryDetail(historyId: string): Promise<SearchH
       clustersCount: clustersCount > 0 ? clustersCount : undefined
     };
 
-    console.log(`歷史記錄詳情 ${historyId} 載入完成:`, {
+    console.log(`歷史記錄詳情 ${historyId} 載入完成 (無建議陣列):`, {
       hasMainKeyword: !!historyDetail.mainKeyword,
       suggestionCount: historyDetail.suggestionCount,
       resultsCount: historyDetail.resultsCount,

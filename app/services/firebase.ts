@@ -4,7 +4,7 @@ import { Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // 初始化 Firebase Admin
 let app: App | undefined;
-let db: Firestore | undefined;
+export let db: Firestore | undefined;
 
 // 确保 Firebase Admin 只初始化一次
 if (!getApps().length) {
@@ -45,8 +45,8 @@ if (!getApps().length) {
 }
 
 // 缓存相关常量
-const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7天的毫秒数
-const COLLECTIONS = {
+export const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7天的毫秒数
+export const COLLECTIONS = {
   KEYWORD_SUGGESTIONS: 'keywordSuggestions',
   SEARCH_VOLUMES: 'searchVolumes',
   URL_SUGGESTIONS: 'urlSuggestions',
@@ -160,55 +160,6 @@ export async function getKeywordMetadata(keyword: string, region: string) {
   }
 }
 
-// 缓存关键词建议
-export async function cacheKeywordSuggestions(query: string, region: string, language: string, suggestions: string[]) {
-  if (!db) return;
-  
-  try {
-    const cacheId = `${query}_${region}_${language}`;
-    await db.collection(COLLECTIONS.KEYWORD_SUGGESTIONS).doc(cacheId).set({
-      query,
-      region,
-      language,
-      suggestions,
-      timestamp: Timestamp.now(),
-    });
-    console.log(`已緩存關鍵詞建議: ${cacheId}`);
-  } catch (error) {
-    console.error("緩存關鍵詞建議時出錯:", error);
-  }
-}
-
-// 获取缓存的关键词建议
-export async function getCachedKeywordSuggestions(query: string, region: string, language: string): Promise<string[] | null> {
-  if (!db) return null;
-  
-  try {
-    const cacheId = `${query}_${region}_${language}`;
-    const docSnap = await db.collection(COLLECTIONS.KEYWORD_SUGGESTIONS).doc(cacheId).get();
-    
-    if (docSnap.exists) {
-      const data = docSnap.data();
-      if (!data) return null;
-      
-      const timestamp = data.timestamp.toDate();
-      const now = new Date();
-      
-      // 检查缓存是否过期
-      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
-        console.log(`使用緩存關鍵詞建議: ${cacheId}`);
-        return data.suggestions;
-      } else {
-        console.log(`緩存已過期: ${cacheId}`);
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error("獲取緩存關鍵詞建議時出錯:", error);
-    return null;
-  }
-}
-
 // 缓存搜索量数据 - 不再缓存单个关键词元数据，只缓存批量数据
 export async function cacheSearchVolumes(keywords: string[], region: string, results: any[]) {
   if (!db) return;
@@ -266,54 +217,6 @@ export async function getCachedSearchVolumes(keywords: string[], region: string)
     return null;
   } catch (error) {
     console.error("獲取緩存搜索量數據時出錯:", error);
-    return null;
-  }
-}
-
-// 缓存URL建议
-export async function cacheUrlSuggestions(url: string, region: string, language: string, suggestions: string[]) {
-  if (!db) return;
-  
-  try {
-    const cacheId = `${url}_${region}_${language}`;
-    await db.collection(COLLECTIONS.URL_SUGGESTIONS).doc(cacheId).set({
-      url,
-      region,
-      language,
-      suggestions,
-      timestamp: Timestamp.now(),
-    });
-    console.log(`已緩存URL建議: ${url}`);
-  } catch (error) {
-    console.error("緩存URL建議時出錯:", error);
-  }
-}
-
-// 获取缓存的URL建议
-export async function getCachedUrlSuggestions(url: string, region: string, language: string): Promise<string[] | null> {
-  if (!db) return null;
-  
-  try {
-    const cacheId = `${url}_${region}_${language}`;
-    const docSnap = await db.collection(COLLECTIONS.URL_SUGGESTIONS).doc(cacheId).get();
-    
-    if (docSnap.exists) {
-      const data = docSnap.data();
-      if (!data) return null;
-      
-      const timestamp = data.timestamp.toDate();
-      const now = new Date();
-      
-      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
-        console.log(`使用緩存URL建議: ${url}`);
-        return data.suggestions;
-      } else {
-        console.log(`緩存已過期: ${url}`);
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error("獲取緩存URL建議時出錯:", error);
     return null;
   }
 }
@@ -544,5 +447,3 @@ export async function updateSerpResultWithHtmlAnalysis(
     throw error;
   }
 }
-
-export { db };
