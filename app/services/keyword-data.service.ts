@@ -270,12 +270,12 @@ export async function getSearchVolume(
   language: string = 'zh-TW',
   clusters: Record<string, string[]> | null = null
 ): Promise<SearchVolumeResult> {
-  const sourceInfo = '數據來源: Google Ads API';
   const startTime = Date.now();
-  let estimatedTime = 0;
+  const estimatedTime = estimateProcessingTime(keywords, true);
+  let sourceInfo = "Google Ads API";
+
   try {
     const batchSize = 20;
-    estimatedTime = estimateProcessingTime(keywords, true);
     const filteredKeywords = filterSimplifiedChinese(keywords);
     const uniqueKeywords = [...new Set(filteredKeywords)];
     if (uniqueKeywords.length < keywords.length) {
@@ -339,22 +339,23 @@ export async function getSearchVolume(
         estimated: estimatedTime,
         actual: actualTime
       },
-      fromCache: false,
-      sourceInfo: sourceInfo
+      sourceInfo: sourceInfo,
+      historyId: null
     };
-  } catch (error) {
-    console.error('Error fetching search volume data:', error);
+  } catch (error: any) {
+    console.error('Error fetching search volume:', error);
     const endTime = Date.now();
     const actualTime = Math.round((endTime - startTime) / 1000);
+    const errorMessage = error.message || '無法獲取關鍵詞搜索量數據';
     return {
       results: [],
       processingTime: {
-        estimated: estimatedTime,
-        actual: actualTime
+        estimated: 0,
+        actual: actualTime,
       },
-      fromCache: false,
-      sourceInfo: sourceInfo,
-      error: error instanceof Error ? error.message : 'Failed to fetch search volume data'
+      error: errorMessage,
+      sourceInfo: "Error",
+      historyId: null
     };
   }
 } 

@@ -46,7 +46,7 @@ if (!getApps().length) {
 
 // 只保留實際使用的集合
 export const COLLECTIONS = {
-  KEYWORD_RESEARCH_HISTORY: 'keyword-research-history', 
+  SEARCH_HISTORY: 'searchHistory', 
   USERS: 'users',
   CONTENT_ANALYSIS: 'contentAnalysis',
   // Removed commented out old cache collections

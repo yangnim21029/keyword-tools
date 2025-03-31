@@ -1,17 +1,16 @@
 'use client';
 
-import { useHistoryStore } from '@/store/historyStore'; // 導入 Zustand Hook
 import { useTabStore } from '@/providers/tab-provider';
-import { useEffect, useState } from 'react';
-import { SearchHistoryHeader } from './search-history/SearchHistoryHeader';
-import { SearchHistoryList } from './search-history/SearchHistoryList';
+import { useHistoryStore } from '@/store/historyStore'; // 導入 Zustand Hook
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Clock, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { SearchHistoryHeader } from './search-history/SearchHistoryHeader';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Skeleton } from './ui/skeleton';
-import { toast } from 'sonner';
 
 // 搜索历史组件的属性 - onSelectHistory 可能不再需要傳遞 data，因為詳情由 Store 加載
 interface KeywordHistoryListProps {
@@ -38,12 +37,22 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
   // 通常 Provider 會在初始化時加載，或者父元件觸發
   // 如果需要確保這裡加載，可以保留一個簡化的 useEffect
   useEffect(() => {
+    // 添加一個標記，避免重複觸發
+    const dataFetchedRef = localStorage.getItem('historyDataFetched');
+    
     // 檢查是否已有數據，避免不必要的重複加載
-    if (histories.length === 0 && !loading) {
-       console.log('[SearchHistory] Store 中無歷史記錄，觸發初始加載');
-       historyActions.fetchHistories(false); // 初始加載可能不需要強制刷新
+    if (histories.length === 0 && !loading && dataFetchedRef !== 'true') {
+       console.log('[KeywordHistoryList] Store 中無歷史記錄，觸發初始加載');
+       
+       // 設置標記防止重複觸發
+       localStorage.setItem('historyDataFetched', 'true');
+       
+       // 延遲執行，避免在渲染過程中觸發
+       setTimeout(() => {
+         historyActions.fetchHistories(false); // 初始加載可能不需要強制刷新
+       }, 500);
     }
-  }, [historyActions, histories.length, loading]); // 添加依賴項
+  }, []); // 只在組件掛載時執行一次
 
   // 監聽外部刷新狀態
   useEffect(() => {

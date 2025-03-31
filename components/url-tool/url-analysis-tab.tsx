@@ -89,7 +89,6 @@ export default function UrlAnalysisTab({
 			setVolumeData({
 				results: historyDetail.searchResults,
 				processingTime: { estimated: 0, actual: 0 },
-				fromCache: true
 			});
 			setStep('volumes');
 		}

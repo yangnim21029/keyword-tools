@@ -30,7 +30,7 @@ export async function saveSearchHistory(
     };
     
     // 使用 add 方法自動生成文檔 ID
-    const docRef = await db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).add(historyData);
+    const docRef = await db.collection(COLLECTIONS.SEARCH_HISTORY).add(historyData);
     console.log(`已保存搜索歷史: ${docRef.id}${clusters ? '，包含分群結果' : ''}`);
     
     return docRef.id; // 返回生成的歷史記錄 ID
@@ -48,7 +48,7 @@ export async function getSearchHistoryList(limit: number = 50) {
   
   try {
     // 查詢最近的歷史記錄，按時間戳倒序排列，限制數量
-    const querySnapshot = await db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY)
+    const querySnapshot = await db.collection(COLLECTIONS.SEARCH_HISTORY)
       .orderBy('timestamp', 'desc')
       .limit(limit)
       .get();
@@ -94,7 +94,7 @@ export async function getSearchHistoryDetail(historyId: string): Promise<Omit<Se
   
   try {
     // 獲取特定歷史記錄文檔
-    const docSnap = await db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).doc(historyId).get();
+    const docSnap = await db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId).get();
     
     if (!docSnap.exists) {
       console.log(`找不到指定 ID 的搜索歷史: ${historyId}`);
@@ -152,7 +152,7 @@ export async function deleteSearchHistory(historyId: string): Promise<boolean> {
   
   try {
     // 刪除歷史記錄文檔
-    await db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).doc(historyId).delete();
+    await db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId).delete();
     console.log(`已刪除搜索歷史: ${historyId}`);
     
     return true;
@@ -176,7 +176,7 @@ export async function updateSearchHistoryWithClusters(
   
   try {
     // 檢查歷史記錄是否存在
-    const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).doc(historyId);
+    const docRef = db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId);
     const docSnap = await docRef.get();
     
     if (!docSnap.exists) {
@@ -212,7 +212,7 @@ export async function updateSearchHistoryWithResults(
   
   try {
     // 檢查歷史記錄是否存在
-    const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).doc(historyId);
+    const docRef = db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId);
     const docSnap = await docRef.get();
     
     if (!docSnap.exists) {
@@ -249,7 +249,7 @@ export async function updateSearchHistoryWithPersonas(
   
   try {
     // 檢查歷史記錄是否存在
-    const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH_HISTORY).doc(historyId);
+    const docRef = db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId);
     const docSnap = await docRef.get();
     
     if (!docSnap.exists) {

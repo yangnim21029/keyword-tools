@@ -1,15 +1,16 @@
 'use client';
 
 import { saveHistoryClusteringResults } from '@/app/actions';
+import { performSemanticClustering } from '@/app/actions/semantic-clustering';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useHistoryStore } from '@/store/historyStore';
 import { useSearchStore } from '@/store/searchStore';
 import { BarChart2, Check, Copy, LayoutGrid, Sparkles } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // 直接從store和全局環境獲取數據而不是props
 export default function KeywordClustering() {
@@ -18,7 +19,7 @@ export default function KeywordClustering() {
   const [clusteringText, setClusteringText] = useState<string>("");
   const [clusters, setClusters] = useState<Record<string, string[]> | null>(null);
   const [copiedClusterIndex, setCopiedClusterIndex] = useState<number | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-4");
+  const [selectedModel, setSelectedModel] = useState<string>("gpt-4o-mini");
 
   // 從store獲取狀態和操作
   const setGlobalLoading = useSearchStore(state => state.actions.setLoading);
@@ -44,11 +45,15 @@ export default function KeywordClustering() {
       
       // 優先從當前歷史記錄中獲取
       if (selectedHistoryDetail) {
+        console.log('[KeywordClustering] 檢查歷史記錄:', selectedHistoryDetail.id);
+        
         // 檢查是否有 clusters 數據
         if (selectedHistoryDetail.clusters && Object.keys(selectedHistoryDetail.clusters).length > 0) {
+          console.log('[KeywordClustering] 從歷史記錄讀取現有分群結果');
           setClusters(selectedHistoryDetail.clusters);
         } else {
           // 如果歷史記錄中沒有 clusters 數據，則重置 clusters
+          console.log('[KeywordClustering] 歷史記錄中沒有分群結果');
           setClusters(null);
         }
         
@@ -59,6 +64,7 @@ export default function KeywordClustering() {
             .filter(Boolean);
           
           if (keywordsFromResults.length > 0) {
+            console.log('[KeywordClustering] 從歷史記錄的搜索結果中獲取關鍵詞：', keywordsFromResults.length, '個');
             setKeywords(keywordsFromResults);
             return;
           }
@@ -67,25 +73,45 @@ export default function KeywordClustering() {
         // 如果 searchResults 中沒有關鍵詞，嘗試從 suggestions 獲取
         if (selectedHistoryDetail.suggestions && Array.isArray(selectedHistoryDetail.suggestions)) {
           if (selectedHistoryDetail.suggestions.length > 0) {
+            console.log('[KeywordClustering] 從歷史記錄的建議中獲取關鍵詞：', selectedHistoryDetail.suggestions.length, '個');
             setKeywords(selectedHistoryDetail.suggestions);
             return;
           }
         }
       } else {
         // 清空聚類結果，如果沒有選中任何歷史記錄
+        console.log('[KeywordClustering] 沒有選中的歷史記錄');
         setClusters(null);
-        setKeywords([]);
       }
       
       // 後備選項：從 session storage 中獲取
       if (typeof window !== 'undefined') {
+        console.log('[KeywordClustering] 嘗試從 sessionStorage 獲取關鍵詞');
         const storedKeywords = sessionStorage.getItem('clustering-keywords');
         if (storedKeywords) {
-          setKeywords(JSON.parse(storedKeywords));
+          try {
+            const parsedKeywords = JSON.parse(storedKeywords);
+            if (Array.isArray(parsedKeywords) && parsedKeywords.length > 0) {
+              console.log('[KeywordClustering] 從 sessionStorage 成功獲取關鍵詞：', parsedKeywords.length, '個');
+              console.log('[KeywordClustering] 前10個關鍵詞示例：', parsedKeywords.slice(0, 10));
+              setKeywords(parsedKeywords);
+              return;
+            } else {
+              console.log('[KeywordClustering] sessionStorage 中的關鍵詞無效或為空');
+            }
+          } catch (parseError) {
+            console.error('[KeywordClustering] 解析 sessionStorage 中的關鍵詞失敗:', parseError);
+          }
+        } else {
+          console.log('[KeywordClustering] sessionStorage 中沒有關鍵詞');
         }
       }
+      
+      // 如果所有來源都沒有關鍵詞，則設置為空數組
+      console.log('[KeywordClustering] 沒有找到任何來源的關鍵詞，設置為空數組');
+      setKeywords([]);
     } catch (error) {
-      console.error('獲取關鍵詞或聚類結果失敗:', error);
+      console.error('[KeywordClustering] 獲取關鍵詞或聚類結果失敗:', error);
       setClusters(null);
       setKeywords([]);
     }
@@ -205,25 +231,46 @@ export default function KeywordClustering() {
   };
 
   const handleClustering = async () => {
-    // 確保有足夠的關鍵詞
-    if (!keywords.length || keywords.length < 5) {
-      alert("需要至少5個關鍵詞才能進行語意分群");
+    console.log("=== 分群按鈕被點擊 ===");
+    console.log("當前狀態:", {
+      isClustering,
+      keywordsLength: keywords.length,
+      selectedModel,
+      historyId,
+      keywords: keywords.slice(0, 5)
+    });
+    
+    // 如果正在分群中，直接返回
+    if (isClustering) {
+      console.log("已在分群中，忽略此次點擊");
       return;
     }
     
-    // 重置狀態
+    // 確保有足夠的關鍵詞
+    if (!keywords.length || keywords.length < 5) {
+      toast.error("需要至少5個關鍵詞才能進行語意分群");
+      console.error("分群失敗: 關鍵詞數量不足", keywords.length);
+      return;
+    }
+    
+    // 重置狀態，確保 clusters 被清空
     setIsClustering(true);
     setClusteringText("");
-    setClusters(null);
+    setClusters(null); // 重要：確保舊的分群結果被清空
     
     // 設置全局加載狀態
     setGlobalLoading(true, '正在進行語意分群...');
+    console.log("全局加載狀態已設置");
+    
+    // 限制關鍵詞數量最多80個
+    const limitedKeywords = keywords.slice(0, 80);
+    console.log("開始分群處理，使用模型:", selectedModel, "關鍵詞數量:", limitedKeywords.length);
+    console.log("最終使用的關鍵詞:", limitedKeywords);
     
     // 設置請求超時控制
-    const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      controller.abort();
-      alert('語意分群請求超時 (60秒)');
+      toast.error('語意分群請求超時 (60秒)');
+      console.error("分群超時");
       setIsClustering(false);
       setGlobalLoading(false);
     }, 60000);
@@ -232,104 +279,48 @@ export default function KeywordClustering() {
       // 更新進度提示
       setClusteringText('請求 AI 分群中...');
       
-      // 調用 API
-      const response = await fetch('/api/semantic-clustering', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          keywords: keywords.slice(0, 80),
-          historyId: historyId,
-          model: selectedModel
-        }),
-        signal: controller.signal,
-      });
+      // 使用 Server Action 進行分群
+      const result = await performSemanticClustering(limitedKeywords);
       
-      // 檢查響應狀態
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`伺服器錯誤 ${response.status}: ${errorText || response.statusText}`);
-      }
-      
-      if (!response.body) {
-        throw new Error('無法讀取伺服器回應流');
-      }
-      
-      // 處理流式響應
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let receivedText = '';
-      
-      setClusteringText(prev => prev + '接收 AI 分群結果...');
-      
-      // 讀取流
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      if (result.clusters && Object.keys(result.clusters).length > 0) {
+        const clusterCount = Object.keys(result.clusters).length;
+        console.log(`解析到 ${clusterCount} 個分群`);
         
-        // 解碼並添加到接收的文本
-        receivedText += decoder.decode(value, { stream: true });
-        setClusteringText(receivedText); // 仍然更新文本但不顯示
+        setClusters(result.clusters);
         
-        // 嘗試提前解析結果
-        try {
-          const parsedData = JSON.parse(receivedText);
-          if (parsedData.clusters) {
-            setClusters(parsedData.clusters);
-          }
-        } catch (e) {
-          // JSON 尚未完成，繼續讀取
-        }
-      }
-      
-      // 確保最終解碼完成
-      receivedText += decoder.decode();
-      setClusteringText(receivedText);
-      
-      // 解析最終結果
-      setClusteringText(prev => prev + '\n解析分群結果...');
-      
-      try {
-        const finalJsonResult = JSON.parse(receivedText);
+        // 更新完成提示
+        setClusteringText(prev => 
+          prev + `\n\n✅ 分群完成！成功創建 ${clusterCount} 個分群。`
+        );
         
-        if (finalJsonResult && finalJsonResult.clusters && Object.keys(finalJsonResult.clusters).length > 0) {
-          setClusters(finalJsonResult.clusters);
+        toast.success(`分群完成！創建了 ${clusterCount} 個分群`);
+        
+        // 自動保存到歷史記錄
+        if (historyId && typeof historyId === 'string' && historyId.trim() !== '') {
+          console.log("保存分群結果到歷史記錄:", historyId);
+          await handleSaveToHistory(result.clusters);
           
-          // 更新完成提示（僅內部記錄）
-          setClusteringText(prev => 
-            prev + `\n✅ 分群完成！成功創建 ${Object.keys(finalJsonResult.clusters).length} 個分群。`
-          );
-          
-          // 自動保存到歷史記錄
-          if (historyId && typeof historyId === 'string' && historyId.trim() !== '') {
-            await handleSaveToHistory(finalJsonResult.clusters);
-            
-            // 重新選擇當前歷史記錄 ID，這會觸發重新獲取詳情
-            if (historyActions.setSelectedHistoryId) {
-              historyActions.setSelectedHistoryId(historyId);
-            }
+          // 重新選擇當前歷史記錄 ID，這會觸發重新獲取詳情
+          if (historyActions.setSelectedHistoryId) {
+            historyActions.setSelectedHistoryId(historyId);
           }
-        } else if (finalJsonResult && finalJsonResult.error) {
-          alert(`聚類失敗: ${finalJsonResult.message || finalJsonResult.error}`);
-          setClusters(null);
         } else {
-          alert('聚類結果格式不正確或未包含有效分群');
-          setClusters(null);
+          console.log("沒有historyId，不保存分群結果");
         }
-      } catch (parseError) {
-        alert('聚類結果格式錯誤，請檢查響應數據');
+      } else {
+        toast.error('聚類結果格式不正確或未包含有效分群');
+        console.error("API返回格式不符合預期:", result);
         setClusters(null);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // 超時錯誤已被處理
-      } else {
-        alert(`語意分群失敗: ${error.message || '未知錯誤'}`);
-      }
+      toast.error(`語意分群失敗: ${error.message || '未知錯誤'}`);
+      console.error("分群過程中出錯:", error);
       setClusters(null);
     } finally {
       clearTimeout(timeoutId);
       setIsClustering(false);
       setGlobalLoading(false);
+      console.log("分群處理完成，狀態已重置");
     }
   };
 
@@ -538,31 +529,43 @@ export default function KeywordClustering() {
 
   return (
     <div className="space-y-4">
-      {/* 關鍵詞數量不足5個的提示 */}
-      {keywords.length > 0 && keywords.length < 5 && (
+      {/* 分群信息和警告 */}
+      {keywords.length === 0 ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 p-3 rounded-md text-sm border border-amber-100 dark:border-amber-800">
+          <p>沒有找到關鍵詞。請先進行關鍵詞搜索，或檢查您的搜索結果。</p>
+        </div>
+      ) : keywords.length < 5 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 p-3 rounded-md text-sm border border-amber-100 dark:border-amber-800">
           <p>需要至少 5 個關鍵詞才能進行分群，當前只有 {keywords.length} 個</p>
         </div>
       )}
 
-      {/* 分群按鈕和模型選擇 */}
+      {/* 分群按鈕和模型選擇 - 始終顯示 */}
       <div className="flex items-center gap-4">
         <Button 
-          onClick={handleClustering} 
-          disabled={isClustering || (!selectedHistoryDetail?.clusters && keywords.length < 5)}
-          className="flex items-center gap-2"
+          onClick={handleClustering}
+          disabled={isClustering || keywords.length < 5}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
         >
           <Sparkles className="h-4 w-4" />
-          {selectedHistoryDetail?.clusters ? "重新分群" : "開始語意分群"}
+          {isClustering ? "分群中..." : (clusters ? "重新分群" : "開始語意分群")}
         </Button>
         
-        <Select value={selectedModel} onValueChange={setSelectedModel}>
+        <Select 
+          value={selectedModel} 
+          onValueChange={(value) => {
+            console.log("模型已更改為:", value);
+            setSelectedModel(value);
+          }}
+        >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="選擇模型" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="gpt-4">GPT-4 (最佳質量)</SelectItem>
-            <SelectItem value="gpt-3.5-turbo">GPT-3.5 (更快)</SelectItem>
+            <SelectItem value="gpt-4o">GPT-4o (最佳質量)</SelectItem>
+            <SelectItem value="gpt-4o-mini">GPT-4o-mini (推薦)</SelectItem>
+            <SelectItem value="gpt-4">GPT-4 (傳統)</SelectItem>
+            <SelectItem value="gpt-3.5-turbo">GPT-3.5 (最快)</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -30,12 +30,16 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
   // 通常 Provider 會在初始化時加載，或者父元件觸發
   // 如果需要確保這裡加載，可以保留一個簡化的 useEffect
   useEffect(() => {
-    // 檢查是否已有數據，避免不必要的重複加載
-    if (histories.length === 0 && !loading) {
-       console.log('[SearchHistory] Store 中無歷史記錄，觸發初始加載');
-       historyActions.fetchHistories(false); // 初始加載可能不需要強制刷新
+    // 使用 sessionStorage 與 HistoryProvider 共享相同的標記
+    const hasLoaded = sessionStorage.getItem('historyInitiallyLoaded');
+    
+    // 檢查 Provider 是否已經處理了初始加載
+    if (histories.length === 0 && !loading && !hasLoaded) {
+      console.log('[SearchHistory] 等待 Provider 延遲加載歷史記錄...');
+    } else if (histories.length > 0) {
+      console.log('[SearchHistory] 已加載歷史記錄，數量:', histories.length);
     }
-  }, [historyActions, histories.length, loading]); // 添加依賴項
+  }, [histories.length, loading]); // 監聽歷史記錄和加載狀態
 
   // 監聽外部刷新狀態
   useEffect(() => {
@@ -80,6 +84,9 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
   const handleRefresh = () => {
     if (loading) return;
     console.log('[SearchHistory] 手動觸發刷新');
+    // 清除 sessionStorage 標記，允許下次自動加載
+    sessionStorage.removeItem('historyInitiallyLoaded');
+    // 強制刷新歷史記錄
     historyActions.fetchHistories(true); // Store Action 會處理加載狀態
   };
 
@@ -98,8 +105,7 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
     <div className="h-full flex flex-col">
       <SearchHistoryHeader
         isLoading={loading && deletingId === null}
-        // 可以考慮從 store 獲取刷新 action 傳遞給 Header
-        // onRefresh={handleRefresh}
+        onRefresh={handleRefresh} // 傳遞刷新函數
       />
 
       <div className="flex-grow overflow-auto">

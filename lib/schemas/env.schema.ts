@@ -22,7 +22,6 @@ export const envSchema = z.object({
   // 應用配置
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   API_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
-  MAX_CACHE_AGE_SECONDS: z.coerce.number().int().nonnegative().default(86400), // 默認 1 天
 }).partial({
   // 這些字段在開發模式下是可選的
   NEXT_PUBLIC_APP_URL: true,
@@ -107,7 +106,7 @@ export function getEnvVar<K extends keyof Env>(
   const value = env[key];
   
   // 根據 Env 類型定義，將字符串轉換為適當的類型
-  if (key === 'API_TIMEOUT_MS' || key === 'MAX_CACHE_AGE_SECONDS') {
+  if (key === 'API_TIMEOUT_MS') {
     return value ? Number(value) as Env[K] : defaultValue;
   }
   

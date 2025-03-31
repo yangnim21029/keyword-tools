@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, createContext, useContext, useEffect, useRef } from 'react';
+import { type ReactNode, createContext, useContext, useRef } from 'react';
 import { toast } from 'sonner';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -123,10 +123,10 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
         (async () => {
           try {
             // Import the correct Server Action for fetching details
-            const { fetchKeywordResearchHistoryDetail } = await import('@/app/actions'); 
+            const { fetchSearchHistoryDetail } = await import('@/app/actions'); 
             console.log('[HistoryProvider] Fetching history detail:', historyId);
 
-            const result = await fetchKeywordResearchHistoryDetail(historyId); // Await the Server Action
+            const result = await fetchSearchHistoryDetail(historyId); // Await the Server Action
 
             // Handle potential errors returned by the Server Action
             if (result.error) {
@@ -183,8 +183,8 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           set((store) => ({ state: { ...store.state, loading: true, error: null } })); // Set loading state
           try {
               // Import the correct Server Action for fetching the list
-              const { fetchKeywordResearchHistoryList } = await import('@/app/actions'); 
-              const result = await fetchKeywordResearchHistoryList(50, forceRefresh); // Call Server Action (limit 50)
+              const { fetchSearchHistory } = await import('@/app/actions'); 
+              const result = await fetchSearchHistory(50, forceRefresh); // Call Server Action (limit 50)
 
               // Handle potential errors from Server Action
               if (result.error) {
@@ -260,8 +260,8 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           }));
           try {
               // Import the correct Server Action for saving clusters
-              const { updateHistoryWithClusters } = await import('@/app/actions'); 
-              const response = await updateHistoryWithClusters(clusterId, result); // Call Server Action
+              const { saveHistoryClusteringResults } = await import('@/app/actions'); // Assumed correct name
+              const response = await saveHistoryClusteringResults(clusterId, result); // Call Server Action
               // Handle potential failure response
               if (!response.success) {
                   throw new Error(response.error || '保存聚類結果失敗');
@@ -289,8 +289,8 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           }));
           try {
               // Import the correct Server Action for deleting
-              const { deleteKeywordResearchHistory } = await import('@/app/actions'); 
-              const response = await deleteKeywordResearchHistory(id); // Call Server Action
+              const { deleteSearchHistoryRecord } = await import('@/app/actions'); // Assumed correct name
+              const response = await deleteSearchHistoryRecord(id); // Call Server Action
               // Handle potential failure response
               if (!response.success) {
                   throw new Error(response.error || '刪除歷史記錄失敗');
@@ -308,8 +308,8 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
        updateHistorySearchResults: async (historyId, searchResults) => {
         try {
           // Import the correct Server Action for updating results
-          const { updateKeywordResearchHistoryWithResults } = await import('@/app/actions'); 
-          const response = await updateKeywordResearchHistoryWithResults(historyId, searchResults); // Call Server Action
+          const { updateSearchHistoryWithResults } = await import('@/app/actions'); // Assumed correct name
+          const response = await updateSearchHistoryWithResults(historyId, searchResults); // Call Server Action
           // Handle response and update UI optimistically if needed
           if (response?.success) {
             // Optimistic update: update detail in store if it's the selected one
@@ -337,8 +337,8 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
       updateHistoryPersonas: async (historyId, personas) => {
           try {
               // Import the correct Server Action for updating personas
-              const { updateKeywordResearchHistoryWithPersonas } = await import('@/app/actions'); 
-              const response = await updateKeywordResearchHistoryWithPersonas(historyId, personas); // Call Server Action
+              const { updateSearchHistoryWithPersonas } = await import('@/app/actions'); // Assumed correct name
+              const response = await updateSearchHistoryWithPersonas(historyId, personas); // Call Server Action
                // Handle response and update UI optimistically if needed
               if (response?.success) {
                   // Optimistic update: update detail in store if it's the selected one
@@ -381,30 +381,7 @@ export function HistoryProvider({ children }: HistoryProviderProps) {
   // Create store instance only once
   if (!storeRef.current) {
     storeRef.current = createHistoryStore();
-    console.log('[HistoryProvider] Store 已創建，將在頁面完成載入後獲取歷史記錄');
   }
-  
-  // 使用 useEffect 在組件掛載後延遲觸發一次性的歷史記錄加載
-  useEffect(() => {
-    // 使用唯一標識防止重複加載
-    const hasLoaded = sessionStorage.getItem('historyInitiallyLoaded');
-    
-    if (!hasLoaded && storeRef.current) {
-      // 延遲 1 秒加載，避免與其他初始化操作衝突
-      const timer = setTimeout(() => {
-        console.log('[HistoryProvider] 延遲觸發歷史記錄加載');
-        // 正確獲取 store 實例，然後訪問 actions
-        const store = storeRef.current;
-        if (store) {
-          store.getState().actions.fetchHistories(false);
-          // 標記已加載，避免重複請求
-          sessionStorage.setItem('historyInitiallyLoaded', 'true');
-        }
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, []); // 僅在組件掛載時執行一次
   
   // Provide the store instance via Context
   return (

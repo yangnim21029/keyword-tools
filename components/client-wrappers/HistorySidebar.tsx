@@ -110,9 +110,11 @@ export default function KeywordHistorySidebar() {
     setIsRefreshing(true);
     try {
       // 清除緩存
+      /*
       if (typeof historyActions.clearCache === 'function') {
         historyActions.clearCache();
       }
+      */
       
       // 使用 revalidateTag API 重新驗證標籤
       try {
@@ -156,12 +158,8 @@ export default function KeywordHistorySidebar() {
           console.error(`重新驗證歷史記錄標籤失敗 (ID: ${historyId}):`, error);
         }
         
-        // 使用 store action 刷新詳情
-        if (typeof historyActions.forceRefreshHistoryDetail === 'function') {
-          await historyActions.forceRefreshHistoryDetail(historyId);
-        } else {
-          historyActions.setSelectedHistoryId(historyId);
-        }
+        // 只需重新設置 ID，依賴 revalidateTag 和組件更新機制
+        historyActions.setSelectedHistoryId(historyId);
       }
       
       // 觸發通知

@@ -34,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" suppressHydrationWarning>
       <body className={`${inter.variable} ${roboto.variable} bg-background text-foreground antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider>
           <SettingsProvider>
             <TabProvider>
               <SearchProvider>

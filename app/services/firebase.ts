@@ -1,6 +1,7 @@
 // Firebase 配置和初始化
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { COLLECTIONS } from './firebase/config';
 
 // 初始化 Firebase Admin
 let app: App | undefined;
@@ -43,18 +44,6 @@ if (!getApps().length) {
   app = getApps()[0];
   db = getFirestore(app);
 }
-
-// 缓存相关常量
-export const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7天的毫秒数
-export const COLLECTIONS = {
-  KEYWORD_SUGGESTIONS: 'keywordSuggestions',
-  SEARCH_VOLUMES: 'searchVolumes',
-  URL_SUGGESTIONS: 'urlSuggestions',
-  KEYWORD_METADATA: 'keywordMetadata',
-  SEARCH_HISTORY: 'searchHistory',
-  SERP_RESULTS: 'serpResults',
-  HTML_CONTENTS: 'htmlContents',  // 新增：HTML 內容集合
-};
 
 /**
  * Firebase 文档结构说明:
@@ -107,212 +96,6 @@ export const COLLECTIONS = {
  *      - timestamp: 搜索时间戳
  */
 
-// 缓存单个关键词的元数据
-export async function cacheKeywordMetadata(
-  keyword: string, 
-  region: string, 
-  data: { 
-    searchVolume: number, 
-    competition: string, 
-    competitionIndex: number, 
-    cpc: number | null 
-  }
-) {
-  if (!db) return;
-  
-  try {
-    const cacheId = `${keyword}_${region}`;
-    await db.collection(COLLECTIONS.KEYWORD_METADATA).doc(cacheId).set({
-      keyword,
-      region,
-      ...data,
-      timestamp: Timestamp.now(),
-    });
-    console.log(`已緩存關鍵詞元數據: ${keyword} (區域: ${region})`);
-  } catch (error) {
-    console.error("緩存關鍵詞元數據時出錯:", error);
-  }
-}
-
-// 获取单个关键词的元数据
-export async function getKeywordMetadata(keyword: string, region: string) {
-  if (!db) return null;
-  
-  try {
-    const cacheId = `${keyword}_${region}`;
-    const docSnap = await db.collection(COLLECTIONS.KEYWORD_METADATA).doc(cacheId).get();
-    
-    if (docSnap.exists) {
-      const data = docSnap.data();
-      if (!data) return null;
-      
-      const timestamp = data.timestamp.toDate();
-      const now = new Date();
-      
-      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
-        return data;
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error("獲取關鍵詞元數據時出錯:", error);
-    return null;
-  }
-}
-
-// 缓存搜索量数据 - 不再缓存单个关键词元数据，只缓存批量数据
-export async function cacheSearchVolumes(keywords: string[], region: string, results: any[]) {
-  if (!db) return;
-  
-  try {
-    // 使用keywords和region的组合作为缓存ID
-    const keywordsStr = keywords.sort().join(',');
-    const cacheId = `${keywordsStr}_${region}`;
-    
-    // 缓存整批搜索量数据
-    await db.collection(COLLECTIONS.SEARCH_VOLUMES).doc(cacheId).set({
-      keywords,
-      region,
-      results,
-      timestamp: Timestamp.now(),
-    });
-    
-    // 不再一条条地缓存每个关键词的元数据
-    // 这部分将在未来实现
-    
-    console.log(`已批量緩存 ${keywords.length} 個關鍵詞的搜索量數據 (區域: ${region})`);
-  } catch (error) {
-    console.error("緩存搜索量數據時出錯:", error);
-  }
-}
-
-// 获取缓存的搜索量数据 - 只查找批量缓存的数据
-export async function getCachedSearchVolumes(keywords: string[], region: string): Promise<any[] | null> {
-  if (!db) return null;
-  
-  try {
-    // 尝试获取批量缓存的数据
-    const keywordsStr = keywords.sort().join(',');
-    const cacheId = `${keywordsStr}_${region}`;
-    
-    const docSnap = await db.collection(COLLECTIONS.SEARCH_VOLUMES).doc(cacheId).get();
-    
-    if (docSnap.exists) {
-      const data = docSnap.data();
-      if (!data) return null;
-      
-      const timestamp = data.timestamp.toDate();
-      const now = new Date();
-      
-      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
-        console.log(`使用批量緩存的搜索量數據 (${keywords.length} 個關鍵詞)`);
-        return data.results;
-      } else {
-        console.log(`批量緩存已過期`);
-      }
-    }
-    
-    // 不再尝试逐个获取关键词元数据
-    console.log(`未找到批量緩存數據，需要從 API 獲取`);
-    return null;
-  } catch (error) {
-    console.error("獲取緩存搜索量數據時出錯:", error);
-    return null;
-  }
-}
-
-// 确认数据库中已有多少记录
-export async function getDatabaseStats() {
-  if (!db) return null;
-  
-  try {
-    const stats: Record<string, number> = {};
-    
-    for (const collName of Object.values(COLLECTIONS)) {
-      const snapshot = await db.collection(collName).get();
-      stats[collName] = snapshot.size;
-    }
-    
-    return stats;
-  } catch (error) {
-    console.error("獲取數據庫統計資訊時出錯:", error);
-    return null;
-  }
-}
-
-// 获取搜索历史列表（按时间倒序，最新的在前）
-export async function getSearchHistoryList(limit: number = 50) {
-  if (!db) return [];
-  
-  try {
-    const snapshot = await db.collection(COLLECTIONS.SEARCH_HISTORY)
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
-      .get();
-    
-    const historyList = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        mainKeyword: data.mainKeyword,
-        region: data.region,
-        language: data.language,
-        timestamp: data.timestamp.toDate(),
-        suggestionCount: data.suggestions?.length || 0,
-        resultsCount: data.searchResults?.length || 0,
-      };
-    });
-    
-    return historyList;
-  } catch (error) {
-    // 檢查是否為配額錯誤
-    if (error instanceof Error && 
-        (error.message.includes('RESOURCE_EXHAUSTED') || 
-         error.message.includes('Quota exceeded'))) {
-      console.warn("Firebase 配額已用盡，無法獲取搜索歷史。請考慮升級計劃或等待配額重置。");
-    } else {
-      console.error("搜索歷史數據獲取失敗:", error);
-    }
-    return [];
-  }
-}
-
-// 获取特定搜索历史的详细数据
-export async function getSearchHistoryDetail(historyId: string) {
-  if (!db) return null;
-  
-  try {
-    const docRef = await db.collection(COLLECTIONS.SEARCH_HISTORY).doc(historyId).get();
-    
-    if (!docRef.exists) {
-      return null;
-    }
-    
-    const data = docRef.data();
-    if (!data) return null;
-    
-    return {
-      id: docRef.id,
-      mainKeyword: data.mainKeyword,
-      region: data.region,
-      language: data.language,
-      suggestions: data.suggestions || [],
-      searchResults: data.searchResults || [],
-      timestamp: data.timestamp.toDate(),
-    };
-  } catch (error) {
-    // 檢查是否為配額錯誤
-    if (error instanceof Error && 
-        (error.message.includes('RESOURCE_EXHAUSTED') || 
-         error.message.includes('Quota exceeded'))) {
-      console.warn("Firebase 配額已用盡，無法獲取搜索歷史詳情。請考慮升級計劃或等待配額重置。");
-    } else {
-      console.error("搜索歷史詳情獲取失敗:", error);
-    }
-    return null;
-  }
-}
-
 // 生成 URL 的哈希值作為文檔 ID
 function generateUrlHash(url: string): string {
   // 使用簡單的哈希函數
@@ -332,11 +115,12 @@ export async function saveHtmlContent(url: string, content: any) {
   try {
     // 使用 URL 的哈希值作為文檔 ID
     const docId = generateUrlHash(url);
-    const docRef = db.collection(COLLECTIONS.HTML_CONTENTS).doc(docId);
+    // Now uses imported COLLECTIONS and Timestamp
+    const docRef = db.collection(COLLECTIONS.CONTENT_ANALYSIS).doc(docId); // Use CONTENT_ANALYSIS collection
     
     await docRef.set({
       ...content,
-      timestamp: Timestamp.now(),
+      timestamp: Timestamp.now(), // Use imported Timestamp
       url: url, // 保存原始 URL
       docId: docId // 保存文檔 ID 以便查詢
     });
@@ -356,26 +140,31 @@ export async function getHtmlContent(url: string) {
     // 使用 URL 的哈希值作為文檔 ID
     const docId = generateUrlHash(url);
     
-    // 首先嘗試通過 docId 查詢
-    const docRef = await db.collection(COLLECTIONS.HTML_CONTENTS).doc(docId).get();
+    // Now uses imported COLLECTIONS
+    const docRef = await db.collection(COLLECTIONS.CONTENT_ANALYSIS).doc(docId).get(); // Use CONTENT_ANALYSIS collection
     
     if (docRef.exists) {
       const data = docRef.data();
       if (!data) return null;
       
-      // 驗證 URL 是否匹配
+      // 驗證 URL 是否匹配 (Optional check)
       if (data.url !== url) {
-        console.warn(`URL 不匹配: 期望 ${url}, 實際 ${data.url}`);
-        return null;
+        console.warn(`URL mismatch: Expected ${url}, found ${data.url}`);
+        // Decide if mismatch should return null or data
+        // return null; 
       }
-      
+            
+      // Removed cache expiry check
+      return data; // Directly return data without checking expiry
+      /*
       const timestamp = data.timestamp.toDate();
       const now = new Date();
       
       // 檢查緩存是否過期 (7天)
-      if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
-        return data;
-      }
+      // Removed: if (now.getTime() - timestamp.getTime() < CACHE_EXPIRY_TIME) {
+      // Removed: return data;
+      // Removed: }
+      */
     }
     return null;
   } catch (error) {
@@ -384,66 +173,4 @@ export async function getHtmlContent(url: string) {
   }
 }
 
-// 更新 SERP 結果，添加 HTML 分析
-export async function updateSerpResultWithHtmlAnalysis(
-  cacheId: string,
-  keyword: string,
-  url: string,
-  htmlAnalysis: {
-    h1: string[];
-    h2: string[];
-    h3: string[];
-    h1Consistency: boolean;
-    html: string;
-  }
-) {
-  if (!db) return;
-  
-  try {
-    const serpRef = db.collection(COLLECTIONS.SERP_RESULTS).doc(cacheId);
-    const serpDoc = await serpRef.get();
-    
-    if (!serpDoc.exists) {
-      console.error('找不到 SERP 結果文檔:', cacheId);
-      return;
-    }
-    
-    const serpData = serpDoc.data();
-    if (!serpData || !serpData.results || !serpData.results[keyword]) {
-      console.error('找不到關鍵詞的 SERP 結果:', keyword);
-      return;
-    }
-    
-    // 找到對應的搜索結果
-    const results = serpData.results[keyword].results;
-    const resultIndex = results.findIndex((r: any) => r.url === url);
-    
-    if (resultIndex === -1) {
-      console.error('找不到對應的搜索結果:', url);
-      return;
-    }
-    
-    // 只保存分析結果，不保存完整 HTML
-    const analysisToSave = {
-      h1: htmlAnalysis.h1,
-      h2: htmlAnalysis.h2,
-      h3: htmlAnalysis.h3,
-      h1Consistency: htmlAnalysis.h1Consistency,
-      // 移除 html 字段以減少文檔大小
-    };
-    
-    // 更新搜索結果中的 htmlAnalysis
-    results[resultIndex].htmlAnalysis = analysisToSave;
-    
-    // 更新 Firebase 文檔
-    await serpRef.update({
-      [`results.${keyword}.results`]: results,
-      lastUpdated: Timestamp.now()
-    });
-    
-    console.log(`已更新搜索結果的 HTML 分析: ${url}`);
-  } catch (error) {
-    console.error('更新 SERP 結果時出錯:', error);
-    throw error;
-  }
-}
+// No more functions after this point

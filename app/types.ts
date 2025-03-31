@@ -29,7 +29,6 @@ export interface ClusteringResult {
 export interface SuggestionsResult {
   suggestions: string[];
   estimatedProcessingTime: number;
-  fromCache?: boolean;
   error?: string;
   sourceInfo?: string;
 }
@@ -40,7 +39,6 @@ export interface SearchVolumeResult {
     estimated: number;
     actual: number;
   };
-  fromCache?: boolean;
   historyId?: string | null;
   sourceInfo?: string;
   error?: string;
@@ -80,7 +78,6 @@ export interface SerpKeywordResult {
 
 export interface SerpAnalysisResult {
   results: Record<string, SerpKeywordResult>;
-  fromCache: boolean;
   sourceInfo?: string;
   error?: string;
 }

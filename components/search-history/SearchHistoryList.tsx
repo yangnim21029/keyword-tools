@@ -3,11 +3,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { HistoryListItem } from "@/lib/schemas"; // 修正引入路徑
 import { AlertTriangle, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SearchHistoryListItem } from "./SearchHistoryListItem"; // Import list item component
-
-// 設置最大緩存記錄數
-const MAX_CACHE_ENTRIES = 10;
 
 interface SearchHistoryListProps {
   isLoading: boolean;
@@ -20,9 +17,6 @@ interface SearchHistoryListProps {
   onDeleteHistory: (id: string, event: React.MouseEvent) => void;
   onRefreshHistory?: () => void; // 重新整理函數
 }
-
-// 用於緩存的歷史記錄映射
-let historyCache: Record<string, any> = {};
 
 export function SearchHistoryList({
   isLoading,
@@ -37,41 +31,10 @@ export function SearchHistoryList({
 }: SearchHistoryListProps) {
   const [refreshing, setRefreshing] = useState(false);
 
-  // 當歷史列表更新時，維護緩存大小
-  useEffect(() => {
-    // 限制緩存大小，當超過最大緩存數時，移除最早加入的項目
-    const cacheKeys = Object.keys(historyCache);
-    if (cacheKeys.length > MAX_CACHE_ENTRIES) {
-      const keysToRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_ENTRIES);
-      keysToRemove.forEach(key => delete historyCache[key]);
-      console.log(`清理緩存: 移除了 ${keysToRemove.length} 個舊記錄`);
-    }
-  }, [historyList]);
-
-  // 點擊選擇歷史記錄時，使用緩存機制
-  const handleSelectWithCache = (id: string) => {
-    // 嘗試從緩存中取數據
-    if (historyCache[id]) {
-      console.log('使用緩存的歷史記錄:', id);
-    } else {
-      // 若緩存中沒有，則在選擇後將數據添加到緩存
-      const selectedHistory = historyList.find(item => item.id === id);
-      if (selectedHistory) {
-        historyCache[id] = selectedHistory;
-        console.log('將歷史記錄添加到緩存:', id);
-      }
-    }
-    // 調用原始選擇函數
-    onSelectHistory(id);
-  };
-
   // 手動重新整理歷史列表
   const handleRefresh = () => {
     if (onRefreshHistory) {
       setRefreshing(true);
-      // 清空緩存
-      historyCache = {};
-      console.log('重新整理: 清空歷史記錄緩存');
       onRefreshHistory();
       setTimeout(() => setRefreshing(false), 1000); // 顯示加載動畫至少1秒
     }
@@ -151,7 +114,7 @@ export function SearchHistoryList({
             item={item}
             isSelected={selectedHistoryId === item.id}
             isDeleting={deletingId === item.id}
-            onSelect={handleSelectWithCache}
+            onSelect={onSelectHistory}
             onDelete={onDeleteHistory}
           />
       ))}

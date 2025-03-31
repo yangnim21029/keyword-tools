@@ -2,26 +2,20 @@
 
 import { debounce } from 'lodash';
 import {
-  BarChart2,
-  Copy,
-  Sparkles
+    BarChart2
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Skeleton } from "@/components/ui/skeleton";
 
 import { getKeywordSuggestions, getSearchVolume } from '@/app/actions';
+import { detectChineseType } from '@/app/services/keyword-data.service';
 import type { SuggestionsResult } from '@/app/types';
-import KeywordClustering from "@/components/keyword-tool/keyword-clustering";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { KeywordVolumeItem } from '@/lib/schemas';
 import { useHistoryStore } from '@/store/historyStore';
 import { useSearchStore } from '@/store/searchStore';
 import { useSettingsStore } from "@/store/settingsStore";
 import { SortField, SortState } from "@/types/keywordTool.d";
-import { detectChineseType } from '@/app/services/keyword-data.service';
-import { SupplementalKeywordPanel } from './supplemental-keyword-panel';
+import KeywordClustering from "./keyword-clustering";
 
 interface KeywordSearchTabProps {
   activeTab: 'keyword' | 'url' | 'serp' | 'settings';
@@ -54,7 +48,7 @@ interface ClusteringContext {
 }
 
 // 修改 ResultTab 類型定義，只保留 volume 選項
-type ResultTab = 'volume';
+type ResultTab = 'volume' | 'cluster';
 
 
 // 添加一個優化的關鍵詞卡片組件，減少重新渲染
@@ -145,7 +139,7 @@ export default function KeywordSearchTab({
   const [sortState, setSortState] = useState<SortState>({ field: 'searchVolume' as SortField, direction: 'desc' });
   const [clusterSource, setClusterSource] = useState<'new' | 'history' | null>(null);
   const [clusteringContext, setClusteringContext] = useState<ClusteringContext | null>(null);
-  const [resultTab, setResultTab] = useState<ResultTab>("volume");
+  const [showClustering, setShowClustering] = useState<boolean>(true);
 
   // 從Provider獲取設置，但如果props提供了則優先使用props
   const settingsState = useSettingsStore(state => state.state);
@@ -199,23 +193,55 @@ export default function KeywordSearchTab({
     historyActions.clearSelectedHistoryDetail();
   }, [historyActions]);
 
-  // 重新添加 syncSessionStorage 函數
+  // 同步 Session Storage 的函數 (確保它在組件函數內部，可以訪問 state/props)
   const syncSessionStorage = useCallback((dataToSync: KeywordVolumeItem[]) => {
     if (typeof window !== 'undefined' && dataToSync.length > 0) {
       try {
+        console.log('[KeywordSearchTab] 開始同步資料到 sessionStorage');
+        
         // 保存volumeData到session storage
         sessionStorage.setItem('keyword-volume-data', JSON.stringify(dataToSync));
         
-        // 保存關鍵詞列表到session storage
-        const keywordsForClustering = dataToSync.map(item => item.text || '').filter(Boolean);
-        sessionStorage.setItem('clustering-keywords', JSON.stringify(keywordsForClustering));
+        // 從搜索結果中提取有效的關鍵詞
+        const keywordsForClustering = dataToSync
+          .map(item => item.text || '')
+          .filter(Boolean);
         
-        console.log('同步session storage成功，共同步了', dataToSync.length, '個關鍵詞');
-      } catch (error) {
-        console.error('同步session storage失敗:', error);
+        console.log('[KeywordSearchTab] 提取的關鍵詞數量:', keywordsForClustering.length);
+        
+        // 確保關鍵詞不包含重複項
+        const uniqueKeywords = Array.from(new Set(keywordsForClustering));
+        console.log('[KeywordSearchTab] 去重後的關鍵詞數量:', uniqueKeywords.length);
+        
+        // 保存關鍵詞列表到session storage
+        sessionStorage.setItem('clustering-keywords', JSON.stringify(uniqueKeywords));
+        
+        console.log('[KeywordSearchTab] 同步 session storage 成功，共同步了', uniqueKeywords.length, '個關鍵詞');
+        console.log('[KeywordSearchTab] 關鍵詞示例:', uniqueKeywords.slice(0, 5));
+      } catch (e) {
+        console.error("[KeywordSearchTab] 無法同步 session storage:", e);
       }
+    } else {
+      console.log('[KeywordSearchTab] 沒有有效的數據需要同步到 sessionStorage');
     }
   }, []);
+
+  // 從 Session Storage 加載數據的 Effect
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedData = sessionStorage.getItem('keyword-volume-data');
+      if (storedData) {
+        try {
+          const parsedData = JSON.parse(storedData);
+          if (Array.isArray(parsedData)) {
+            setVolumeData(parsedData);
+          }
+        } catch (e) {
+          console.error("無法從 session storage 加載數據:", e);
+        }
+      }
+    }
+  }, []); // 這個 Effect 只在掛載時運行一次
 
   // 同步歷史記錄
   useEffect(() => {
@@ -561,8 +587,8 @@ export default function KeywordSearchTab({
 
   // 修改更新結果選項卡的 useEffect，去掉與 clusters 相關的條件
   useEffect(() => {
-    // 所有情況下都設置為 volume
-    setResultTab("volume");
+    // 切換到關鍵詞視圖
+    setShowClustering(false);
   }, [step]);
 
   // 同步全局搜索輸入
@@ -587,58 +613,123 @@ export default function KeywordSearchTab({
     setIsPanelOpen(true);
   }, []);
 
-  // 更新同步session storage的函數 - 實現選項 A: 更新現有 + 追加新詞
-  const handleVolumeUpdateFromPanel = useCallback((updatedVolumes: KeywordVolumeItem[]) => {
-    if (!updatedVolumes || updatedVolumes.length === 0) return;
-
-    // 創建映射以便快速查找更新的數據 (鍵為小寫)
+  // 更新 Volume Data 的函數 (保持為 useCallback)
+  const updateVolumeData = useCallback((updatedVolumes: KeywordVolumeItem[]) => {
     const updatedVolumeMap = new Map<string, KeywordVolumeItem>();
     updatedVolumes.forEach(item => {
       if (item.text) {
         updatedVolumeMap.set(item.text.toLowerCase(), item);
       }
     });
-    
-    // 更新主視圖的volumeData狀態
-    setVolumeData(prevVolumeData => {
-      // 記錄現有詞的小寫形式
-      const existingKeywordTexts = new Set(prevVolumeData.map(item => item.text?.toLowerCase()).filter(Boolean));
 
-      // 1. 更新現有詞
+    let calculatedUpdatedCount = 0;
+    let calculatedAddedCount = 0;
+
+    setVolumeData(prevVolumeData => {
+      const existingKeywordTexts = new Set(prevVolumeData.map(item => item.text?.toLowerCase()).filter(Boolean));
       const updatedExistingData = prevVolumeData.map(currentItem => {
         if (!currentItem.text) return currentItem;
-        
         const lowerCaseText = currentItem.text.toLowerCase();
         if (updatedVolumeMap.has(lowerCaseText)) {
           const updatedItemData = updatedVolumeMap.get(lowerCaseText)!;
-          // 返回更新後的對象
           return {
             ...currentItem,
             searchVolume: updatedItemData.searchVolume,
             competition: updatedItemData.competition,
           };
         }
-        // 保持不變
         return currentItem;
       });
 
-      // 2. 查找並收集新詞
       const newKeywordsToAppend = updatedVolumes.filter(item => 
         item.text && !existingKeywordTexts.has(item.text.toLowerCase())
       );
 
-      // 3. 合併結果
       const newVolumeData = [...updatedExistingData, ...newKeywordsToAppend];
 
-      // 計算更新和添加的數量 (可選，用於更詳細的提示)
-      const updatedCount = updatedExistingData.filter((item, idx) => 
+      calculatedUpdatedCount = updatedExistingData.filter((item, idx) => 
         prevVolumeData[idx] && 
         (item.searchVolume !== prevVolumeData[idx].searchVolume || item.competition !== prevVolumeData[idx].competition)
       ).length;
-      const addedCount = newKeywordsToAppend.length;
+      calculatedAddedCount = newKeywordsToAppend.length;
 
-      // 更新 Toast 提示
-      if (updatedCount > 0 || addedCount > 0) {
-        let message = "關鍵詞數據已更新";
-        if (updatedCount > 0 && addedCount > 0) {
-          message = `
+      syncSessionStorage(newVolumeData); // 在返回前同步
+
+      return newVolumeData;
+    });
+
+    // 在狀態更新後直接顯示 Toast
+    if (calculatedUpdatedCount > 0 || calculatedAddedCount > 0) {
+      let message = "關鍵詞數據已更新";
+      if (calculatedUpdatedCount > 0 && calculatedAddedCount > 0) {
+        message = `更新了 ${calculatedUpdatedCount} 個關鍵詞，新增了 ${calculatedAddedCount} 個關鍵詞`;
+      } else if (calculatedUpdatedCount > 0) {
+        message = `更新了 ${calculatedUpdatedCount} 個關鍵詞數據`;
+      } else if (calculatedAddedCount > 0) {
+        message = `新增了 ${calculatedAddedCount} 個新關鍵詞`;
+      }
+
+      toast.success(message);
+    }
+  }, [syncSessionStorage]);
+
+  // 檢查是否已有分群結果
+  const hasClusters = useMemo(() => {
+    return selectedHistoryDetail?.clusters && 
+           Object.keys(selectedHistoryDetail.clusters).length > 0;
+  }, [selectedHistoryDetail]);
+
+  // 返回 JSX 元素
+  return (
+    <div className="flex flex-col space-y-4">
+      {isLoading && (
+        <div className="flex justify-center items-center py-8">
+          <div className="text-center">
+            <div className="h-10 w-10 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">{loadingText || '載入中...'}</p>
+          </div>
+        </div>
+      )}
+
+      {error && !isLoading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 mb-4">
+          <p className="text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* 如果有關鍵詞搜索結果，顯示結果標題和分群按鈕 */}
+      {hasVolumeResults && !isLoading && (
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-medium text-gray-800 dark:text-gray-200">關鍵詞搜索結果</h2>
+        </div>
+      )}
+
+      {/* 顯示聚類組件 - 始終顯示，不依賴 showClustering 狀態 */}
+      {!isLoading && (
+        <div className="mb-8">
+          <KeywordClustering />
+        </div>
+      )}
+
+      {/* 始終顯示關鍵詞卡片網格 */}
+      {hasVolumeResults && !isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredVolumeData.slice(0, maxResults).map((item, index) => (
+            <KeywordCard 
+              key={item.text || index}
+              item={item}
+              index={index} 
+              onClick={handleKeywordCardClick} 
+            />
+          ))}
+        </div>
+      )}
+
+      {step === 'volumes' && filteredVolumeData.length === 0 && !isLoading && (
+        <div className="text-center p-8 text-gray-500 dark:text-gray-400">
+          沒有找到相關數據
+        </div>
+      )}
+    </div>
+  );
+}

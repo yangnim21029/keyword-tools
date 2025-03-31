@@ -1,8 +1,21 @@
 'use client';
 
 import { type ReactNode, createContext, useContext, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+
+// Import server actions and types
+import { getKeywordSuggestions, getSearchVolume, saveKeywordResearch } from '@/app/actions';
+import { KeywordVolumeItem } from '@/lib/schemas'; // Assuming this is the correct path
+
+// Define settings type for clarity
+export interface SearchSettings {
+  region: string;
+  language: string;
+  useAlphabet: boolean;
+  useSymbols: boolean;
+}
 
 interface SearchState {
   // 搜索輸入
@@ -14,6 +27,11 @@ interface SearchState {
   
   // 儲存當前 tab 狀態
   activeTab: string;
+
+  // Add new state fields for results
+  suggestions: string[];
+  volumeData: KeywordVolumeItem[];
+  error: string | null; // Add error state
 }
 
 interface SearchActions {
@@ -22,9 +40,13 @@ interface SearchActions {
   clearSearchInput: () => void;
   setLoading: (loading: boolean, message?: string | null) => void;
   setActiveTab: (tab: string) => void;
+  setSuggestions: (suggestions: string[]) => void; // Add setter
+  setVolumeData: (data: KeywordVolumeItem[]) => void; // Add setter
+  setError: (error: string | null) => void; // Add setter
+  clearResults: () => void; // Action to clear results
   
   // 綜合方法
-  handleSearchSubmit: () => void;
+  handleSearchSubmit: (settings: SearchSettings) => Promise<void>;
 }
 
 export type SearchStore = {
@@ -37,7 +59,10 @@ export const defaultSearchState: SearchState = {
   searchInput: '',
   isLoading: false,
   loadingMessage: null,
-  activeTab: 'keyword'
+  activeTab: 'keyword',
+  suggestions: [],
+  volumeData: [],
+  error: null,
 };
 
 // 創建store工廠函數
@@ -78,32 +103,110 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
         }
       })),
       
-      // 綜合方法 - 處理搜索提交
-      handleSearchSubmit: () => {
-        const { searchInput } = get().state;
+      // Add new setters
+      setSuggestions: (suggestions) => set(store => ({ state: { ...store.state, suggestions }})),
+      setVolumeData: (volumeData) => set(store => ({ state: { ...store.state, volumeData }})),
+      setError: (error) => set(store => ({ state: { ...store.state, error }})),
+      clearResults: () => set(store => ({ state: { ...store.state, suggestions: [], volumeData: [], error: null }})),
+      
+      // 綜合方法 - Use passed settings
+      handleSearchSubmit: async (settings) => { // Receive settings as argument
+        const { searchInput, activeTab } = get().state;
+        const actions = get().actions;
+        const { region, language, useAlphabet, useSymbols } = settings; // Destructure from argument
         
-        if (!searchInput.trim()) return;
-        
-        // 在客戶端環境中執行
-        if (typeof window !== 'undefined') {
-          // 清除歷史記錄選擇 - 使用自定義事件而不是直接調用 store
-          setTimeout(() => {
-            // 發布一個自定義事件，由真正的組件捕獲並處理
-            const event = new CustomEvent('clearHistoryDetail');
-            window.dispatchEvent(event);
-          }, 0);
+        // 只處理 keyword tab 的搜索
+        if (activeTab !== 'keyword' || !searchInput.trim()) {
+          console.log(`[SearchStore] Skipping submit for tab: ${activeTab} or empty input.`);
+          return;
+        }
+
+        // Settings are now passed correctly
+        // Remove TODO and placeholders
+        // const region = 'TW'; // Placeholder REMOVED
+        // const language = 'zh-TW'; // Placeholder REMOVED
+        // const useAlphabet = true; // Placeholder REMOVED
+        // const useSymbols = false; // Placeholder REMOVED
+
+        actions.setLoading(true, '正在獲取建議...');
+        actions.clearResults(); // 清除舊結果
+
+        let suggestionsList: string[] = []; // Variable to hold the full suggestions list
+
+        try {
+          // 1. 獲取所有建議
+          console.log(`[SearchStore] Fetching suggestions for: "${searchInput}", Region: ${region}, Lang: ${language}, Alpha: ${useAlphabet}, Sym: ${useSymbols}`); // Log settings
+          const suggestionsResult = await getKeywordSuggestions(searchInput, region, language, useAlphabet, useSymbols);
+
+          if (suggestionsResult.error || !suggestionsResult.suggestions || suggestionsResult.suggestions.length === 0) {
+            const errorMsg = suggestionsResult.error || '未找到關鍵詞建議';
+            console.warn(`[SearchStore] No suggestions found or error: ${errorMsg}`);
+            actions.setError(errorMsg);
+            toast.error(errorMsg);
+            actions.setLoading(false);
+            return;
+          }
           
-          // 根據目前活動的標籤頁觸發相應的操作
-          // 我們將依靠頁面上的DOM元素ID來決定觸發哪個提交按鈕
-          // 依次嘗試不同的提交按鈕，以確保至少一個會被處理
-          ['keyword-search-submit', 'url-analysis-submit', 'serp-analysis-submit'].forEach(id => {
-            const submitButton = document.querySelector(`#${id}`);
-            if (submitButton) {
-              submitButton.dispatchEvent(
-                new MouseEvent('click', { bubbles: true })
+          suggestionsList = suggestionsResult.suggestions; // Store the full list
+          actions.setSuggestions(suggestionsList);
+
+          const suggestionsToProcess = suggestionsList.slice(0, 40);
+          console.log(`[SearchStore] Got ${suggestionsList.length} suggestions, processing top ${suggestionsToProcess.length} for volume.`);
+
+          if (suggestionsToProcess.length === 0) {
+            console.log("[SearchStore] No suggestions left after slicing, skipping volume fetch.");
+            toast.info("建議列表為空，無法獲取搜索量。");
+            actions.setLoading(false);
+            return;
+          }
+
+          actions.setLoading(true, `正在獲取 ${suggestionsToProcess.length} 個關鍵詞搜索量...`);
+          // Pass correct language to getSearchVolume
+          const volumeResult = await getSearchVolume(suggestionsToProcess, region, searchInput, language);
+
+          if (volumeResult.error) {
+            console.error(`[SearchStore] Error fetching volume: ${volumeResult.error}`);
+            actions.setError(volumeResult.error);
+            toast.error(volumeResult.error);
+          } else {
+            console.log(`[SearchStore] Received ${volumeResult.results.length} volume results.`);
+            actions.setVolumeData(volumeResult.results);
+            actions.setError(null);
+            toast.success(`成功獲取 ${volumeResult.results.length} 個關鍵詞數據`);
+
+            // --- ADD HISTORY SAVING LOGIC HERE --- 
+            try {
+              actions.setLoading(true, '正在保存歷史記錄...');
+              // Call the new action
+              const saveResult = await saveKeywordResearch(
+                searchInput,
+                region,
+                language,
+                suggestionsList,
+                volumeResult.results
+                // No need to pass clusters
               );
-            }
-          });
+              if (saveResult.success) {
+                console.log(`[SearchStore] History saved successfully with ID: ${saveResult.historyId}`);
+                toast.success('搜索結果已保存至歷史記錄');
+                // Revalidation happens in the server action
+              } else {
+                throw new Error(saveResult.error || '保存歷史記錄失敗');
+              }
+            } catch (saveError) {
+              console.error("[SearchStore] Error saving history:", saveError);
+              toast.error(`保存歷史記錄失敗: ${saveError instanceof Error ? saveError.message : '未知錯誤'}`);
+            } 
+            // --- END HISTORY SAVING LOGIC --- 
+          }
+
+        } catch (error) {
+          console.error("[SearchStore] Unexpected error during search process:", error);
+          const errorMsg = error instanceof Error ? error.message : '搜索過程中發生未知錯誤';
+          actions.setError(errorMsg);
+          toast.error(errorMsg);
+        } finally {
+          actions.setLoading(false);
         }
       }
     }

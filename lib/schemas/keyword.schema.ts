@@ -41,7 +41,6 @@ export const keywordSuggestionResultSchema = z.object({
   suggestions: z.array(z.string()),
   error: z.string().optional(),
   estimatedProcessingTime: z.number().optional(),
-  fromCache: z.boolean().optional().default(false),
   sourceInfo: z.string().optional(),
 });
 
@@ -55,7 +54,6 @@ export const keywordVolumeResultSchema = z.object({
     estimated: z.number(),
     actual: z.number(),
   }).optional(),
-  fromCache: z.boolean().optional().default(false),
   sourceInfo: z.string().optional(),
   historyId: z.string().nullable().optional(),
 });

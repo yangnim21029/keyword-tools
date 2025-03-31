@@ -9,6 +9,7 @@ import { LoadingButton } from "@/components/ui/loading-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import UrlAnalysisTab from '@/components/url-tool/url-analysis-tab';
+import type { SearchSettings } from '@/providers/search-provider';
 import { useHistoryStore } from '@/store/historyStore';
 import { useSearchStore } from '@/store/searchStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -41,8 +42,9 @@ export default function Home() {
   const searchInput = useSearchStore(store => store.state.searchInput);
   const isLoading = useSearchStore(store => store.state.isLoading);
   const loadingMessage = useSearchStore(store => store.state.loadingMessage);
-  const setSearchInput = useSearchStore(store => store.actions.setSearchInput);
-  const handleSearchSubmit = useSearchStore(store => store.actions.handleSearchSubmit);
+  const searchActions = useSearchStore(store => store.actions);
+  const handleSearchSubmitAction = searchActions.handleSearchSubmit;
+  const setSearchInput = searchActions.setSearchInput;
   
   // 使用 HistoryStore
   const historyState = useHistoryStore(store => store.state);
@@ -93,10 +95,25 @@ export default function Home() {
 
   // 添加一個語言字符串轉換函數，將字符串轉換為Language類型
   const convertToLanguage = (lang: string): 'zh-TW' | 'en-US' => {
-    if (lang === 'zh-TW' || lang === 'en-US') {
-      return lang;
+    // 先規範化格式，將下劃線替換為連字符
+    const normalizedLang = lang.replace('_', '-');
+    
+    if (normalizedLang === 'zh-TW' || normalizedLang === 'en-US') {
+      return normalizedLang as 'zh-TW' | 'en-US';
     }
     return 'zh-TW'; // 默認繁體中文
+  };
+
+  // Create the new function to trigger search with settings
+  const triggerSearch = () => {
+    const currentSettings: SearchSettings = {
+      region: settingsState.region, // Use state directly
+      language: settingsState.language, // Use state directly
+      useAlphabet: settingsState.useAlphabet, // Use state directly
+      useSymbols: settingsState.useSymbols, // Use state directly
+    };
+    // Call the action from the store with the settings object
+    handleSearchSubmitAction(currentSettings);
   };
 
   return (
@@ -109,7 +126,9 @@ export default function Home() {
         <div className="flex items-center border-b border-gray-200 dark:border-gray-800 py-3 px-4 gap-4 shadow-sm">
           <div className="flex-shrink-0 text-sm text-gray-600 dark:text-gray-400 hidden md:flex items-center gap-1 whitespace-nowrap">
             <span className="px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs border border-gray-200 dark:border-gray-800">{region}</span> 
-            <span className="px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs border border-gray-200 dark:border-gray-800">{language}</span>
+            <span className="px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs border border-gray-200 dark:border-gray-800">
+              {language ? language.replace('_', '-') : 'zh-TW'}
+            </span>
           </div>
           
           <div className="relative flex-1 max-w-lg">
@@ -124,14 +143,14 @@ export default function Home() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9 pr-24 h-10 border-gray-200 dark:border-gray-800 shadow-sm focus:border-blue-300 dark:focus:border-blue-600 focus:ring-1 focus:ring-blue-300 dark:focus:ring-blue-600 rounded-full transition-colors"
-              onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+              onKeyDown={(e) => e.key === 'Enter' && triggerSearch()}
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <LoadingButton 
-                    onClick={handleSearchSubmit}
+                    onClick={triggerSearch}
                     className="absolute right-1 top-1 h-8 bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 rounded-full transition-colors shadow-sm"
                     isLoading={isLoading}
                     loadingText={loadingMessage || "處理中..."}

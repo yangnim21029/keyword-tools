@@ -12,9 +12,9 @@ import {
   getSearchHistoryDetail as getSearchHistoryDetailFromFirebase,
   getSearchHistoryList,
   saveSearchHistory,
-  updateSearchHistoryWithClusters,
-  updateSearchHistoryWithPersonas,
-  updateSearchHistoryWithResults
+  updateSearchHistoryWithPersonas as updateFirebaseHistoryWithPersonas,
+  updateSearchHistoryWithResults as updateFirebaseHistoryWithResults,
+  updateSearchHistoryWithClusters
 } from '@/app/services/firebase/history';
 import { estimateProcessingTime, filterSimplifiedChinese } from '@/app/services/keyword-data.service';
 import {
@@ -222,7 +222,7 @@ export async function getUrlSuggestions(formData: UrlFormData): Promise<Suggesti
 }
 
 // 获取搜索历史列表
-export async function fetchKeywordResearchHistoryList(limit: number = 50, forceRefresh: boolean = false): Promise<SearchHistoryListResult> {
+export async function fetchSearchHistory(limit: number = 50, forceRefresh: boolean = false): Promise<SearchHistoryListResult> {
   'use server';
   const sourceInfo = '數據來源: Firebase Firestore';
   try {
@@ -258,7 +258,7 @@ export async function fetchKeywordResearchHistoryList(limit: number = 50, forceR
 }
 
 // 获取搜索历史详情 (Remove noCache parameter as it's irrelevant now)
-export async function fetchKeywordResearchHistoryDetail(historyId: string): Promise<SearchHistoryDetailResult> {
+export async function fetchSearchHistoryDetail(historyId: string): Promise<SearchHistoryDetailResult> {
   'use server';
   const sourceInfo = '數據來源: Firebase Firestore';
   if (!historyId) {
@@ -288,7 +288,7 @@ export async function fetchKeywordResearchHistoryDetail(historyId: string): Prom
 }
 
 // 删除搜索历史记录
-export async function deleteKeywordResearchHistory(historyId: string) {
+export async function deleteSearchHistoryRecord(historyId: string) {
   'use server';
   try {
     await deleteSearchHistory(historyId);
@@ -360,7 +360,7 @@ export async function saveHistoryClusteringResults(historyId: string, clusters: 
 
 // 获取单个历史记录的详细信息 (This might be redundant with fetchSearchHistoryDetail, review usage)
 // Keeping it for now, ensure it fetches fresh data
-export async function getKeywordResearchHistoryDetailInternal(historyId: string) {
+export async function getHistoryDetail(historyId: string) {
     'use server';
     try {
         console.log(`[Server Action] Getting detail for history: ${historyId}`);
@@ -415,14 +415,14 @@ export async function getKeywordSuggestionsWithDelay(query: string, region: stri
 }
 
 // 更新搜索历史记录的搜索结果
-export async function updateKeywordResearchHistoryWithResults(
+export async function updateSearchHistoryWithResults(
   historyId: string,
   searchResults: any[] // Define a stricter type
 ) {
   'use server';
   try {
-    // Use the specific Firebase update function (using the correct import name)
-    await updateSearchHistoryWithResults(historyId, searchResults);
+    // Use the specific Firebase update function
+    await updateFirebaseHistoryWithResults(historyId, searchResults);
     revalidateTag('history');
     revalidateTag(`history-${historyId}`);
     console.log(`[Server Action] Updated search results for history ${historyId} and revalidated tags 'history', 'history-${historyId}'.`);
@@ -433,15 +433,20 @@ export async function updateKeywordResearchHistoryWithResults(
   }
 }
 
+// Placeholder for the actual Firebase update function - needs implementation in firebase/history.ts
+// async function updateFirebaseHistoryWithResults(historyId: string, searchResults: any[]): Promise<void> {
+//     // Implement the actual Firestore update logic here in the imported file
+//     console.warn(`[Firebase Service] Placeholder: Need to implement Firebase update results for history ID: ${historyId}`);
+// }
+
 // 更新搜索历史记录的人物画像信息
-export async function updateKeywordResearchHistoryWithPersonas(
+export async function updateSearchHistoryWithPersonas(
   historyId: string,
   personas: any[] // Define a stricter type
 ) {
   'use server';
   try {
-    // Use the specific Firebase update function (using the correct import name)
-    await updateSearchHistoryWithPersonas(historyId, personas);
+    await updateFirebaseHistoryWithPersonas(historyId, personas);
     revalidateTag('history');
     revalidateTag(`history-${historyId}`);
     console.log(`[Server Action] Updated personas for history ${historyId} and revalidated tags 'history', 'history-${historyId}'.`);
