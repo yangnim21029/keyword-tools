@@ -6,8 +6,8 @@ import {
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { getKeywordSuggestions, getSearchVolume } from '@/app/actions';
-import { detectChineseType } from '@/app/services/KeywordDataService';
+import { getKeywordSuggestions } from '@/app/actions';
+import { detectChineseType, getSearchVolume } from '@/app/services/KeywordDataService';
 import type { SuggestionsResult } from '@/app/types';
 import { KeywordVolumeItem } from '@/lib/schemas';
 import { usePastQueryStore } from '@/store/pastQueryStore';
@@ -33,6 +33,10 @@ interface KeywordSearchTabProps {
   maxResults?: number;
   useAlphabet?: boolean;
   useSymbols?: boolean;
+
+  // --- Add new props for current search results --- 
+  currentSuggestions?: string[];
+  currentVolumeData?: KeywordVolumeItem[];
 }
 
 const MAX_KEYWORDS_FOR_VOLUME = 100;
@@ -128,13 +132,13 @@ export default function KeywordSearchTab({
   maxResults: propMaxResults,
   useAlphabet: propUseAlphabet,
   useSymbols: propUseSymbols,
+  currentSuggestions,
+  currentVolumeData,
 }: KeywordSearchTabProps) {
   // 狀態管理
   const [query, setQuery] = useState("");
   const [step, setStep] = useState<'input' | 'suggestions' | 'volumes' | 'clusters'>('input');
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [volumeData, setVolumeData] = useState<KeywordVolumeItem[]>([]);
   const [sortState, setSortState] = useState<SortState>({ field: 'searchVolume' as SortField, direction: 'desc' });
   const [clusterSource, setClusterSource] = useState<'new' | 'history' | null>(null);
   const [clusteringContext, setClusteringContext] = useState<ClusteringContext | null>(null);
@@ -193,18 +197,17 @@ export default function KeywordSearchTab({
   }, [historyActions]);
 
   // 同步 Session Storage 的函數 (確保它在組件函數內部，可以訪問 state/props)
-  const syncSessionStorage = useCallback((dataToSync: KeywordVolumeItem[]) => {
-    if (typeof window !== 'undefined' && dataToSync.length > 0) {
+  const syncSessionStorage = useCallback((dataToSync?: KeywordVolumeItem[]) => {
+    const data = dataToSync ?? currentVolumeData; // Use prop data
+    if (typeof window !== 'undefined' && data && data.length > 0) {
       try {
         console.log('[KeywordSearchTab] 開始同步資料到 sessionStorage');
         
         // 保存volumeData到session storage
-        sessionStorage.setItem('keyword-volume-data', JSON.stringify(dataToSync));
+        sessionStorage.setItem('keyword-volume-data', JSON.stringify(data));
         
         // 從搜索結果中提取有效的關鍵詞
-        const keywordsForClustering = dataToSync
-          .map(item => item.text || '')
-          .filter(Boolean);
+        const keywordsForClustering = data.map(item => item.text || '').filter(Boolean);
         
         console.log('[KeywordSearchTab] 提取的關鍵詞數量:', keywordsForClustering.length);
         
@@ -223,84 +226,40 @@ export default function KeywordSearchTab({
     } else {
       console.log('[KeywordSearchTab] 沒有有效的數據需要同步到 sessionStorage');
     }
-  }, []);
-
-  // 從 Session Storage 加載數據的 Effect
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedData = sessionStorage.getItem('keyword-volume-data');
-      if (storedData) {
-        try {
-          const parsedData = JSON.parse(storedData);
-          if (Array.isArray(parsedData)) {
-            setVolumeData(parsedData);
-          }
-        } catch (e) {
-          console.error("無法從 session storage 加載數據:", e);
-        }
-      }
-    }
-  }, []); // 這個 Effect 只在掛載時運行一次
+  }, [currentVolumeData]);
 
   // 同步歷史記錄
   useEffect(() => {
     if (selectedHistoryDetail) {
-      console.log('[Component] Syncing state with history:', selectedHistoryDetail.id);
-      
-      // 重置狀態
-      setError(null);
-      setStep('volumes'); // 直接設置為 volumes 步驟
-      
-      // 設置查詢
+      console.log('[Component] History selected, syncing query and maybe session storage:', selectedHistoryDetail.id);
+      // ONLY set the query input based on history
       setQuery(selectedHistoryDetail.mainKeyword || '');
+      // Reset step to avoid confusion with previous searches
+      setStep('input'); // Or perhaps 'volumes' if you want to show history data immediately?
       
-      // 如果有搜索結果，從歷史中設置
-      if (selectedHistoryDetail.searchResults && Array.isArray(selectedHistoryDetail.searchResults)) {
-        setVolumeData(selectedHistoryDetail.searchResults);
-      } else {
-        setVolumeData([]);
-      }
-      
-      // 如果有建議，從歷史中設置
-      if (selectedHistoryDetail.suggestions && Array.isArray(selectedHistoryDetail.suggestions)) {
-        setSuggestions(selectedHistoryDetail.suggestions);
-      } else {
-        setSuggestions([]);
-      }
-      
-      // 設置聚類上下文
-      const currentContext: ClusteringContext = {
-        query: selectedHistoryDetail.mainKeyword || '',
-        region: selectedHistoryDetail.region || region,
-        language: selectedHistoryDetail.language || language,
-        historyIdToUpdate: selectedHistoryDetail.id,
-        suggestions: selectedHistoryDetail.suggestions || [],
-        volumeData: selectedHistoryDetail.searchResults || [],
-      };
-      setClusteringContext(currentContext);
-      
-      // 同步到 sessionStorage
+      // Optionally sync session storage if clustering needs it
       if (selectedHistoryDetail.searchResults && selectedHistoryDetail.searchResults.length > 0) {
         syncSessionStorage(selectedHistoryDetail.searchResults);
       }
+      // DO NOT set internal suggestions/volumeData state here anymore.
+      // setVolumeData(selectedHistoryDetail.searchResults || []);
+      // setSuggestions(selectedHistoryDetail.suggestions || []);
     } else {
-      // 當沒有選中的歷史記錄時，重置狀態
-      setQuery('');
-      setVolumeData([]);
-      setSuggestions([]);
-      setClusteringContext(null);
-      setStep('input');
+       // When history is deselected, clear the query input? Or leave it?
+       // setQuery(''); // Optional: clear query when history deselected
     }
-  }, [selectedHistoryDetail, region, language, syncSessionStorage]);
+  }, [selectedHistoryDetail, syncSessionStorage]);
 
   // 處理獲取搜索量
-  const handleGetVolumes = useCallback(async (keywordStrings: string[], currentQuery: string) => {
-    if (!keywordStrings || keywordStrings.length === 0) {
+  const handleGetVolumes = useCallback(async (keywordStrings?: string[], currentQuery?: string) => {
+    const keywords = keywordStrings ?? currentSuggestions; // Use prop suggestions
+    const queryToUse = currentQuery ?? query; // Use local query state
+    if (!keywords || keywords.length === 0) {
       setStep('suggestions');
       return;
     }
-    const limitedKeywords = keywordStrings.slice(0, MAX_KEYWORDS_FOR_VOLUME);
-    if (limitedKeywords.length < keywordStrings.length) {
+    const limitedKeywords = keywords.slice(0, MAX_KEYWORDS_FOR_VOLUME);
+    if (limitedKeywords.length < keywords.length) {
       toast.info(`關鍵詞 > ${MAX_KEYWORDS_FOR_VOLUME}，僅處理前 ${MAX_KEYWORDS_FOR_VOLUME}`);
     }
 
@@ -310,7 +269,7 @@ export default function KeywordSearchTab({
 
     try {
       console.log('[Component API Call] Getting volumes');
-      const volumeResult = await getSearchVolume(limitedKeywords, region, language, currentQuery);
+      const volumeResult = await getSearchVolume(limitedKeywords, region, language, queryToUse);
 
       if (volumeResult.sourceInfo) { toast.info(volumeResult.sourceInfo); }
       if (volumeResult.error) { throw new Error(volumeResult.error); }
@@ -327,22 +286,21 @@ export default function KeywordSearchTab({
       // 使用直接的結果數據
       let volumeDataResults = volumeResult.results || [];
 
-      if (detectChineseType(currentQuery) !== 'simplified') {
+      if (detectChineseType(queryToUse) !== 'simplified') {
         volumeDataResults = volumeDataResults.filter((item: KeywordVolumeItem) => {
           const itemType = detectChineseType(item?.text || '');
           return item?.text && (itemType === 'traditional' || itemType === 'mixed' || itemType === 'none');
         });
       }
       
-      setVolumeData(volumeDataResults);
       setError(null);
 
       const currentContext: ClusteringContext = {
-        query: currentQuery,
+        query: queryToUse,
         region: region,
         language: language,
         historyIdToUpdate: selectedHistoryDetail?.id,
-        suggestions: keywordStrings,
+        suggestions: keywords,
         volumeData: volumeDataResults,
       };
       setClusteringContext(currentContext);
@@ -355,18 +313,19 @@ export default function KeywordSearchTab({
       try {
         setGlobalLoading(true, '正在保存搜索數據...');
         
-        // 使用 server action 保存完整數據
-        const { saveClustersToHistory } = await import('@/app/actions');
-        const result = await saveClustersToHistory(
-          currentQuery,        // 主關鍵詞
+        // Import and use saveKeywordResearch
+        const { saveKeywordResearch } = await import('@/app/actions');
+        const result = await saveKeywordResearch(
+          queryToUse,        // 主關鍵詞
           region,              // 地區
           language,            // 語言
-          keywordStrings,      // 建議關鍵詞
+          keywords,      // 建議關鍵詞
           volumeDataResults,   // 搜索量數據
-          {}                   // 暫時沒有分群結果
+          {}                   // Pass empty object for clusters for now
         );
         
-        if (result.success) {
+        // Check historyId instead of success
+        if (result.historyId) { 
           console.log('[Component] 自動儲存 Ad Planner 數據成功:', result.historyId);
           toast.success('搜索量數據已自動保存');
           
@@ -379,6 +338,8 @@ export default function KeywordSearchTab({
           }
         } else {
           console.error('[Component] 自動儲存數據失敗:', result.error);
+          // Optionally show a toast error here if desired
+          // toast.error(`自動儲存失敗: ${result.error}`);
         }
       } catch (saveError) {
         console.error('[Component] 自動儲存過程中出錯:', saveError);
@@ -390,10 +351,10 @@ export default function KeywordSearchTab({
       // 更新歷史記錄（保留原有的回調）
       if (onHistoryUpdate) {
         onHistoryUpdate({
-          mainKeyword: currentQuery,
+          mainKeyword: queryToUse,
           region,
           language,
-          suggestions: keywordStrings,
+          suggestions: keywords,
           searchResults: volumeDataResults
         });
       }
@@ -403,11 +364,11 @@ export default function KeywordSearchTab({
       const errorMessage = err.message || '獲取搜索量錯誤';
       if (!errorMessage.startsWith('數據來源:')) { toast.error(errorMessage); }
       setError(errorMessage);
-      setStep(keywordStrings.length > 0 ? 'suggestions' : 'input');
+      setStep(keywords.length > 0 ? 'suggestions' : 'input');
       setGlobalLoading(false);
     }
   }, [
-    region, language, setGlobalLoading, selectedHistoryDetail?.id, onHistoryUpdate, syncSessionStorage, historyActions
+    region, language, setGlobalLoading, selectedHistoryDetail?.id, onHistoryUpdate, syncSessionStorage, historyActions, currentSuggestions, query
   ]);
 
   // 處理保存當前上下文
@@ -453,7 +414,6 @@ export default function KeywordSearchTab({
       if (suggestionResult.error) { throw new Error(suggestionResult.error); }
 
       if (suggestionResult.suggestions && suggestionResult.suggestions.length > 0) {
-        setSuggestions(suggestionResult.suggestions);
         setError(null);
         await handleGetVolumes(suggestionResult.suggestions, currentQuery);
       } else {
@@ -479,110 +439,126 @@ export default function KeywordSearchTab({
     }));
   }, []);
 
-  // 過濾體積數據
+  // --- filteredVolumeData now uses prop data --- 
   const filteredVolumeData = useMemo(() => {
-    if (!volumeData) {
-      return [];
+    const dataToFilter = currentVolumeData ?? []; // Use prop data
+    // if (!volumeData) { // Remove check for old state variable
+    //   return [];
+    // }
+    if (!dataToFilter || dataToFilter.length === 0) { // Check the prop data array instead
+       return [];
     }
     
-    // 定義統一處理競爭度值的函數
-    const getCompetitionValue = (comp: string | undefined): number => {
-      if (!comp) return 2; // 默認中等
+    // Define unified function to handle competition values
+    const getCompetitionValue = (comp: string | number | undefined): number => {
+      if (comp === undefined || comp === null) return 2; // Default to medium for missing data
       
-      const compLower = typeof comp === 'string' ? comp.toLowerCase() : '';
-      if (compLower === 'low' || compLower === '低') return 1;
-      if (compLower === 'medium' || compLower === '中') return 2;
-      if (compLower === 'high' || compLower === '高') return 3;
-      
-      // 如果是數字格式
-      const numComp = parseFloat(comp);
-      if (!isNaN(numComp)) {
-        if (numComp <= 33) return 1;
-        if (numComp <= 66) return 2;
-        return 3;
+      // Handle string values (case-insensitive)
+      if (typeof comp === 'string') {
+          const compLower = comp.toLowerCase();
+          if (compLower === 'low' || compLower === '低') return 1;
+          if (compLower === 'medium' || compLower === '中') return 2;
+          if (compLower === 'high' || compLower === '高') return 3;
+          // Attempt to parse string as number if it doesn't match known terms
+          const numComp = parseFloat(comp);
+          if (!isNaN(numComp)) comp = numComp; // If parseable, treat as number below
+          else return 2; // Default if string is unrecognizable
       }
-      
-      return 2; // 默認中等
+
+      // Handle numeric values (assuming 0-100 range mapping or direct 1,2,3)
+      if (typeof comp === 'number') {
+          if (comp === 1 || comp <= 33) return 1; // Low
+          if (comp === 2 || (comp > 33 && comp <= 66)) return 2; // Medium
+          if (comp === 3 || comp > 66) return 3; // High
+      }
+
+      return 2; // Default fallback
     };
     
-    // 先進行過濾
+    // Filter based on filterZeroVolume prop
     let filteredData = filterZeroVolume 
-      ? volumeData.filter(item => item.searchVolume != null && item.searchVolume > 0)
-      : [...volumeData];
+      ? dataToFilter.filter(item => item.searchVolume != null && item.searchVolume > 0)
+      : [...dataToFilter]; // Create a shallow copy for sorting if not filtering
     
-    // 然後根據 sortState 進行排序
-    filteredData.sort((a, b) => {
+    // Sort based on sortState
+    filteredData.sort((a: KeywordVolumeItem, b: KeywordVolumeItem) => { // Add explicit types
       const { field, direction } = sortState;
       
-      // 處理缺失值（null/undefined）- 將它們放在排序的末尾
-      if (a[field] === null || a[field] === undefined) return 1;
-      if (b[field] === null || b[field] === undefined) return -1;
+      // Handle potentially missing fields or null/undefined values
+      const valA = a[field as keyof KeywordVolumeItem];
+      const valB = b[field as keyof KeywordVolumeItem];
+
+      // Place items with null/undefined values at the end
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
       
-      // 特別處理競爭程度字段
+      // Special handling for competition field
       if (field === 'competition') {
-        // 使用上面定義的函數獲取競爭度數值
-        const aValue = getCompetitionValue(a[field] as string);
-        const bValue = getCompetitionValue(b[field] as string);
-        
-        return direction === 'asc' ? aValue - bValue : bValue - aValue;
+        const compA = getCompetitionValue(valA as string | number | undefined);
+        const compB = getCompetitionValue(valB as string | number | undefined);
+        return direction === 'asc' ? compA - compB : compB - compA;
       }
       
-      // 處理一般字段
-      if (typeof a[field] === 'string' && typeof b[field] === 'string') {
-        // 字符串比較
-        return direction === 'asc' 
-          ? (a[field] as string).localeCompare(b[field] as string)
-          : (b[field] as string).localeCompare(a[field] as string);
-      } else {
-        // 數值比較
-        return direction === 'asc' 
-          ? (a[field] as number) - (b[field] as number)
-          : (b[field] as number) - (a[field] as number);
+      // Handle numeric fields (like searchVolume, cpc)
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return direction === 'asc' ? valA - valB : valB - valA;
       }
+
+      // Handle string fields (like text/keyword)
+      if (typeof valA === 'string' && typeof valB === 'string') {
+         return direction === 'asc' 
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      }
+
+      // Fallback comparison (shouldn't be reached often with typed items)
+      return 0;
     });
     
     return filteredData;
-  }, [volumeData, filterZeroVolume, sortState]);
+  }, [currentVolumeData, filterZeroVolume, sortState]); // Depend on prop data
 
-  // 整合建議列表和搜索量數據
+  // --- integratedKeywordData now uses prop data --- 
   const integratedKeywordData = useMemo(() => {
-    // 如果沒有建議或搜索量數據，則返回空數組
-    if (!suggestions || suggestions.length === 0) {
+    const currentSuggs = currentSuggestions ?? []; // Use prop suggestions
+    const currentVols = currentVolumeData ?? []; // Use prop volume data
+
+    // If no suggestions, return empty array
+    if (!currentSuggs || currentSuggs.length === 0) {
       return [];
     }
 
-    // 建立搜索量數據的映射，方便查詢
+    // Build volume map from prop data
     const volumeMap = new Map<string, KeywordVolumeItem>();
-    volumeData?.forEach(item => {
+    currentVols.forEach((item: KeywordVolumeItem) => { // Add type
       if (item.text) {
         volumeMap.set(item.text.toLowerCase(), item);
       }
     });
 
-    // 將建議列表轉換為整合數據，並添加搜索量信息
-    const integrated = suggestions.map(suggestion => {
+    // Map suggestions using prop data
+    const integrated = currentSuggs.map((suggestion: string) => { // Add type
       const volumeItem = volumeMap.get(suggestion.toLowerCase());
       return {
         keyword: suggestion,
-        searchVolume: volumeItem?.searchVolume || 0,
+        searchVolume: volumeItem?.searchVolume ?? 0, // Use nullish coalescing
         competition: volumeItem?.competition || '',
-        cpc: volumeItem?.cpc || 0,
+        cpc: volumeItem?.cpc ?? 0, // Use nullish coalescing
         hasVolumeData: !!volumeItem
       };
     });
 
-    // 優先按是否有搜索量數據排序，然後按搜索量降序排序
-    integrated.sort((a, b) => {
-      // 先比較是否有搜索量數據
+    // Sort the integrated data
+    integrated.sort((a, b) => { // Add types
+      // Prioritize items with volume data
       if (a.hasVolumeData && !b.hasVolumeData) return -1;
       if (!a.hasVolumeData && b.hasVolumeData) return 1;
-      
-      // 如果都有搜索量數據，則按搜索量降序排序
+      // Then sort by search volume descending
       return b.searchVolume - a.searchVolume;
     });
 
     return integrated;
-  }, [suggestions, volumeData]);
+  }, [currentSuggestions, currentVolumeData]); // Depend on prop data
 
   // 修改更新結果選項卡的 useEffect，去掉與 clusters 相關的條件
   useEffect(() => {
@@ -623,7 +599,7 @@ export default function KeywordSearchTab({
     };
   }, [activeTab, query, handleGetSuggestions]);
 
-  const hasVolumeResults = (volumeData?.length ?? 0) > 0;
+  const hasVolumeResults = (currentVolumeData?.length ?? 0) > 0;
 
   // 移除與補充關鍵詞相關的舊狀態
   const [selectedKeyword, setSelectedKeyword] = useState<string>('');
@@ -636,66 +612,6 @@ export default function KeywordSearchTab({
     setSelectedKeyword(keywordText);
     setIsPanelOpen(true);
   }, []);
-
-  // 更新 Volume Data 的函數 (保持為 useCallback)
-  const updateVolumeData = useCallback((updatedVolumes: KeywordVolumeItem[]) => {
-    const updatedVolumeMap = new Map<string, KeywordVolumeItem>();
-    updatedVolumes.forEach(item => {
-      if (item.text) {
-        updatedVolumeMap.set(item.text.toLowerCase(), item);
-      }
-    });
-
-    let calculatedUpdatedCount = 0;
-    let calculatedAddedCount = 0;
-
-    setVolumeData(prevVolumeData => {
-      const existingKeywordTexts = new Set(prevVolumeData.map(item => item.text?.toLowerCase()).filter(Boolean));
-      const updatedExistingData = prevVolumeData.map(currentItem => {
-        if (!currentItem.text) return currentItem;
-        const lowerCaseText = currentItem.text.toLowerCase();
-        if (updatedVolumeMap.has(lowerCaseText)) {
-          const updatedItemData = updatedVolumeMap.get(lowerCaseText)!;
-          return {
-            ...currentItem,
-            searchVolume: updatedItemData.searchVolume,
-            competition: updatedItemData.competition,
-          };
-        }
-        return currentItem;
-      });
-
-      const newKeywordsToAppend = updatedVolumes.filter(item => 
-        item.text && !existingKeywordTexts.has(item.text.toLowerCase())
-      );
-
-      const newVolumeData = [...updatedExistingData, ...newKeywordsToAppend];
-
-      calculatedUpdatedCount = updatedExistingData.filter((item, idx) => 
-        prevVolumeData[idx] && 
-        (item.searchVolume !== prevVolumeData[idx].searchVolume || item.competition !== prevVolumeData[idx].competition)
-      ).length;
-      calculatedAddedCount = newKeywordsToAppend.length;
-
-      syncSessionStorage(newVolumeData); // 在返回前同步
-
-      return newVolumeData;
-    });
-
-    // 在狀態更新後直接顯示 Toast
-    if (calculatedUpdatedCount > 0 || calculatedAddedCount > 0) {
-      let message = "關鍵詞數據已更新";
-      if (calculatedUpdatedCount > 0 && calculatedAddedCount > 0) {
-        message = `更新了 ${calculatedUpdatedCount} 個關鍵詞，新增了 ${calculatedAddedCount} 個關鍵詞`;
-      } else if (calculatedUpdatedCount > 0) {
-        message = `更新了 ${calculatedUpdatedCount} 個關鍵詞數據`;
-      } else if (calculatedAddedCount > 0) {
-        message = `新增了 ${calculatedAddedCount} 個新關鍵詞`;
-      }
-
-      toast.success(message);
-    }
-  }, [syncSessionStorage]);
 
   // 檢查是否已有分群結果
   const hasClusters = useMemo(() => {

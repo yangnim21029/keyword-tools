@@ -1,4 +1,4 @@
-import HistorySidebar from "@/components/client-wrappers/HistorySidebar";
+import HistorySidebar from "@/components/client-wrappers/ToolsSidebar";
 import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay";
 import { PastQueryProvider } from '@/providers/PastQueryProvider';
 import { QueryProvider } from '@/providers/QueryProvider';

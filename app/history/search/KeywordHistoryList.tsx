@@ -5,7 +5,7 @@ import { usePastQueryStore } from '@/store/pastQueryStore'; // 導入 Zustand Ho
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Clock, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { SearchHistoryHeader } from './SearchHistoryHeader';
 import { Button } from '@/components/ui/button';
@@ -21,17 +21,19 @@ interface KeywordHistoryListProps {
 
 export default function KeywordHistoryList({ onSelectHistory, searchFilter = '', isRefreshing = false }: KeywordHistoryListProps) {
   // --- 從 Zustand Store 讀取狀態 ---
-  const { histories, loading, selectedHistoryId } = usePastQueryStore(store => store.state);
-  const { setSelectedHistoryId, deleteHistory } = usePastQueryStore(store => store.actions);
+  const { histories, loading, selectedHistoryId, lastHistorySaveTimestamp } = usePastQueryStore(store => store.state);
+  const { setSelectedHistoryId, deleteHistory, fetchHistories } = usePastQueryStore(store => store.actions);
   const { setActiveTab } = useTabStore(store => store.actions);
   const error = usePastQueryStore((state) => state.state.error);
   const quotaExceeded = Boolean(error?.includes('配額超出') || error?.includes('Quota exceeded')); // 使用Boolean()明確轉換
 
   // --- 從 Zustand Store 讀取 Actions ---
-  const historyActions = usePastQueryStore((state) => state.actions);
+  // const historyActions = usePastQueryStore((state) => state.actions);
 
   // --- 本地狀態只保留刪除中的 ID ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // --- Ref to track processed timestamp --- 
+  const processedSaveTimestampRef = useRef<number | null>(null);
 
   // --- 初始加載 (如果 Store Provider 不自動加載) ---
   // 通常 Provider 會在初始化時加載，或者父元件觸發
@@ -49,18 +51,30 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
        
        // 延遲執行，避免在渲染過程中觸發
        setTimeout(() => {
-         historyActions.fetchHistories(false); // 初始加載可能不需要強制刷新
+         fetchHistories(false); // 初始加載可能不需要強制刷新
        }, 500);
     }
-  }, []); // 只在組件掛載時執行一次
+  }, [fetchHistories, histories.length, loading]); // 只在組件掛載時執行一次
 
   // 監聽外部刷新狀態
   useEffect(() => {
     if (isRefreshing && !loading) {
-      console.log('[SearchHistory] 外部觸發刷新');
-      historyActions.fetchHistories(true); // 強制刷新
+      console.log('[KeywordHistoryList] 外部觸發刷新 (prop)');
+      fetchHistories(true); // 強制刷新
     }
-  }, [isRefreshing, historyActions, loading]); // 添加依賴項
+  }, [isRefreshing, fetchHistories, loading]); // 添加依賴項
+
+  // --- Add useEffect to listen for store timestamp changes --- 
+  useEffect(() => {
+    if (
+      lastHistorySaveTimestamp && 
+      lastHistorySaveTimestamp !== processedSaveTimestampRef.current
+    ) {
+      console.log('[KeywordHistoryList] Detected history save via timestamp, refreshing list...');
+      processedSaveTimestampRef.current = lastHistorySaveTimestamp;
+      fetchHistories(true); // Force refresh the list
+    }
+  }, [lastHistorySaveTimestamp, fetchHistories]); // Add dependencies
 
   // 處理歷史記錄點擊
   const handleHistoryClick = (historyId: string) => {
@@ -94,8 +108,8 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
   // 刷新处理 - 調用 Store Action
   const handleRefresh = () => {
     if (loading) return;
-    console.log('[SearchHistory] 手動觸發刷新');
-    historyActions.fetchHistories(true); // Store Action 會處理加載狀態
+    console.log('[KeywordHistoryList] 手動觸發刷新');
+    fetchHistories(true); // Store Action 會處理加載狀態
   };
 
   // 過濾歷史記錄列表 - 從 Store 讀取的數據進行過濾

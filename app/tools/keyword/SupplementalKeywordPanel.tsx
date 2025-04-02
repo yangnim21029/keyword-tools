@@ -1,4 +1,5 @@
-import { getKeywordSuggestionsWithDelay, getSearchVolume } from '@/app/actions';
+import { getKeywordSuggestionsWithDelay } from '@/app/actions';
+import { getSearchVolume } from '@/app/services/KeywordDataService';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

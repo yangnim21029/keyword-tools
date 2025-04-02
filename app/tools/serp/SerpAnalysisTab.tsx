@@ -1,11 +1,8 @@
 'use client';
 
-import {
-    analyzeSerpResultsHtml,
-    getSerpAnalysis
-} from '@/app/actions';
+import { getSerpAnalysis, analyzeSerpResultsHtml } from '@/app/services/serp';
 import { SerpAnalysisResult } from '@/app/types';
-import SerpAnalysisComponent from '../serp-analysis/SerpAnalysisComponent';
+import SerpAnalysisComponent from './serp-analysis/SerpAnalysisComponent';
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { processedSerpResultSchema } from '@/lib/schemas';
 import { useQueryStore } from '@/store/queryStore';

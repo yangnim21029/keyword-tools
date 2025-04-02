@@ -61,6 +61,9 @@ interface PastQueryState {
   selectedHistoryId: string | null; // ID of the currently selected history item
   selectedHistoryDetail: SearchHistoryItem | null; // Detailed data for the selected item
   loadingDetail: boolean; // Loading state for fetching details
+  
+  // --- Add state for refresh trigger --- 
+  lastHistorySaveTimestamp: number | null;
 }
 
 // Actions type for the history store
@@ -76,6 +79,9 @@ interface PastQueryActions {
   deleteHistory: (id: string) => Promise<void>;
   updateHistorySearchResults: (historyId: string, searchResults: any[]) => Promise<{ success: boolean } | void>;
   updateHistoryPersonas: (historyId: string, personas: any[]) => Promise<{ success: boolean } | void>;
+
+  // --- Add action for refresh trigger --- 
+  notifyHistorySaved: () => void;
 }
 
 // Type defining the complete store structure
@@ -92,6 +98,8 @@ export const defaultPastQueryState: PastQueryState = {
   selectedHistoryId: null,
   selectedHistoryDetail: null,
   loadingDetail: false,
+  // --- Initialize new state --- 
+  lastHistorySaveTimestamp: null,
 };
 
 // Factory function to create the Zustand store instance
@@ -358,6 +366,12 @@ const createPastQueryStore = (initState: PastQueryState = defaultPastQueryState)
               // No explicit return here, implicitly returns void/undefined on error
           }
       }, // End updateHistoryPersonas
+
+      // --- Implement new action --- 
+      notifyHistorySaved: () => {
+        console.log('[PastQueryProvider] Notifying history saved.');
+        set({ state: { ...get().state, lastHistorySaveTimestamp: Date.now() } });
+      },
     } // End actions object
   })); // End createStore callback
 }; // End createPastQueryStore factory

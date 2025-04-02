@@ -6,8 +6,13 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 // Import server actions and types
-import { getKeywordSuggestions, getSearchVolume, saveKeywordResearch } from '@/app/actions';
+// Remove direct service import if no longer needed elsewhere in this file
+// import { getSearchVolume } from '@/app/services/KeywordDataService';
+import { getKeywordSuggestions, saveKeywordResearch, fetchSearchVolume } from '@/app/actions'; // Import fetchSearchVolume action
 import { KeywordVolumeItem } from '@/lib/schemas'; // Assuming this is the correct path
+
+// --- Import the past query store hook --- 
+import { usePastQueryStore } from './PastQueryProvider'; 
 
 // Define settings type for clarity
 export interface SearchSettings {
@@ -15,6 +20,13 @@ export interface SearchSettings {
   language: string;
   useAlphabet: boolean;
   useSymbols: boolean;
+}
+
+// --- Define the type for the new state --- 
+interface TriggeredSearch { 
+  tool: string; 
+  query: string; 
+  timestamp: number; 
 }
 
 interface QueryState {
@@ -32,6 +44,9 @@ interface QueryState {
   suggestions: string[];
   volumeData: KeywordVolumeItem[];
   error: string | null; // Add error state
+
+  // --- Add new state for last trigger --- 
+  lastTriggeredSearch: TriggeredSearch | null;
 }
 
 interface QueryActions {
@@ -44,6 +59,9 @@ interface QueryActions {
   setVolumeData: (data: KeywordVolumeItem[]) => void; // Add setter
   setError: (error: string | null) => void; // Add setter
   clearResults: () => void; // Action to clear results
+  
+  // --- Add new action for triggering search --- 
+  triggerGlobalSearch: (tool: string, query: string) => void;
   
   // 綜合方法
   handleSearchSubmit: (settings: SearchSettings) => Promise<void>;
@@ -63,6 +81,8 @@ export const defaultQueryState: QueryState = {
   suggestions: [],
   volumeData: [],
   error: null,
+  // --- Initialize new state --- 
+  lastTriggeredSearch: null,
 };
 
 // 創建store工廠函數
@@ -108,30 +128,38 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
       setVolumeData: (volumeData) => set(store => ({ state: { ...store.state, volumeData }})),
       setError: (error) => set(store => ({ state: { ...store.state, error }})),
       clearResults: () => set(store => ({ state: { ...store.state, suggestions: [], volumeData: [], error: null }})),
-      
+
+      // --- Implement new trigger action --- 
+      triggerGlobalSearch: (tool, query) => {
+        console.log(`[QueryStore] Global search triggered. Tool: ${tool}, Query: ${query}`);
+        set((store) => ({
+          state: {
+            ...store.state,
+            // Update search input as well when triggered globally
+            searchInput: query, 
+            lastTriggeredSearch: { tool, query, timestamp: Date.now() }
+          }
+        }));
+        // Optionally, immediately trigger handleSearchSubmit if it's a keyword search?
+        // Or rely on useEffect in the Keyword page to react to lastTriggeredSearch
+      },
+
       // 綜合方法 - Use passed settings
-      handleSearchSubmit: async (settings) => { // Receive settings as argument
+      handleSearchSubmit: async (settings) => { 
         const { searchInput, activeTab } = get().state;
         const actions = get().actions;
-        const { region, language, useAlphabet, useSymbols } = settings; // Destructure from argument
-        
+        const { region, language, useAlphabet, useSymbols } = settings;
+
         // 只處理 keyword tab 的搜索
         if (activeTab !== 'keyword' || !searchInput.trim()) {
           console.log(`[QueryStore] Skipping submit for tab: ${activeTab} or empty input.`);
           return;
         }
-
-        // Settings are now passed correctly
-        // Remove TODO and placeholders
-        // const region = 'TW'; // Placeholder REMOVED
-        // const language = 'zh-TW'; // Placeholder REMOVED
-        // const useAlphabet = true; // Placeholder REMOVED
-        // const useSymbols = false; // Placeholder REMOVED
-
+        
         actions.setLoading(true, '正在獲取建議...');
-        actions.clearResults(); // 清除舊結果
+        actions.clearResults(); // 清除舊結果 (in this store)
 
-        let suggestionsList: string[] = []; // Variable to hold the full suggestions list
+        let suggestionsList: string[] = [];
 
         try {
           // 1. 獲取所有建議
@@ -161,8 +189,13 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
           }
 
           actions.setLoading(true, `正在獲取 ${suggestionsToProcess.length} 個關鍵詞搜索量...`);
-          // Pass correct language to getSearchVolume
-          const volumeResult = await getSearchVolume(suggestionsToProcess, region, searchInput, language);
+          // --- Call the fetchSearchVolume ACTION instead of the service --- 
+          const volumeResult = await fetchSearchVolume( // Use the action
+             suggestionsToProcess, 
+             region, 
+             searchInput, // Pass the original searchInput as the 'url'/'context' maybe?
+             language
+          );
 
           if (volumeResult.error) {
             console.error(`[QueryStore] Error fetching volume: ${volumeResult.error}`);
@@ -177,7 +210,6 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
             // --- ADD HISTORY SAVING LOGIC HERE --- 
             try {
               actions.setLoading(true, '正在保存歷史記錄...');
-              // Call the new action
               const saveResult = await saveKeywordResearch(
                 searchInput,
                 region,
@@ -186,10 +218,10 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
                 volumeResult.results
                 // No need to pass clusters
               );
-              if (saveResult.success) {
+              
+              if (saveResult.historyId) { 
                 console.log(`[QueryStore] History saved successfully with ID: ${saveResult.historyId}`);
                 toast.success('搜索結果已保存至歷史記錄');
-                // Revalidation happens in the server action
               } else {
                 throw new Error(saveResult.error || '保存歷史記錄失敗');
               }

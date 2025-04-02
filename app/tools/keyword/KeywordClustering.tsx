@@ -1,6 +1,6 @@
 'use client';
 
-import { saveHistoryClusteringResults } from '@/app/actions';
+import { updateHistoryWithClusters } from '@/app/actions';
 import { performSemanticClustering } from '@/app/actions/SemanticClustering';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -212,8 +212,8 @@ export default function KeywordClustering() {
     setGlobalLoading(true, '正在保存聚類結果...');
     
     try {
-      // 使用 server action 保存聚類結果並重置緩存
-      const result = await saveHistoryClusteringResults(historyId, clustersToSave);
+      // Use updateHistoryWithClusters instead
+      const result = await updateHistoryWithClusters(historyId, clustersToSave); 
       
       if (!result.success) {
         throw new Error(result.error || '保存聚類結果失敗');

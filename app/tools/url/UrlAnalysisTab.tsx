@@ -1,9 +1,9 @@
 'use client';
 
 import {
-    getSearchVolume,
+    fetchSearchVolume,
     getUrlSuggestions,
-    saveClustersToHistory,
+    saveKeywordResearch,
     updateHistoryWithClusters
 } from '@/app/actions';
 import { SearchVolumeResult, SuggestionsResult } from '@/app/types';
@@ -151,7 +151,7 @@ export default function UrlAnalysisTab({
 		setError(null);
 		
 		try {
-			const result = await getSearchVolume(suggestions.suggestions, region, url, language);
+			const result = await fetchSearchVolume(suggestions.suggestions, region, url || undefined, language);
 			
 			if (result.sourceInfo) {
 				toast.info(result.sourceInfo);
@@ -305,11 +305,8 @@ export default function UrlAnalysisTab({
 						try {
 							console.log('處理分群結果，共', clusterCount, '個分群');
 							
-							// 檢查是否有歷史記錄ID（從歷史記錄加載的數據）
 							if (selectedHistoryDetail && selectedHistoryDetail.id) {
 								console.log('準備更新分群結果到歷史記錄 ID:', selectedHistoryDetail.id);
-								
-								// 使用歷史記錄ID更新分群結果
 								const result = await updateHistoryWithClusters(
 									selectedHistoryDetail.id,
 									finalJsonResult.clusters
@@ -317,7 +314,6 @@ export default function UrlAnalysisTab({
 								
 								if (result.success) {
 									console.log('已更新歷史記錄的分群結果');
-									// 添加明確的成功提示
 									alert(`已成功創建 ${clusterCount} 個分群，並更新到歷史記錄中！`);
 								} else {
 									console.error('更新分群結果失敗:', result.error);
@@ -325,8 +321,8 @@ export default function UrlAnalysisTab({
 							} else {
 								console.log('準備保存分群結果到新的歷史記錄...');
 								
-								// 使用伺服器動作保存分群結果到新記錄
-								const result = await saveClustersToHistory(
+								// Use saveKeywordResearch instead of saveClustersToHistory
+								const result: { historyId: string | null; error?: string } = await saveKeywordResearch(
 									url,
 									region,
 									language,
@@ -335,12 +331,12 @@ export default function UrlAnalysisTab({
 									finalJsonResult.clusters
 								);
 								
-								if (result.success) {
+								if (result.historyId) {
 									console.log('已保存分群結果到新的歷史記錄', result.historyId || '');
-									// 添加明確的成功提示
 									alert(`已成功創建 ${clusterCount} 個分群，並保存到歷史記錄中！`);
 								} else {
 									console.error('保存分群結果失敗:', result.error);
+									alert(`保存分群結果失敗: ${result.error}`);
 								}
 							}
 						} catch (saveError) {
@@ -416,15 +412,12 @@ export default function UrlAnalysisTab({
 					{step === 'clusters' && clusters && (
 						<Button 
 							onClick={() => {
-								// 檢查是否有歷史記錄ID（從歷史記錄加載的數據）
 								if (selectedHistoryDetail && selectedHistoryDetail.id) {
 									console.log('準備更新分群結果到歷史記錄 ID:', selectedHistoryDetail.id);
-									
-									// 使用歷史記錄ID更新分群結果
 									updateHistoryWithClusters(
 										selectedHistoryDetail.id,
 										clusters
-									).then(result => {
+									).then((result: { success: boolean; error?: string }) => {
 										if (result.success) {
 											console.log('已更新歷史記錄的分群結果');
 											alert(`已成功更新分群結果到歷史記錄！`);
@@ -435,17 +428,15 @@ export default function UrlAnalysisTab({
 									});
 								} else {
 									console.log('準備保存分群結果到新的歷史記錄...');
-									
-									// 使用伺服器動作保存分群結果到新記錄
-									saveClustersToHistory(
+									saveKeywordResearch(
 										url,
 										region,
 										language,
 										suggestions.suggestions,
 										volumeData.results,
 										clusters
-									).then(result => {
-										if (result.success) {
+									).then((result: { historyId: string | null; error?: string }) => {
+										if (result.historyId) {
 											console.log('已保存分群結果到新的歷史記錄', result.historyId || '');
 											alert(`已成功保存分群結果到歷史記錄！`);
 										} else {
