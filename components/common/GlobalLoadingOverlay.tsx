@@ -1,14 +1,14 @@
 // components/common/GlobalLoadingOverlay.tsx
 'use client';
 
-import { useSearchStore } from '@/store/searchStore';
+import { useQueryStore } from '@/store/queryStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutGrid } from 'lucide-react'; // 增加 LayoutGrid 圖標
 import { useEffect, useState } from 'react';
 
 export default function GlobalLoadingOverlay() {
-  const isLoading = useSearchStore((state) => state.state.isLoading);
-  const loadingMessage = useSearchStore((state) => state.state.loadingMessage);
+  const isLoading = useQueryStore((state) => state.state.isLoading);
+  const loadingMessage = useQueryStore((state) => state.state.loadingMessage);
   const [visible, setVisible] = useState(false);
   
   // 添加延時效果，避免閃爍

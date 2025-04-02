@@ -1,4 +1,4 @@
-import { LoadingButton } from "@/components/ui/loading-button";
+import { LoadingButton } from "@/components/ui/LoadingButton";
 import { LanguageOption, RegionOption, UrlFormData } from '@/types';
 import { useForm } from 'react-hook-form';
 

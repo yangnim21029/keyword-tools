@@ -54,7 +54,7 @@ interface ServerHistoryItem {
 }
 
 // State type for the history store
-interface HistoryState {
+interface PastQueryState {
   histories: SearchHistoryItem[]; // List of history items
   loading: boolean; // Loading state for the list
   error: string | null; // Error for the list
@@ -64,7 +64,7 @@ interface HistoryState {
 }
 
 // Actions type for the history store
-interface HistoryActions {
+interface PastQueryActions {
   // Basic operations
   setSelectedHistoryId: (id: string | null) => void;
   setSelectedHistoryDetail: (history: SearchHistoryItem | null) => void;
@@ -79,13 +79,13 @@ interface HistoryActions {
 }
 
 // Type defining the complete store structure
-export type HistoryStore = {
-  state: HistoryState;
-  actions: HistoryActions;
+export type PastQueryStore = {
+  state: PastQueryState;
+  actions: PastQueryActions;
 };
 
 // Default initial state for the store
-export const defaultHistoryState: HistoryState = {
+export const defaultPastQueryState: PastQueryState = {
   histories: [],
   loading: false,
   error: null,
@@ -95,8 +95,8 @@ export const defaultHistoryState: HistoryState = {
 };
 
 // Factory function to create the Zustand store instance
-const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
-  return createStore<HistoryStore>()((set, get) => ({
+const createPastQueryStore = (initState: PastQueryState = defaultPastQueryState) => {
+  return createStore<PastQueryStore>()((set, get) => ({
     state: {
       ...initState,
     },
@@ -124,7 +124,7 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           try {
             // Import the correct Server Action for fetching details
             const { fetchKeywordResearchHistoryDetail } = await import('@/app/actions'); 
-            console.log('[HistoryProvider] Fetching history detail:', historyId);
+            console.log('[PastQueryProvider] Fetching history detail:', historyId);
 
             const result = await fetchKeywordResearchHistoryDetail(historyId); // Await the Server Action
 
@@ -134,7 +134,7 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
             }
 
             const historyDetail = result.data; // Extract data from the result
-            console.log('[HistoryProvider] Fetched history detail:', historyDetail?.id);
+            console.log('[PastQueryProvider] Fetched history detail:', historyDetail?.id);
 
             // Update the store with the fetched detail and clear loading state
             set((state) => ({
@@ -148,7 +148,7 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
 
           } catch (error) {
             // Handle errors during fetch/processing
-            console.error('[HistoryProvider] Failed to fetch history detail:', error);
+            console.error('[PastQueryProvider] Failed to fetch history detail:', error);
             toast.error('獲取歷史記錄詳情失敗: ' + (error instanceof Error ? error.message : String(error)));
             // Reset detail and loading state on error
             set((store) => ({
@@ -202,12 +202,12 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
                     } else if (typeof item.timestamp === 'string' || typeof item.timestamp === 'number') {
                          timestampDate = new Date(item.timestamp); // ISO string or number
                     } else {
-                        console.warn(`[HistoryProvider] Invalid timestamp format for item ${item.id}:`, item.timestamp);
+                        console.warn(`[PastQueryProvider] Invalid timestamp format for item ${item.id}:`, item.timestamp);
                         timestampDate = new Date(); // Fallback
                     }
                     // Validate parsed date
                     if (isNaN(timestampDate.getTime())) {
-                       console.warn(`[HistoryProvider] Failed to parse timestamp for item ${item.id}, using current date:`, item.timestamp);
+                       console.warn(`[PastQueryProvider] Failed to parse timestamp for item ${item.id}, using current date:`, item.timestamp);
                        timestampDate = new Date(); // Fallback
                     }
                     // Map to the SearchHistoryItem structure
@@ -238,12 +238,9 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
           } catch (error) {
               // Handle errors during fetch/processing
               const errorMessage = error instanceof Error ? error.message : '獲取歷史記錄失敗';
-              console.error('[HistoryProvider] Error fetching histories:', error);
+              console.error('[PastQueryProvider] Error fetching histories:', error);
               toast.error(errorMessage);
               set((store) => ({ state: { ...store.state, loading: false, error: errorMessage } }));
-          } finally {
-              // Ensure loading is always cleared
-              set((store) => ({ state: { ...store.state, loading: false } }));
           }
       }, // End fetchHistories
 
@@ -363,68 +360,50 @@ const createHistoryStore = (initState: HistoryState = defaultHistoryState) => {
       }, // End updateHistoryPersonas
     } // End actions object
   })); // End createStore callback
-}; // End createHistoryStore factory
+}; // End createPastQueryStore factory
 
-// Create the React Context for the store API
-export type HistoryStoreApi = ReturnType<typeof createHistoryStore>;
-const HistoryStoreContext = createContext<HistoryStoreApi | null>(null);
+// Context for the store API
+export type PastQueryStoreApi = ReturnType<typeof createPastQueryStore>;
+const PastQueryStoreContext = createContext<PastQueryStoreApi | null>(null);
 
-// Define props for the Provider component
-export interface HistoryProviderProps {
+// Provider component
+export interface PastQueryProviderProps {
   children: ReactNode;
 }
 
-// Provider component that creates and provides the store instance
-export function HistoryProvider({ children }: HistoryProviderProps) {
-  const storeRef = useRef<HistoryStoreApi | null>(null);
-  
-  // Create store instance only once
+export function PastQueryProvider({ children }: PastQueryProviderProps) {
+  const storeRef = useRef<PastQueryStoreApi | null>(null);
+
+  // Initialize the store only once
   if (!storeRef.current) {
-    storeRef.current = createHistoryStore();
-    console.log('[HistoryProvider] Store 已創建，將在頁面完成載入後獲取歷史記錄');
+    storeRef.current = createPastQueryStore();
   }
-  
-  // 使用 useEffect 在組件掛載後延遲觸發一次性的歷史記錄加載
+
+  // Fetch initial history data when the provider mounts
   useEffect(() => {
-    // 使用唯一標識防止重複加載
-    const hasLoaded = sessionStorage.getItem('historyInitiallyLoaded');
-    
-    if (!hasLoaded && storeRef.current) {
-      // 延遲 1 秒加載，避免與其他初始化操作衝突
-      const timer = setTimeout(() => {
-        console.log('[HistoryProvider] 延遲觸發歷史記錄加載');
-        // 正確獲取 store 實例，然後訪問 actions
-        const store = storeRef.current;
-        if (store) {
-          store.getState().actions.fetchHistories(false);
-          // 標記已加載，避免重複請求
-          sessionStorage.setItem('historyInitiallyLoaded', 'true');
-        }
-      }, 1000);
-      
-      return () => clearTimeout(timer);
+    if (storeRef.current) {
+      storeRef.current.getState().actions.fetchHistories(); // Fetch on mount
     }
-  }, []); // 僅在組件掛載時執行一次
-  
-  // Provide the store instance via Context
+  }, []); // Empty dependency array ensures this runs only once
+
   return (
-    <HistoryStoreContext.Provider value={storeRef.current}>
+    <PastQueryStoreContext.Provider value={storeRef.current}>
       {children}
-    </HistoryStoreContext.Provider>
+    </PastQueryStoreContext.Provider>
   );
 }
 
-// Custom hook to access the Zustand store within components
-export function useHistoryStore<T>(selector: (store: HistoryStore) => T): T {
-  const historyStore = useContext(HistoryStoreContext);
-  
-  // Ensure the hook is used within the Provider
-  if (!historyStore) {
-    throw new Error('useHistoryStore must be used within a HistoryProvider');
+// Custom hook to use the store
+export function usePastQueryStore<T>(selector: (store: PastQueryStore) => T): T {
+  const pastQueryStore = useContext(PastQueryStoreContext);
+
+  // Provide a helpful error message if used outside the provider
+  if (!pastQueryStore) {
+    throw new Error('usePastQueryStore must be used within a PastQueryProvider');
   }
-  
-  // Use Zustand's useStore hook to select and subscribe to state changes
-  return useStore(historyStore, selector);
+
+  // Use Zustand's useStore hook to subscribe to store changes
+  return useStore(pastQueryStore, selector);
 }
 
 // Removed commented out loadHistoryDetail helper function 

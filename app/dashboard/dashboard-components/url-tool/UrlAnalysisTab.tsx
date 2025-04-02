@@ -10,9 +10,9 @@ import { SearchVolumeResult, SuggestionsResult } from '@/app/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LoadingButton } from "@/components/ui/loading-button";
+import { LoadingButton } from "@/components/ui/LoadingButton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useSearchStore } from '@/store/searchStore';
+import { useQueryStore } from '@/store/queryStore';
 import { LayoutGrid, Save } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -59,8 +59,8 @@ export default function UrlAnalysisTab({
 	const [error, setError] = useState<string | null>(null);
 	
 	// 使用全局加載狀態
-	const isLoading = useSearchStore(store => store.state.isLoading);
-	const setGlobalLoading = useSearchStore(store => store.actions.setLoading);
+	const isLoading = useQueryStore(store => store.state.isLoading);
+	const setGlobalLoading = useQueryStore(store => store.actions.setLoading);
 
 	// 監聽 selectedHistoryDetail 變化，加載歷史數據
 	useEffect(() => {
@@ -219,7 +219,7 @@ export default function UrlAnalysisTab({
 			setGlobalLoading(true, '請求 AI 分群中 (可能需要一些時間)...');
 			
 			// --- 切換回調用 API Route --- 
-			const response = await fetch('/api/semantic-clustering', {
+			const response = await fetch('/api/SemanticClustering', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

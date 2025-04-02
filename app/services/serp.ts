@@ -1,7 +1,7 @@
 'use server';
 
 import { REGIONS } from '@/app/config/constants';
-import { safeParse } from '@/app/lib/zod-utils';
+import { safeParse } from '@/app/lib/ZodUtils';
 import type { SerpAnalysisResult } from '@/app/types';
 import {
   ApifyOrganicResult,

@@ -70,7 +70,7 @@ ${limitedKeywords.join(', ')}
 4. 不要添加任何額外的說明文字，只返回 JSON 對象`;
 
     // 驗證模型名稱是否有效
-    const validModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4', 'gpt-3.5-turbo'];
+    const validModels = ['gpt-4o', 'gpt-4o-mini'];
     const actualModel = validModels.includes(model) ? model : 'gpt-4o-mini';
 
     if (actualModel !== model) {

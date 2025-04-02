@@ -5,10 +5,10 @@ import {
     getSerpAnalysis
 } from '@/app/actions';
 import { SerpAnalysisResult } from '@/app/types';
-import SerpAnalysisComponent from '@/components/SerpAnalysisComponent';
-import { LoadingButton } from "@/components/ui/loading-button";
+import SerpAnalysisComponent from '../serp-analysis/SerpAnalysisComponent';
+import { LoadingButton } from "@/components/ui/LoadingButton";
 import { processedSerpResultSchema } from '@/lib/schemas';
-import { useSearchStore } from '@/store/searchStore';
+import { useQueryStore } from '@/store/queryStore';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -51,8 +51,8 @@ export default function SerpAnalysisTab({
   const [error, setError] = useState<string | null>(null);
 
   // 使用全局加載狀態
-  const isLoading = useSearchStore(store => store.state.isLoading);
-  const setGlobalLoading = useSearchStore(store => store.actions.setLoading);
+  const isLoading = useQueryStore(store => store.state.isLoading);
+  const setGlobalLoading = useQueryStore(store => store.actions.setLoading);
 
   // 監聽 selectedHistoryDetail 變化，加載歷史數據
   useEffect(() => {

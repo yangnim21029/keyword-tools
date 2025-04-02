@@ -1,13 +1,14 @@
 import HistorySidebar from "@/components/client-wrappers/HistorySidebar";
 import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay";
-import { HistoryProvider } from '@/providers/history-provider';
-import { SearchProvider } from '@/providers/search-provider';
-import { SettingsProvider } from '@/providers/settings-provider';
-import { TabProvider } from '@/providers/tab-provider';
-import { ThemeProvider } from "@/providers/theme-provider";
+import { PastQueryProvider } from '@/providers/PastQueryProvider';
+import { QueryProvider } from '@/providers/QueryProvider';
+import { SettingsProvider } from '@/providers/SettingsProvider';
+import { TabProvider } from '@/providers/TabProvider';
+import { ThemeProvider } from "@/providers/ThemeProvider";
 import type { Metadata } from "next";
 import { Inter, Roboto } from "next/font/google";
 import { Toaster as SonnerToaster } from "sonner";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import "./globals.css";
 
 // 使用 Inter 作为主要字体
@@ -37,36 +38,38 @@ export default function RootLayout({
         <ThemeProvider>
           <SettingsProvider>
             <TabProvider>
-              <SearchProvider>
-                <HistoryProvider>
-                  <div className="flex min-h-screen max-h-screen overflow-hidden bg-background">
-                    {/* 搜索歷史側邊欄 - 固定寬度，全高 */}
-                    <aside className="hidden md:block w-64 lg:w-72 border-r border-gray-200 dark:border-gray-800 bg-card shadow-sm flex-shrink-0 h-screen">
-                      <HistorySidebar />
-                    </aside>
-                      
-                    {/* 主內容區域 - 獨立滾動 */}
-                    <main className="flex-grow h-screen overflow-auto relative">
-                      {children}
-                      
-                      {/* 行動裝置顯示搜索歷史的按鈕 */}
-                      <div className="md:hidden fixed bottom-4 right-4 z-50">
-                        <button 
-                          className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors"
-                          aria-label="顯示搜索歷史"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </main>
-                  </div>
+              <QueryProvider>
+                <PastQueryProvider>
+                  <SidebarProvider>
+                    <div className="flex min-h-screen max-h-screen overflow-hidden bg-background">
+                      {/* 搜索歷史側邊欄 - 固定寬度，全高 */}
+                      <aside className="hidden md:block w-64 lg:w-72 border-r border-gray-200 dark:border-gray-800 bg-card shadow-sm flex-shrink-0 h-screen">
+                        <HistorySidebar />
+                      </aside>
+                        
+                      {/* 主內容區域 - 獨立滾動 */}
+                      <main className="flex-grow h-screen overflow-auto relative">
+                        {children}
+                        
+                        {/* 行動裝置顯示搜索歷史的按鈕 */}
+                        <div className="md:hidden fixed bottom-4 right-4 z-50">
+                          <button 
+                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors"
+                            aria-label="顯示搜索歷史"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </main>
+                    </div>
+                  </SidebarProvider>
                   
                   {/* 全局加載遮罩 */}
                   <GlobalLoadingOverlay />
-                </HistoryProvider>
-              </SearchProvider>
+                </PastQueryProvider>
+              </QueryProvider>
             </TabProvider>
           </SettingsProvider>
           <SonnerToaster 

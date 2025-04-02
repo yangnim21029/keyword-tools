@@ -1,7 +1,7 @@
 'use server';
 
 import { ALPHABET, LANGUAGES, REGIONS, SYMBOLS } from '@/app/config/constants';
-import { getSearchVolume } from '@/app/services/keyword-data.service';
+import { getSearchVolume } from '@/app/services/KeywordDataService';
 import { analyzeHtmlContent, analyzeSerpResultsHtml, getSerpAnalysis } from '@/app/services/serp';
 import { SearchHistoryDetailResult, SearchHistoryListResult, SuggestionsResult } from '@/app/types';
 import { UrlFormData } from '@/types';
@@ -16,7 +16,7 @@ import {
   updateSearchHistoryWithPersonas,
   updateSearchHistoryWithResults
 } from '@/app/services/firebase/history';
-import { estimateProcessingTime, filterSimplifiedChinese } from '@/app/services/keyword-data.service';
+import { estimateProcessingTime, filterSimplifiedChinese } from '@/app/services/KeywordDataService';
 import {
   fetchAutocomplete,
   fetchSuggestionWithDelay,

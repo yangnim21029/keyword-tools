@@ -1,16 +1,16 @@
 'use client';
 
 import { ModeToggle } from '@/components/common/ModeToggle';
-import KeywordSearchTab from '@/components/keyword-tool/keyword-search-tab';
-import SerpAnalysisTab from '@/components/serp-tool/serp-analysis-tab';
-import SettingsTab from '@/components/settings-tool/settings-tab';
+import KeywordSearchTab from '@/app/dashboard/dashboard-components/keyword-tool/KeywordSearchTab';
+import SerpAnalysisTab from '@/app/dashboard/dashboard-components/serp-tool/SerpAnalysisTab';
+import SettingsTab from '@/components/settings-tool/SettingsTab';
 import { Input } from "@/components/ui/input";
-import { LoadingButton } from "@/components/ui/loading-button";
+import { LoadingButton } from "@/components/ui/LoadingButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import UrlAnalysisTab from '@/components/url-tool/url-analysis-tab';
-import { useHistoryStore } from '@/store/historyStore';
-import { useSearchStore } from '@/store/searchStore';
+import UrlAnalysisTab from '@/app/dashboard/dashboard-components/url-tool/UrlAnalysisTab';
+import { usePastQueryStore } from '@/store/pastQueryStore';
+import { useQueryStore } from '@/store/queryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTabStore } from '@/store/tabStore';
 import { Search } from "lucide-react";
@@ -38,15 +38,15 @@ export default function Home() {
   } = settingsActions;
   
   // 使用 SearchStore
-  const searchInput = useSearchStore(store => store.state.searchInput);
-  const isLoading = useSearchStore(store => store.state.isLoading);
-  const loadingMessage = useSearchStore(store => store.state.loadingMessage);
-  const searchActions = useSearchStore(store => store.actions);
+  const searchInput = useQueryStore(store => store.state.searchInput);
+  const isLoading = useQueryStore(store => store.state.isLoading);
+  const loadingMessage = useQueryStore(store => store.state.loadingMessage);
+  const searchActions = useQueryStore(store => store.actions);
   const setSearchInput = searchActions.setSearchInput;
   
   // 使用 HistoryStore
-  const historyState = useHistoryStore(store => store.state);
-  const historyActions = useHistoryStore(store => store.actions);
+  const historyState = usePastQueryStore(store => store.state);
+  const historyActions = usePastQueryStore(store => store.actions);
   
   const selectedHistoryDetail = historyState.selectedHistoryDetail;
 

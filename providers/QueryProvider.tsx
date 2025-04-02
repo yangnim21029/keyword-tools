@@ -17,7 +17,7 @@ export interface SearchSettings {
   useSymbols: boolean;
 }
 
-interface SearchState {
+interface QueryState {
   // 搜索輸入
   searchInput: string;
   
@@ -34,7 +34,7 @@ interface SearchState {
   error: string | null; // Add error state
 }
 
-interface SearchActions {
+interface QueryActions {
   // 操作方法
   setSearchInput: (input: string) => void;
   clearSearchInput: () => void;
@@ -49,13 +49,13 @@ interface SearchActions {
   handleSearchSubmit: (settings: SearchSettings) => Promise<void>;
 }
 
-export type SearchStore = {
-  state: SearchState;
-  actions: SearchActions;
+export type QueryStore = {
+  state: QueryState;
+  actions: QueryActions;
 };
 
 // 默認初始狀態
-export const defaultSearchState: SearchState = {
+export const defaultQueryState: QueryState = {
   searchInput: '',
   isLoading: false,
   loadingMessage: null,
@@ -66,8 +66,8 @@ export const defaultSearchState: SearchState = {
 };
 
 // 創建store工廠函數
-const createSearchStore = (initState: SearchState = defaultSearchState) => {
-  return createStore<SearchStore>()((set, get) => ({
+const createQueryStore = (initState: QueryState = defaultQueryState) => {
+  return createStore<QueryStore>()((set, get) => ({
     state: {
       ...initState
     },
@@ -117,7 +117,7 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
         
         // 只處理 keyword tab 的搜索
         if (activeTab !== 'keyword' || !searchInput.trim()) {
-          console.log(`[SearchStore] Skipping submit for tab: ${activeTab} or empty input.`);
+          console.log(`[QueryStore] Skipping submit for tab: ${activeTab} or empty input.`);
           return;
         }
 
@@ -135,12 +135,12 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
 
         try {
           // 1. 獲取所有建議
-          console.log(`[SearchStore] Fetching suggestions for: "${searchInput}", Region: ${region}, Lang: ${language}, Alpha: ${useAlphabet}, Sym: ${useSymbols}`); // Log settings
+          console.log(`[QueryStore] Fetching suggestions for: \"${searchInput}\", Region: ${region}, Lang: ${language}, Alpha: ${useAlphabet}, Sym: ${useSymbols}`); // Log settings
           const suggestionsResult = await getKeywordSuggestions(searchInput, region, language, useAlphabet, useSymbols);
 
           if (suggestionsResult.error || !suggestionsResult.suggestions || suggestionsResult.suggestions.length === 0) {
             const errorMsg = suggestionsResult.error || '未找到關鍵詞建議';
-            console.warn(`[SearchStore] No suggestions found or error: ${errorMsg}`);
+            console.warn(`[QueryStore] No suggestions found or error: ${errorMsg}`);
             actions.setError(errorMsg);
             toast.error(errorMsg);
             actions.setLoading(false);
@@ -151,10 +151,10 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
           actions.setSuggestions(suggestionsList);
 
           const suggestionsToProcess = suggestionsList.slice(0, 40);
-          console.log(`[SearchStore] Got ${suggestionsList.length} suggestions, processing top ${suggestionsToProcess.length} for volume.`);
+          console.log(`[QueryStore] Got ${suggestionsList.length} suggestions, processing top ${suggestionsToProcess.length} for volume.`);
 
           if (suggestionsToProcess.length === 0) {
-            console.log("[SearchStore] No suggestions left after slicing, skipping volume fetch.");
+            console.log("[QueryStore] No suggestions left after slicing, skipping volume fetch.");
             toast.info("建議列表為空，無法獲取搜索量。");
             actions.setLoading(false);
             return;
@@ -165,11 +165,11 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
           const volumeResult = await getSearchVolume(suggestionsToProcess, region, searchInput, language);
 
           if (volumeResult.error) {
-            console.error(`[SearchStore] Error fetching volume: ${volumeResult.error}`);
+            console.error(`[QueryStore] Error fetching volume: ${volumeResult.error}`);
             actions.setError(volumeResult.error);
             toast.error(volumeResult.error);
           } else {
-            console.log(`[SearchStore] Received ${volumeResult.results.length} volume results.`);
+            console.log(`[QueryStore] Received ${volumeResult.results.length} volume results.`);
             actions.setVolumeData(volumeResult.results);
             actions.setError(null);
             toast.success(`成功獲取 ${volumeResult.results.length} 個關鍵詞數據`);
@@ -187,21 +187,21 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
                 // No need to pass clusters
               );
               if (saveResult.success) {
-                console.log(`[SearchStore] History saved successfully with ID: ${saveResult.historyId}`);
+                console.log(`[QueryStore] History saved successfully with ID: ${saveResult.historyId}`);
                 toast.success('搜索結果已保存至歷史記錄');
                 // Revalidation happens in the server action
               } else {
                 throw new Error(saveResult.error || '保存歷史記錄失敗');
               }
             } catch (saveError) {
-              console.error("[SearchStore] Error saving history:", saveError);
+              console.error("[QueryStore] Error saving history:", saveError);
               toast.error(`保存歷史記錄失敗: ${saveError instanceof Error ? saveError.message : '未知錯誤'}`);
             } 
             // --- END HISTORY SAVING LOGIC --- 
           }
 
         } catch (error) {
-          console.error("[SearchStore] Unexpected error during search process:", error);
+          console.error("[QueryStore] Unexpected error during search process:", error);
           const errorMsg = error instanceof Error ? error.message : '搜索過程中發生未知錯誤';
           actions.setError(errorMsg);
           toast.error(errorMsg);
@@ -214,19 +214,19 @@ const createSearchStore = (initState: SearchState = defaultSearchState) => {
 };
 
 // 建立Context
-export type SearchStoreApi = ReturnType<typeof createSearchStore>;
-const SearchStoreContext = createContext<SearchStoreApi | null>(null);
+export type QueryStoreApi = ReturnType<typeof createQueryStore>;
+const QueryStoreContext = createContext<QueryStoreApi | null>(null);
 
 // 提供Provider組件
-export interface SearchProviderProps {
+export interface QueryProviderProps {
   children: ReactNode;
 }
 
-export function SearchProvider({ children }: SearchProviderProps) {
-  const storeRef = useRef<SearchStoreApi | null>(null);
+export function QueryProvider({ children }: QueryProviderProps) {
+  const storeRef = useRef<QueryStoreApi | null>(null);
   
   if (!storeRef.current) {
-    storeRef.current = createSearchStore();
+    storeRef.current = createQueryStore();
   }
   
   // 從 tabStore 同步 activeTab 狀態
@@ -277,19 +277,19 @@ export function SearchProvider({ children }: SearchProviderProps) {
   }, []);
   
   return (
-    <SearchStoreContext.Provider value={storeRef.current}>
+    <QueryStoreContext.Provider value={storeRef.current}>
       {children}
-    </SearchStoreContext.Provider>
+    </QueryStoreContext.Provider>
   );
 }
 
 // 自定義hook以使用store
-export function useSearchStore<T>(selector: (store: SearchStore) => T): T {
-  const searchStore = useContext(SearchStoreContext);
+export function useQueryStore<T>(selector: (store: QueryStore) => T): T {
+  const queryStore = useContext(QueryStoreContext);
   
-  if (!searchStore) {
-    throw new Error('useSearchStore必須在SearchProvider內部使用');
+  if (!queryStore) {
+    throw new Error('useQueryStore必須在QueryProvider內部使用');
   }
   
-  return useStore(searchStore, selector);
+  return useStore(queryStore, selector);
 } 

@@ -1,7 +1,7 @@
 'use client';
 
-import { LoadingButton } from "@/components/ui/loading-button";
-import { useSearchStore } from "@/store/searchStore";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import { useQueryStore } from "@/providers/QueryProvider";
 
 interface SerpTabsProps {
   activeTab: string;
@@ -19,7 +19,7 @@ export function SerpTabs({ activeTab, onTabChange, resultsCount, domainsCount }:
   ];
 
   // 使用全局加載狀態
-  const isLoading = useSearchStore(store => store.state.isLoading);
+  const isLoading = useQueryStore(store => store.state.isLoading);
 
   return (
     <div className="border-b border-gray-200 dark:border-gray-800">

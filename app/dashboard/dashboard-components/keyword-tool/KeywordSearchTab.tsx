@@ -7,14 +7,14 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { getKeywordSuggestions, getSearchVolume } from '@/app/actions';
-import { detectChineseType } from '@/app/services/keyword-data.service';
+import { detectChineseType } from '@/app/services/KeywordDataService';
 import type { SuggestionsResult } from '@/app/types';
 import { KeywordVolumeItem } from '@/lib/schemas';
-import { useHistoryStore } from '@/store/historyStore';
-import { useSearchStore } from '@/store/searchStore';
+import { usePastQueryStore } from '@/store/pastQueryStore';
+import { useQueryStore } from '@/store/queryStore';
 import { useSettingsStore } from "@/store/settingsStore";
 import { SortField, SortState } from "@/types/keywordTool.d";
-import KeywordClustering from "./keyword-clustering";
+import KeywordClustering from "./KeywordClustering";
 
 interface KeywordSearchTabProps {
   activeTab: 'keyword' | 'url' | 'serp' | 'settings';
@@ -154,12 +154,12 @@ export default function KeywordSearchTab({
   const useAlphabet = propUseAlphabet ?? settingsState.useAlphabet;
   const useSymbols = propUseSymbols ?? settingsState.useSymbols;
   
-  const isLoading = useSearchStore((state) => state.state.isLoading);
-  const loadingText = useSearchStore((state) => state.state.loadingMessage) ?? '';
-  const setGlobalLoading = useSearchStore((state) => state.actions.setLoading);
+  const isLoading = useQueryStore((state) => state.state.isLoading);
+  const loadingText = useQueryStore((state) => state.state.loadingMessage) ?? '';
+  const setGlobalLoading = useQueryStore((state) => state.actions.setLoading);
   
-  const historyState = useHistoryStore(store => store.state);
-  const historyActions = useHistoryStore(store => store.actions);
+  const historyState = usePastQueryStore(store => store.state);
+  const historyActions = usePastQueryStore(store => store.actions);
 
   const selectedHistoryDetail = historyState.selectedHistoryDetail;
 

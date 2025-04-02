@@ -1,13 +1,13 @@
 'use client';
 
 import { saveHistoryClusteringResults } from '@/app/actions';
-import { performSemanticClustering } from '@/app/actions/semantic-clustering';
+import { performSemanticClustering } from '@/app/actions/SemanticClustering';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useHistoryStore } from '@/store/historyStore';
-import { useSearchStore } from '@/store/searchStore';
+import { usePastQueryStore } from '@/store/pastQueryStore';
+import { useQueryStore } from '@/store/queryStore';
 import { BarChart2, Check, Copy, LayoutGrid, Sparkles } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -22,10 +22,10 @@ export default function KeywordClustering() {
   const [selectedModel, setSelectedModel] = useState<string>("gpt-4o-mini");
 
   // 從store獲取狀態和操作
-  const setGlobalLoading = useSearchStore(state => state.actions.setLoading);
+  const setGlobalLoading = useQueryStore(state => state.actions.setLoading);
   
-  const historyState = useHistoryStore(store => store.state);
-  const historyActions = useHistoryStore(store => store.actions);
+  const historyState = usePastQueryStore(store => store.state);
+  const historyActions = usePastQueryStore(store => store.actions);
   
   const selectedHistoryDetail = historyState.selectedHistoryDetail;
   const historyId = selectedHistoryDetail?.id;
@@ -564,8 +564,6 @@ export default function KeywordClustering() {
           <SelectContent>
             <SelectItem value="gpt-4o">GPT-4o (最佳質量)</SelectItem>
             <SelectItem value="gpt-4o-mini">GPT-4o-mini (推薦)</SelectItem>
-            <SelectItem value="gpt-4">GPT-4 (傳統)</SelectItem>
-            <SelectItem value="gpt-3.5-turbo">GPT-3.5 (最快)</SelectItem>
           </SelectContent>
         </Select>
       </div>

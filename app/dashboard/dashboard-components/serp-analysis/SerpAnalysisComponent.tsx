@@ -1,8 +1,9 @@
 'use client';
 
+import React from 'react';
 import { ApifyOrganicResult, ProcessedSerpResult } from '@/lib/schemas';
 import DomainCategoryAnalysis from './DomainCategoryAnalysis';
-import { SerpResultsList } from './serp-analysis/SerpResultsList';
+import { SerpResultsList } from './SerpResultsList';
 
 interface SerpAnalysisComponentProps {
   data: ProcessedSerpResult | null;

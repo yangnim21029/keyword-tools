@@ -1,16 +1,16 @@
 'use client';
 
-import { useTabStore } from '@/providers/tab-provider';
-import { useHistoryStore } from '@/store/historyStore'; // 導入 Zustand Hook
+import { useTabStore } from '@/providers/TabProvider';
+import { usePastQueryStore } from '@/store/pastQueryStore'; // 導入 Zustand Hook
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Clock, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { SearchHistoryHeader } from './search-history/SearchHistoryHeader';
-import { Button } from './ui/button';
-import { ScrollArea } from './ui/scroll-area';
-import { Skeleton } from './ui/skeleton';
+import { SearchHistoryHeader } from './SearchHistoryHeader';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/ScrollArea';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // 搜索历史组件的属性 - onSelectHistory 可能不再需要傳遞 data，因為詳情由 Store 加載
 interface KeywordHistoryListProps {
@@ -21,14 +21,14 @@ interface KeywordHistoryListProps {
 
 export default function KeywordHistoryList({ onSelectHistory, searchFilter = '', isRefreshing = false }: KeywordHistoryListProps) {
   // --- 從 Zustand Store 讀取狀態 ---
-  const { histories, loading, selectedHistoryId } = useHistoryStore(store => store.state);
-  const { setSelectedHistoryId, deleteHistory } = useHistoryStore(store => store.actions);
+  const { histories, loading, selectedHistoryId } = usePastQueryStore(store => store.state);
+  const { setSelectedHistoryId, deleteHistory } = usePastQueryStore(store => store.actions);
   const { setActiveTab } = useTabStore(store => store.actions);
-  const error = useHistoryStore((state) => state.state.error);
+  const error = usePastQueryStore((state) => state.state.error);
   const quotaExceeded = Boolean(error?.includes('配額超出') || error?.includes('Quota exceeded')); // 使用Boolean()明確轉換
 
   // --- 從 Zustand Store 讀取 Actions ---
-  const historyActions = useHistoryStore((state) => state.actions);
+  const historyActions = usePastQueryStore((state) => state.actions);
 
   // --- 本地狀態只保留刪除中的 ID ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function KeywordHistoryList({ onSelectHistory, searchFilter = '',
   };
 
   // 處理刪除歷史記錄
-  const handleDelete = async (e: React.MouseEvent, historyId: string) => {
+  const handleDelete = async (e: React.MouseEvent<HTMLButtonElement>, historyId: string) => {
     e.stopPropagation();
     if (deletingId) return;
 
