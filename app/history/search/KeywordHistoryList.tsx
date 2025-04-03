@@ -1,221 +1,194 @@
-'use client';
+"use client"
 
-import { useTabStore } from '@/providers/TabProvider';
-import { usePastQueryStore } from '@/store/pastQueryStore'; // 導入 Zustand Hook
-import { formatDistanceToNow } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
-import { Clock, Trash2 } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
-import { toast } from 'sonner';
-import { SearchHistoryHeader } from './SearchHistoryHeader';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/ScrollArea';
-import { Skeleton } from '@/components/ui/skeleton';
+import type React from "react"
 
-// 搜索历史组件的属性 - onSelectHistory 可能不再需要傳遞 data，因為詳情由 Store 加載
-interface KeywordHistoryListProps {
-  onSelectHistory?: (historyId: string) => void; // 改為只通知選擇的 ID，或完全移除
-  searchFilter?: string;
-  isRefreshing?: boolean; // 仍然可以保留，讓父元件觸發刷新
-}
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useTabStore } from "@/providers/TabProvider"
+import { usePastQueryStore } from "@/store/pastQueryStore"
+import { formatDistanceToNow } from "date-fns"
+import { zhTW } from "date-fns/locale"
+import { Clock, RefreshCw, Trash2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 
-export default function KeywordHistoryList({ onSelectHistory, searchFilter = '', isRefreshing = false }: KeywordHistoryListProps) {
+export default function KeywordHistoryList() {
   // --- 從 Zustand Store 讀取狀態 ---
-  const { histories, loading, selectedHistoryId, lastHistorySaveTimestamp } = usePastQueryStore(store => store.state);
-  const { setSelectedHistoryId, deleteHistory, fetchHistories } = usePastQueryStore(store => store.actions);
-  const { setActiveTab } = useTabStore(store => store.actions);
-  const error = usePastQueryStore((state) => state.state.error);
-  const quotaExceeded = Boolean(error?.includes('配額超出') || error?.includes('Quota exceeded')); // 使用Boolean()明確轉換
-
-  // --- 從 Zustand Store 讀取 Actions ---
-  // const historyActions = usePastQueryStore((state) => state.actions);
+  const { histories, loading, selectedHistoryId, lastHistorySaveTimestamp } = usePastQueryStore((store) => store.state)
+  const { setSelectedHistoryId, deleteHistory, fetchHistories } = usePastQueryStore((store) => store.actions)
+  const { setActiveTab } = useTabStore((store) => store.actions)
+  const error = usePastQueryStore((state) => state.state.error)
+  const quotaExceeded = Boolean(error?.includes("配額超出") || error?.includes("Quota exceeded"))
 
   // --- 本地狀態只保留刪除中的 ID ---
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  // --- Ref to track processed timestamp --- 
-  const processedSaveTimestampRef = useRef<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // --- Ref to track processed timestamp ---
+  const processedSaveTimestampRef = useRef<number | null>(null)
 
-  // --- 初始加載 (如果 Store Provider 不自動加載) ---
-  // 通常 Provider 會在初始化時加載，或者父元件觸發
-  // 如果需要確保這裡加載，可以保留一個簡化的 useEffect
+  // --- 初始加載 ---
   useEffect(() => {
-    // 添加一個標記，避免重複觸發
-    const dataFetchedRef = localStorage.getItem('historyDataFetched');
-    
-    // 檢查是否已有數據，避免不必要的重複加載
-    if (histories.length === 0 && !loading && dataFetchedRef !== 'true') {
-       console.log('[KeywordHistoryList] Store 中無歷史記錄，觸發初始加載');
-       
-       // 設置標記防止重複觸發
-       localStorage.setItem('historyDataFetched', 'true');
-       
-       // 延遲執行，避免在渲染過程中觸發
-       setTimeout(() => {
-         fetchHistories(false); // 初始加載可能不需要強制刷新
-       }, 500);
-    }
-  }, [fetchHistories, histories.length, loading]); // 只在組件掛載時執行一次
+    const dataFetchedRef = localStorage.getItem("historyDataFetched")
 
-  // 監聽外部刷新狀態
-  useEffect(() => {
-    if (isRefreshing && !loading) {
-      console.log('[KeywordHistoryList] 外部觸發刷新 (prop)');
-      fetchHistories(true); // 強制刷新
-    }
-  }, [isRefreshing, fetchHistories, loading]); // 添加依賴項
+    if (histories.length === 0 && !loading && dataFetchedRef !== "true") {
+      console.log("[KeywordHistoryList] Store 中無歷史記錄，觸發初始加載")
+      localStorage.setItem("historyDataFetched", "true")
 
-  // --- Add useEffect to listen for store timestamp changes --- 
-  useEffect(() => {
-    if (
-      lastHistorySaveTimestamp && 
-      lastHistorySaveTimestamp !== processedSaveTimestampRef.current
-    ) {
-      console.log('[KeywordHistoryList] Detected history save via timestamp, refreshing list...');
-      processedSaveTimestampRef.current = lastHistorySaveTimestamp;
-      fetchHistories(true); // Force refresh the list
+      setTimeout(() => {
+        fetchHistories(false)
+      }, 500)
     }
-  }, [lastHistorySaveTimestamp, fetchHistories]); // Add dependencies
+  }, [fetchHistories, histories.length, loading])
+
+  // --- Add useEffect to listen for store timestamp changes ---
+  useEffect(() => {
+    if (lastHistorySaveTimestamp && lastHistorySaveTimestamp !== processedSaveTimestampRef.current) {
+      console.log("[KeywordHistoryList] Detected history save via timestamp, refreshing list...")
+      processedSaveTimestampRef.current = lastHistorySaveTimestamp
+      fetchHistories(true)
+    }
+  }, [lastHistorySaveTimestamp, fetchHistories])
 
   // 處理歷史記錄點擊
   const handleHistoryClick = (historyId: string) => {
-    setSelectedHistoryId(historyId);
+    setSelectedHistoryId(historyId)
     // 切換到關鍵詞工具標籤
-    setActiveTab('keyword');
-  };
+    setActiveTab("keyword")
+  }
 
   // 處理刪除歷史記錄
   const handleDelete = async (e: React.MouseEvent<HTMLButtonElement>, historyId: string) => {
-    e.stopPropagation();
-    if (deletingId) return;
+    e.stopPropagation()
+    if (deletingId) return
 
-    setDeletingId(historyId); // 仍然設置本地狀態以顯示刪除中的 UI
+    setDeletingId(historyId)
     try {
-       console.log('[SearchHistory] 準備刪除歷史記錄 ID:', historyId);
-      // 調用 Store action，它內部會處理 API 調用和狀態更新
-      await deleteHistory(historyId);
-       console.log('[SearchHistory] deleteHistory Action 調用完成');
-      // 刪除成功後，Store 會自動更新 histories 列表，無需手動 setHistoryList
-      toast.success('歷史記錄已刪除');
+      console.log("[SearchHistory] 準備刪除歷史記錄 ID:", historyId)
+      await deleteHistory(historyId)
+      console.log("[SearchHistory] deleteHistory Action 調用完成")
+      toast.success("歷史記錄已刪除")
     } catch (err) {
-      // Store action 內部已經有 toast 處理，這裡可以只 log
-      console.error('[SearchHistory] 刪除歷史記錄過程中捕獲到錯誤 (可能已被 toast 處理):', err);
-      toast.error('刪除歷史記錄失敗');
+      console.error("[SearchHistory] 刪除歷史記錄過程中捕獲到錯誤:", err)
+      toast.error("刪除歷史記錄失敗")
     } finally {
-      setDeletingId(null);
+      setDeletingId(null)
     }
-  };
+  }
 
-  // 刷新处理 - 調用 Store Action
+  // 刷新处理
   const handleRefresh = () => {
-    if (loading) return;
-    console.log('[KeywordHistoryList] 手動觸發刷新');
-    fetchHistories(true); // Store Action 會處理加載狀態
-  };
+    if (loading) return
+    console.log("[KeywordHistoryList] 手動觸發刷新")
+    fetchHistories(true)
+  }
 
-  // 過濾歷史記錄列表 - 從 Store 讀取的數據進行過濾
-  const filteredHistoryList = searchFilter
-    ? histories.filter(item =>
-        item.mainKeyword.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        (item.region && item.region.toLowerCase().includes(searchFilter.toLowerCase())) ||
-        (item.language && item.language.toLowerCase().includes(searchFilter.toLowerCase()))
-      )
-    : histories;
-
-   console.log('[SearchHistory] 渲染 - loading:', loading, 'error:', error, 'selectedId:', selectedHistoryId, 'filteredList count:', filteredHistoryList.length);
-
-  // 渲染歷史記錄項目
-  const renderHistoryItem = (history: any) => {
-    const isSelected = history.id === selectedHistoryId;
-    const timeAgo = formatDistanceToNow(new Date(history.timestamp), { 
-      addSuffix: true,
-      locale: zhTW 
-    });
-
-    return (
-      <div
-        key={history.id}
-        className={`
-          p-4 rounded-lg cursor-pointer transition-all
-          ${isSelected 
-            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50' 
-            : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 border border-transparent hover:border-gray-100 dark:hover:border-gray-700/50'
-          }
-        `}
-        onClick={() => handleHistoryClick(history.id)}
-      >
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex-1">
-            <h3 className="font-medium text-gray-900 dark:text-gray-100">
-              {history.mainKeyword}
-            </h3>
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-1">
-              <Clock className="h-3 w-3" />
-              <span>{timeAgo}</span>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
-            onClick={(e) => handleDelete(e, history.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-          <span>{history.suggestionCount} 個建議</span>
-          <span>{history.resultsCount} 個結果</span>
-          {history.clustersCount > 0 && (
-            <span>{history.clustersCount} 個分群</span>
-          )}
-        </div>
-      </div>
-    );
-  };
+  // Header with refresh button
+  const renderHeader = () => (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+      <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">搜索歷史</h2>
+      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={handleRefresh} disabled={loading}>
+        {loading ? (
+          <div className="h-4 w-4 border-t-2 border-b-2 border-gray-400 rounded-full animate-spin"></div>
+        ) : (
+          <RefreshCw className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+        )}
+      </Button>
+    </div>
+  )
 
   // 渲染加載狀態
-  if (loading) {
+  if (loading && histories.length === 0) {
     return (
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="p-4 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="flex justify-between items-start mb-2">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-8 w-8 rounded-full" />
+      <div className="h-full flex flex-col">
+        {renderHeader()}
+        <div className="p-3 space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-1 flex-1">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <Skeleton className="h-4 w-20" />
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    );
+    )
   }
 
   // 渲染空狀態
   if (!loading && histories.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-        暫無歷史記錄
+      <div className="h-full flex flex-col">
+        {renderHeader()}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="text-center text-gray-500 dark:text-gray-400">
+            <Clock className="h-10 w-10 mx-auto mb-2 text-gray-300 dark:text-gray-700" />
+            <p>暫無歷史記錄</p>
+          </div>
+        </div>
       </div>
-    );
+    )
   }
 
   return (
     <div className="h-full flex flex-col">
-      <SearchHistoryHeader
-        isLoading={loading && deletingId === null}
-        // 可以考慮從 store 獲取刷新 action 傳遞給 Header
-        // onRefresh={handleRefresh}
-      />
+      {renderHeader()}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-2 space-y-1">
+          {histories.map((history) => {
+            const isSelected = history.id === selectedHistoryId
+            const timeAgo = formatDistanceToNow(new Date(history.timestamp), {
+              addSuffix: true,
+              locale: zhTW,
+            })
 
-      <div className="flex-grow overflow-auto">
-        <ScrollArea className="h-[calc(100vh-12rem)]">
-          <div className="space-y-4 p-4">
-            {filteredHistoryList.map(renderHistoryItem)}
-          </div>
-        </ScrollArea>
+            return (
+              <div
+                key={history.id}
+                className={`
+                  p-2 rounded-md cursor-pointer transition-all flex items-center gap-2
+                  ${
+                    isSelected
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400"
+                      : "hover:bg-gray-50 dark:hover:bg-gray-800/50 border-l-2 border-transparent"
+                  }
+                `}
+                onClick={() => handleHistoryClick(history.id)}
+              >
+                <div className="flex-1 min-w-0">
+                  <h3
+                    className={`truncate text-sm ${
+                      isSelected
+                        ? "font-medium text-blue-700 dark:text-blue-400"
+                        : "font-normal text-gray-800 dark:text-gray-200"
+                    }`}
+                  >
+                    {history.mainKeyword}
+                  </h3>
+                  <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span className="truncate">{timeAgo}</span>
+                    <span className="mx-1.5">•</span>
+                    <span>{history.suggestionCount}個</span>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+                  onClick={(e) => handleDelete(e, history.id)}
+                >
+                  {deletingId === history.id ? (
+                    <div className="h-3 w-3 border-t-2 border-b-2 border-red-500 rounded-full animate-spin"></div>
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
-  );
-} 
+  )
+}
+

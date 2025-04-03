@@ -13,7 +13,7 @@ export type SortDirection = "asc" | "desc";
 export type ResultTab = "suggestions" | "volume"; // Removed "clusters" as it's shown within "volume" tab
 
 // Source of the cluster data
-export type ClusterSource = 'history' | 'new' | null;
+export type ClusterSource = "history" | "new" | null;
 
 // Interface for the sorting state
 export interface SortState {
@@ -28,8 +28,8 @@ export type KeywordHistoryDetail = {
   id?: string; // Optional because new searches won't have it initially
   mainKeyword?: string;
   suggestions?: string[];
-  searchResults?: import('@/lib/schemas/keywordTool').KeywordVolumeItem[];
-  clusters?: import('@/lib/schemas/keywordTool').KeywordClusters;
+  searchResults?: import("@/lib/schemas/keyword.schema").KeywordVolumeItem[];
+  clusters?: import("@/lib/schemas/keyword.schema").KeywordClusters;
   // Add counts for display in history list
   resultCount?: number; // Ensure this is present
   clustersCount?: number; // Ensure this is present
@@ -37,4 +37,5 @@ export type KeywordHistoryDetail = {
   region?: string;
   language?: string;
   timestamp?: string | Date;
-}; 
+}
+

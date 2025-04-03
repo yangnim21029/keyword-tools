@@ -1,36 +1,37 @@
-import HistorySidebar from "@/components/client-wrappers/ToolsSidebar";
-import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay";
-import { PastQueryProvider } from '@/providers/PastQueryProvider';
-import { QueryProvider } from '@/providers/QueryProvider';
-import { SettingsProvider } from '@/providers/SettingsProvider';
-import { TabProvider } from '@/providers/TabProvider';
-import { ThemeProvider } from "@/providers/ThemeProvider";
-import type { Metadata } from "next";
-import { Inter, Roboto } from "next/font/google";
-import { Toaster as SonnerToaster } from "sonner";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import "./globals.css";
+import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay"
+import { PastQueryProvider } from "@/providers/PastQueryProvider"
+import { QueryProvider } from "@/providers/QueryProvider"
+import { SettingsProvider } from "@/providers/SettingsProvider"
+import { TabProvider } from "@/providers/TabProvider"
+import { ThemeProvider } from "@/providers/ThemeProvider"
+import type { Metadata } from "next"
+import { Inter, Roboto } from "next/font/google"
+import type React from "react"
+import { Toaster as SonnerToaster } from "sonner"
+import ClientLayout from "./ClientLayout"
+import "./globals.css"
 
 // 使用 Inter 作为主要字体
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 // 使用 Roboto 作为次要字体（接近Apple风格）
-const roboto = Roboto({ 
-  weight: ['300', '400', '500', '700'],
+const roboto = Roboto({
+  weight: ["300", "400", "500", "700"],
   subsets: ["latin"],
   variable: "--font-roboto",
-  display: 'swap',
-});
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "Keyword Killer - Professional Keyword Research Tool",
-  description: "A powerful keyword research tool for SEO professionals. Analyze search volumes, competition, and get semantic clustering insights.",
-};
+  description:
+    "A powerful keyword research tool for SEO professionals. Analyze search volumes, competition, and get semantic clustering insights.",
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="zh-TW" suppressHydrationWarning>
@@ -40,50 +41,27 @@ export default function RootLayout({
             <TabProvider>
               <QueryProvider>
                 <PastQueryProvider>
-                  <SidebarProvider>
-                    <div className="flex min-h-screen max-h-screen overflow-hidden bg-background">
-                      {/* 搜索歷史側邊欄 - 固定寬度，全高 */}
-                      <aside className="hidden md:block w-64 lg:w-72 border-r border-gray-200 dark:border-gray-800 bg-card shadow-sm flex-shrink-0 h-screen">
-                        <HistorySidebar />
-                      </aside>
-                        
-                      {/* 主內容區域 - 獨立滾動 */}
-                      <main className="flex-grow h-screen overflow-auto relative">
-                        {children}
-                        
-                        {/* 行動裝置顯示搜索歷史的按鈕 */}
-                        <div className="md:hidden fixed bottom-4 right-4 z-50">
-                          <button 
-                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-colors"
-                            aria-label="顯示搜索歷史"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </button>
-                        </div>
-                      </main>
-                    </div>
-                  </SidebarProvider>
-                  
-                  {/* 全局加載遮罩 */}
+                  {/* Use client component for interactive sidebar */}
+                  <ClientLayout>{children}</ClientLayout>
+
+                  {/* Global loading overlay */}
                   <GlobalLoadingOverlay />
                 </PastQueryProvider>
               </QueryProvider>
             </TabProvider>
           </SettingsProvider>
-          <SonnerToaster 
+          <SonnerToaster
             position="top-right"
             expand={false}
             visibleToasts={6}
             toastOptions={{
               duration: 6000,
               style: {
-                borderLeft: '4px solid #3b82f6',
-                borderRadius: '0.5rem',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                maxWidth: '350px'
-              }
+                borderLeft: "4px solid #3b82f6",
+                borderRadius: "0.5rem",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                maxWidth: "350px",
+              },
             }}
             closeButton
             theme="system"
@@ -91,5 +69,6 @@ export default function RootLayout({
         </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }
+
