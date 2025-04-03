@@ -136,12 +136,8 @@ const createPastQueryStore = (initState: PastQueryState = defaultPastQueryState)
 
             const result = await fetchKeywordResearchHistoryDetail(historyId); // Await the Server Action
 
-            // Handle potential errors returned by the Server Action
-            if (result.error) {
-              throw new Error(result.error);
-            }
-
-            const historyDetail = result.data; // Extract data from the result
+            // If successful, result is the history data directly
+            const historyDetail = result; 
             console.log('[PastQueryProvider] Fetched history detail:', historyDetail?.id);
 
             // Update the store with the fetched detail and clear loading state

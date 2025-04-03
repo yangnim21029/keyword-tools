@@ -6,7 +6,7 @@
 // Remove imports of utility functions
 // import { estimateProcessingTime, isSimplifiedChinese } from '@/lib/utils-common';
 
-import { KeywordVolumeResult, SearchVolumeResult } from '@/app/types';
+import { KeywordVolumeItem, KeywordVolumeResult } from '@/app/types/keyword.types';
 
 // Add API_VERSION constant directly in this file
 /**
@@ -269,7 +269,7 @@ export async function getSearchVolume(
   mainKeyword: string = '',
   language: string = 'zh-TW',
   clusters: Record<string, string[]> | null = null
-): Promise<SearchVolumeResult> {
+): Promise<KeywordVolumeResult> {
   const startTime = Date.now();
   const estimatedTime = estimateProcessingTime(keywords, true);
   let sourceInfo = "Google Ads API";
@@ -283,42 +283,40 @@ export async function getSearchVolume(
     }
     console.log(`Fetching search volume data for ${region} directly from API`);
     const apiLanguage = region === 'TW' || region === 'HK' ? 'zh_TW' :
-                     region === 'CN' ? 'zh_CN' :
-                     region === 'MY' ? 'ms' :
-                     region === 'KR' ? 'ko' : 'en';
+                     region === 'CN' ? 'zh_CN' : 'en';
     console.log(`Fetching search volume data for ${region} (Language: ${apiLanguage})`);
     if (!DEVELOPER_TOKEN || !CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !CUSTOMER_ID) {
       throw new Error('Missing Google Ads API credentials, check environment variables');
     }
-    const allResults: KeywordVolumeResult[] = [];
+    const allResults: KeywordVolumeItem[] = [];
     const processedKeywords = new Map<string, boolean>();
     for (let i = 0; i < uniqueKeywords.length; i += batchSize) {
       await new Promise(resolve => setTimeout(resolve, 100));
       const batchKeywords = uniqueKeywords.slice(i, i + batchSize);
       const locationId = LOCATION_CODES[region.toUpperCase()] || 2158;
-      const languageId = LANGUAGE_CODES[apiLanguage] || 1018;
-      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}, ${batchKeywords.length} keywords`);
+      const languageId = LANGUAGE_CODES[apiLanguage] || (apiLanguage === 'zh_TW' ? 1018 : 1000);
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}, ${batchKeywords.length} keywords, Loc: ${locationId}, Lang: ${languageId}`);
       const response = await fetchKeywordIdeas(batchKeywords, locationId, languageId);
       const keywordIdeas = response.results || [];
       for (const idea of keywordIdeas) {
         try {
           const text = idea.text || '';
-          if (processedKeywords.has(text)) continue;
+          if (!text || processedKeywords.has(text)) continue;
           if (isSimplifiedChinese(text)) continue;
           const metrics = idea.keywordIdeaMetrics || {};
           const rawSearchVolume = metrics.avgMonthlySearches;
-          let searchVolumeValue = 0;
+          let searchVolumeValue: number | undefined = undefined;
           if (rawSearchVolume != null) {
               const parsed = parseInt(String(rawSearchVolume), 10);
               if (!isNaN(parsed)) {
                   searchVolumeValue = parsed;
               }
           }
-          const result: KeywordVolumeResult = {
+          const result: KeywordVolumeItem = {
             text: text,
             searchVolume: searchVolumeValue,
             competition: getCompetitionLevel(metrics.competition || 0),
-            competitionIndex: typeof metrics.competitionIndex === 'number' ? Number(metrics.competitionIndex.toFixed(2)) : 0,
+            competitionIndex: typeof metrics.competitionIndex === 'number' ? Number(metrics.competitionIndex.toFixed(2)) : undefined,
             cpc: metrics.lowTopOfPageBidMicros
               ? Number((metrics.lowTopOfPageBidMicros / 1000000).toFixed(2))
               : null,
@@ -356,6 +354,6 @@ export async function getSearchVolume(
       error: errorMessage,
       sourceInfo: "Error",
       historyId: null
-    };
+    } as KeywordVolumeResult;
   }
 } 

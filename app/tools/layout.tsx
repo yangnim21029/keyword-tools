@@ -5,12 +5,10 @@ import { SearchShortcutHelp } from "@/components/tools/SearchShortcutHelp"
 import { SettingsDialog } from "@/components/tools/SettingsDialog"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/LoadingButton"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQueryStore } from "@/providers/QueryProvider"
 import { useSettingsStore } from "@/store/settingsStore"
 import { FileText, Globe, LayoutGrid, Search } from "lucide-react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import type React from "react"
 import { useCallback, useEffect, useState } from "react"
@@ -180,42 +178,15 @@ export default function ToolsLayout({
           <SettingsDialog />
           <ModeToggle />
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:block">
-            <Tabs value={activeTool} className="p-0 m-0">
-              <TabsList className="backdrop-blur-sm p-1 rounded-full border border-gray-200 dark:border-gray-800 shadow-sm">
-                <TabsTrigger value="keyword" data-state={activeTool === "keyword" ? "active" : "inactive"} asChild>
-                  <Link
-                    href="/tools/keyword"
-                    className="text-sm font-medium px-3 py-1 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm flex items-center"
-                  >
-                    {getToolIcon("keyword")}
-                    {getToolDisplayName("keyword")}
-                  </Link>
-                </TabsTrigger>
-                <TabsTrigger value="url" data-state={activeTool === "url" ? "active" : "inactive"} asChild>
-                  <Link
-                    href="/tools/url"
-                    className="text-sm font-medium px-3 py-1 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm flex items-center"
-                  >
-                    {getToolIcon("url")}
-                    {getToolDisplayName("url")}
-                  </Link>
-                </TabsTrigger>
-                <TabsTrigger value="serp" data-state={activeTool === "serp" ? "active" : "inactive"} asChild>
-                  <Link
-                    href="/tools/serp"
-                    className="text-sm font-medium px-3 py-1 rounded-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-sm flex items-center"
-                  >
-                    {getToolIcon("serp")}
-                    {getToolDisplayName("serp")}
-                  </Link>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+          {/* Desktop Static Title */}
+          <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full border border-gray-200 dark:border-gray-800 shadow-sm bg-gray-50 dark:bg-gray-850">
+             {getToolIcon("keyword")}
+             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+               {getToolDisplayName("keyword")}
+             </span>
+           </div>
 
-          {/* Mobile Navigation Toggle */}
+          {/* Mobile Navigation Toggle (remains for potential future use/other actions) */}
           <button
             className="md:hidden p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -234,9 +205,15 @@ export default function ToolsLayout({
         </div>
       </div>
 
-      {/* Mobile Navigation Menu */}
+      {/* Mobile Navigation Menu - Remove Keyword link as it's the only tool */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-md">
+          {/* Placeholder for potential future mobile menu items */}
+          <div className="p-2 text-sm text-gray-500 dark:text-gray-400">
+            （目前無其他導航選項）
+          </div>
+          {/* Removed Link for Keyword Tool */}
+          {/*
           <nav className="flex flex-col p-2">
             <Link
               href="/tools/keyword"
@@ -246,35 +223,8 @@ export default function ToolsLayout({
               {getToolIcon("keyword")}
               {getToolDisplayName("keyword")}
             </Link>
-            <Link
-              href="/tools/url"
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${activeTool === "url" ? "bg-blue-500 text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              {getToolIcon("url")}
-              {getToolDisplayName("url")}
-            </Link>
-            <Link
-              href="/tools/serp"
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${activeTool === "serp" ? "bg-blue-500 text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              {getToolIcon("serp")}
-              {getToolDisplayName("serp")}
-            </Link>
-
-            {/* Display region and language on mobile */}
-            <div className="mt-2 px-3 py-1.5 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400">地區:</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs">
-                {region}
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">語言:</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs">
-                {language ? language.replace("_", "-") : "zh-TW"}
-              </span>
-            </div>
           </nav>
+          */}
         </div>
       )}
 

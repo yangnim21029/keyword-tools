@@ -2,7 +2,7 @@
 
 import { REGIONS } from '@/app/config/constants';
 import { safeParse } from '@/app/lib/ZodUtils';
-import type { SerpAnalysisResult } from '@/app/types';
+import type { FirebaseSerpResultsMap, ProcessedSerpResult } from '@/app/types/serp.types';
 import {
   ApifyOrganicResult,
   apifyOrganicResultSchema,
@@ -116,7 +116,7 @@ export async function getSerpAnalysis(
   region: string,
   language: string,
   maxResults: number = 100
-): Promise<SerpAnalysisResult> {
+): Promise<{ results: FirebaseSerpResultsMap; sourceInfo: string; error?: string }> {
   const sourceInfo = '數據來源: Apify API';
 
   const inputValidation = serpApiInputSchema.safeParse({ keywords, region, language, maxResults });
@@ -191,11 +191,11 @@ export async function getSerpAnalysis(
       console.warn('Apify API 回應驗證警告:', apiResponseValidation.error instanceof Error ? apiResponseValidation.error.message : JSON.stringify(apiResponseValidation.error));
     }
     
-    const processedResults = await processApifyResults(items);
+    const processedResults: FirebaseSerpResultsMap = await processApifyResults(items);
     console.log(`處理了 ${Object.keys(processedResults).length} 個關鍵詞結果`);
     
     return {
-      results: ensureOriginalQuery(processedResults),
+      results: processedResults,
       sourceInfo: sourceInfo
     };
   } catch (error) {
@@ -211,8 +211,8 @@ export async function getSerpAnalysis(
 /**
  * 處理 Apify 結果數據
  */
-async function processApifyResults(items: any[]) {
-  const results: Record<string, any> = {};
+async function processApifyResults(items: any[]): Promise<FirebaseSerpResultsMap> {
+  const results: FirebaseSerpResultsMap = {};
   
   console.log('Apify API 回傳的原始資料:', JSON.stringify(items).substring(0, 200) + '...');
   
@@ -276,21 +276,39 @@ async function processApifyResults(items: any[]) {
       // 分析結果數據
       const analysis = analyzeSerpResults(processedResults);
       
-      // 保存結果 - 使用 Zod 進行驗證
-      results[keyword] = processedSerpResultSchema.parse({
+      // Construct the ProcessedSerpResult object for the keyword
+      // Handle different possible types for queryDetails
+      let queryDetailsObject: Record<string, any> | undefined;
+      if (typeof validItem.searchQuery === 'object' && validItem.searchQuery !== null) {
+          queryDetailsObject = validItem.searchQuery;
+      } else if (typeof validItem.searchQuery === 'string') {
+          queryDetailsObject = { query: validItem.searchQuery }; // Wrap string in an object
+      } else {
+          queryDetailsObject = undefined; // Assign undefined if null or other type
+      }
+
+      const keywordResultData: ProcessedSerpResult = {
         results: processedResults,
         analysis,
         timestamp: new Date().toISOString(),
         originalQuery: keyword,
-        queryDetails: validItem.searchQuery || {}, 
+        queryDetails: queryDetailsObject,
         totalResults: validItem.resultsTotal || 0,
         relatedQueries: validItem.relatedQueries || [],
         peopleAlsoAsk: validItem.peopleAlsoAsk || [],
-        rawData: validItem // 保存原始完整資料
-      });
-      
-      console.log(`已處理關鍵詞 "${keyword}" 的搜索結果，找到 ${processedResults.length} 個結果`);
-      console.log(`相關查詢數量: ${(validItem.relatedQueries || []).length}`);
+        rawData: validItem
+      };
+
+      // Use Zod to validate the constructed object before assigning
+      const validatedKeywordResult = processedSerpResultSchema.safeParse(keywordResultData);
+
+      if (validatedKeywordResult.success) {
+        results[keyword] = validatedKeywordResult.data;
+        console.log(`已處理關鍵詞 "${keyword}" 的搜索結果，找到 ${validatedKeywordResult.data.results.length} 個結果`);
+        console.log(`相關查詢數量: ${(validatedKeywordResult.data.relatedQueries || []).length}`);
+      } else {
+        console.warn(`關鍵詞 "${keyword}" 的處理結果驗證失敗:`, validatedKeywordResult.error.format());
+      }
     } catch (error) {
       console.error('處理 SERP 結果項目時出錯:', error);
     }

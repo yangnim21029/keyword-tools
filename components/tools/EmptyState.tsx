@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { Button } from "@/components/ui/button"
-import { FileText, Globe, LayoutGrid, Search } from "lucide-react"
+import { FileText, Search } from "lucide-react"
 import Link from "next/link"
 
 interface EmptyStateProps {
@@ -36,27 +36,13 @@ export function EmptyState({
       )}
 
       {showToolLinks && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-lg">
+        <div className="grid grid-cols-1 gap-4 w-full max-w-xs">
           <Link
             href="/tools/keyword"
             className="flex items-center justify-center gap-2 p-3 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"
           >
             <FileText className="h-4 w-4 text-blue-500" />
             關鍵詞工具
-          </Link>
-          <Link
-            href="/tools/url"
-            className="flex items-center justify-center gap-2 p-3 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"
-          >
-            <Globe className="h-4 w-4 text-green-500" />
-            URL 分析
-          </Link>
-          <Link
-            href="/tools/serp"
-            className="flex items-center justify-center gap-2 p-3 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"
-          >
-            <LayoutGrid className="h-4 w-4 text-purple-500" />
-            SERP 分析
           </Link>
         </div>
       )}

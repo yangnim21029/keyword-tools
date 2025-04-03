@@ -21,21 +21,16 @@ export interface SortState {
   direction: SortDirection;
 }
 
-// You might want to define a type for the History Detail object
-// based on what `loadKeywordData` actually receives and uses.
-// For now, keeping it simple:
-export type KeywordHistoryDetail = {
-  id?: string; // Optional because new searches won't have it initially
-  mainKeyword?: string;
-  suggestions?: string[];
-  searchResults?: import("@/lib/schemas/keyword.schema").KeywordVolumeItem[];
-  clusters?: import("@/lib/schemas/keyword.schema").KeywordClusters;
-  // Add counts for display in history list
-  resultCount?: number; // Ensure this is present
-  clustersCount?: number; // Ensure this is present
-  // Add other relevant fields from history if needed
-  region?: string;
-  language?: string;
-  timestamp?: string | Date;
-}
-
+// // Removed redundant KeywordHistoryDetail type
+// export type KeywordHistoryDetail = {
+//   id?: string;
+//   mainKeyword?: string;
+//   suggestions?: string[];
+//   searchResults?: import("@/lib/schemas/keyword.schema").KeywordVolumeItem[];
+//   clusters?: import("@/lib/schemas/keyword.schema").KeywordClusters;
+//   resultCount?: number;
+//   clustersCount?: number;
+//   region?: string;
+//   language?: string;
+//   timestamp?: string | Date;
+// } 

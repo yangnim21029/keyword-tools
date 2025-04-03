@@ -19,7 +19,7 @@ export default function KeywordClustering() {
   const [clusteringText, setClusteringText] = useState<string>("");
   const [clusters, setClusters] = useState<Record<string, string[]> | null>(null);
   const [copiedClusterIndex, setCopiedClusterIndex] = useState<number | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-4o-mini");
+  const [selectedModel, setSelectedModel] = useState<"gpt-4o-mini" | "gpt-4o">("gpt-4o-mini");
 
   // 從store獲取狀態和操作
   const setGlobalLoading = useQueryStore(state => state.actions.setLoading);
@@ -280,7 +280,10 @@ export default function KeywordClustering() {
       setClusteringText('請求 AI 分群中...');
       
       // 使用 Server Action 進行分群
-      const result = await performSemanticClustering(limitedKeywords);
+      const result = await performSemanticClustering({
+        keywords: limitedKeywords, 
+        model: selectedModel // Pass the selected model as well
+      });
       
       if (result.clusters && Object.keys(result.clusters).length > 0) {
         const clusterCount = Object.keys(result.clusters).length;
@@ -555,7 +558,7 @@ export default function KeywordClustering() {
           value={selectedModel} 
           onValueChange={(value) => {
             console.log("模型已更改為:", value);
-            setSelectedModel(value);
+            setSelectedModel(value as "gpt-4o-mini" | "gpt-4o");
           }}
         >
           <SelectTrigger className="w-[180px]">

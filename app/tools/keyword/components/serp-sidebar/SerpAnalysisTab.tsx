@@ -1,17 +1,17 @@
 "use client"
 
-import { analyzeSerpResultsHtml, getSerpAnalysis } from "@/app/services/serp"
-import type { SerpAnalysisResult } from "@/app/types"
-import { EmptyState } from "@/components/tools/EmptyState"
-import { Card } from "@/components/ui/card"
-import { LoadingButton } from "@/components/ui/LoadingButton"
-import type { processedSerpResultSchema } from "@/lib/schemas"
-import { useQueryStore } from "@/store/queryStore"
-import { LayoutGrid } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
-import { toast } from "sonner"
-import type { z } from "zod"
-import SerpAnalysisComponent from "./serp-analysis/SerpAnalysisComponent"
+import { analyzeSerpResultsHtml, getSerpAnalysis } from "@/app/services/serp";
+import type { FirebaseSerpResultsMap } from '@/app/types/serp.types';
+import { EmptyState } from "@/components/tools/EmptyState";
+import { Card } from "@/components/ui/card";
+import { LoadingButton } from "@/components/ui/LoadingButton";
+import type { processedSerpResultSchema } from "@/lib/schemas";
+import { useQueryStore } from "@/store/queryStore";
+import { LayoutGrid } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { z } from "zod";
+import SerpAnalysisComponent from "./serp-analysis/SerpAnalysisComponent";
 
 interface SerpAnalysisTabProps {
   activeTab: "keyword" | "url" | "serp" | "settings"
@@ -62,7 +62,7 @@ export default function SerpAnalysisTab({
 }: SerpAnalysisTabProps) {
   // 本地狀態
   const [serpKeywords, setSerpKeywords] = useState<string>("")
-  const [serpResults, setSerpResults] = useState<SerpAnalysisResult | null>(null)
+  const [serpResults, setSerpResults] = useState<{ results: FirebaseSerpResultsMap; sourceInfo: string; error?: string } | null>(null)
   const [isAnalyzingHtml, setIsAnalyzingHtml] = useState(false)
   const [htmlAnalysisStatus, setHtmlAnalysisStatus] = useState<string>("")
   const [keyword, setKeyword] = useState("")

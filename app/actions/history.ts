@@ -9,11 +9,11 @@ import {
     updateSearchHistoryWithPersonas,
     updateSearchHistoryWithResults
 } from '@/app/services/firebase/history'; // Assuming this path is correct
-import { SearchHistoryDetailResult, SearchHistoryListResult } from '@/app/types'; // Assuming this path is correct
+import { SearchHistoryItem } from '@/app/types'; // Assuming this path is correct - Adjusted import based on linter
 import { revalidateTag } from 'next/cache';
 
 // 获取搜索历史列表
-export async function fetchKeywordResearchHistoryList(limit: number = 50, forceRefresh: boolean = false): Promise<SearchHistoryListResult> {
+export async function fetchKeywordResearchHistoryList(limit: number = 50, forceRefresh: boolean = false): Promise<{ data: SearchHistoryItem[]; sourceInfo: string; error?: string }> {
     const sourceInfo = '數據來源: Firebase Firestore';
     try {
         if (forceRefresh) {
@@ -40,15 +40,15 @@ export async function fetchKeywordResearchHistoryList(limit: number = 50, forceR
 }
 
 // 获取特定搜索历史详情
-export async function fetchKeywordResearchHistoryDetail(historyId: string): Promise<SearchHistoryDetailResult> {
+export async function fetchKeywordResearchHistoryDetail(historyId: string): Promise<SearchHistoryItem> {
     const sourceInfo = '數據來源: Firebase Firestore';
     try {
         // No need to revalidateTag here unless specifically needed when fetching detail
         const historyDetail = await getSearchHistoryDetailFromFirebase(historyId);
         if (!historyDetail) {
-            return { error: '找不到指定的歷史記錄', sourceInfo, data: null };
+            throw new Error('找不到指定的歷史記錄');
         }
-        return { data: historyDetail, sourceInfo };
+        return historyDetail;
     } catch (error) {
         console.error(`獲取歷史詳情 (${historyId}) 失敗:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -58,7 +58,7 @@ export async function fetchKeywordResearchHistoryDetail(historyId: string): Prom
         } else if (errorMessage.includes('permission-denied') || errorMessage.includes('PERMISSION_DENIED')) {
             userFriendlyError = '獲取歷史詳情失敗: 權限不足。請檢查您的登錄狀態或權限設置。';
         }
-        return { error: userFriendlyError, sourceInfo, data: null };
+        throw new Error(userFriendlyError);
     }
 }
 

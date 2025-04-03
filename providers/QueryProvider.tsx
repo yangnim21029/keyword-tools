@@ -8,11 +8,10 @@ import { createStore } from 'zustand/vanilla';
 // Import server actions and types
 // Remove direct service import if no longer needed elsewhere in this file
 // import { getSearchVolume } from '@/app/services/KeywordDataService';
-import { getKeywordSuggestions, saveKeywordResearch, fetchSearchVolume } from '@/app/actions'; // Import fetchSearchVolume action
+import { fetchSearchVolume, getKeywordSuggestions, getUrlSuggestions, saveKeywordResearch } from '@/app/actions'; // Import fetchSearchVolume action and getUrlSuggestions
 import { KeywordVolumeItem } from '@/lib/schemas'; // Assuming this is the correct path
 
 // --- Import the past query store hook --- 
-import { usePastQueryStore } from './PastQueryProvider'; 
 
 // Define settings type for clarity
 export interface SearchSettings {
@@ -145,29 +144,39 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
       },
 
       // 綜合方法 - Use passed settings
-      handleSearchSubmit: async (settings) => { 
+      handleSearchSubmit: async (settings) => {
         const { searchInput, activeTab } = get().state;
         const actions = get().actions;
         const { region, language, useAlphabet, useSymbols } = settings;
 
-        // 只處理 keyword tab 的搜索
-        if (activeTab !== 'keyword' || !searchInput.trim()) {
-          console.log(`[QueryStore] Skipping submit for tab: ${activeTab} or empty input.`);
+        // --- Allow submit regardless of activeTab if searchInput is present --- 
+        if (!searchInput.trim()) {
+          console.log(`[QueryStore] Skipping submit due to empty input.`);
           return;
         }
         
-        actions.setLoading(true, '正在獲取建議...');
-        actions.clearResults(); // 清除舊結果 (in this store)
+        actions.setLoading(true, '正在處理請求...'); // Generic message
+        actions.clearResults();
 
         let suggestionsList: string[] = [];
+        const isUrl = searchInput.startsWith('http'); // Simple check
+        const currentInputType = isUrl ? 'url' : 'keyword';
+        console.log(`[QueryStore] Input type detected: ${currentInputType}`);
 
         try {
-          // 1. 獲取所有建議
-          console.log(`[QueryStore] Fetching suggestions for: \"${searchInput}\", Region: ${region}, Lang: ${language}, Alpha: ${useAlphabet}, Sym: ${useSymbols}`); // Log settings
-          const suggestionsResult = await getKeywordSuggestions(searchInput, region, language, useAlphabet, useSymbols);
+          // 1. 獲取建議 (根據類型)
+          let suggestionsResult;
+          if (currentInputType === 'keyword') {
+            console.log(`[QueryStore] Fetching KEYWORD suggestions for: \"${searchInput}\"...`);
+            suggestionsResult = await getKeywordSuggestions(searchInput, region, language, useAlphabet, useSymbols);
+          } else { // 'url'
+            console.log(`[QueryStore] Fetching URL suggestions for: ${searchInput}...`);
+            // getUrlSuggestions is already imported
+            suggestionsResult = await getUrlSuggestions({ url: searchInput, region, language });
+          }
 
           if (suggestionsResult.error || !suggestionsResult.suggestions || suggestionsResult.suggestions.length === 0) {
-            const errorMsg = suggestionsResult.error || '未找到關鍵詞建議';
+            const errorMsg = suggestionsResult.error || (currentInputType === 'keyword' ? '未找到關鍵詞建議' : '無法從 URL 獲取建議');
             console.warn(`[QueryStore] No suggestions found or error: ${errorMsg}`);
             actions.setError(errorMsg);
             toast.error(errorMsg);
@@ -175,10 +184,11 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
             return;
           }
           
-          suggestionsList = suggestionsResult.suggestions; // Store the full list
+          suggestionsList = suggestionsResult.suggestions;
           actions.setSuggestions(suggestionsList);
 
-          const suggestionsToProcess = suggestionsList.slice(0, 40);
+          // Limit suggestions for volume fetching (consider making limit consistent)
+          const suggestionsToProcess = suggestionsList.slice(0, 40); 
           console.log(`[QueryStore] Got ${suggestionsList.length} suggestions, processing top ${suggestionsToProcess.length} for volume.`);
 
           if (suggestionsToProcess.length === 0) {
@@ -189,11 +199,10 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
           }
 
           actions.setLoading(true, `正在獲取 ${suggestionsToProcess.length} 個關鍵詞搜索量...`);
-          // --- Call the fetchSearchVolume ACTION instead of the service --- 
-          const volumeResult = await fetchSearchVolume( // Use the action
+          const volumeResult = await fetchSearchVolume(
              suggestionsToProcess, 
              region, 
-             searchInput, // Pass the original searchInput as the 'url'/'context' maybe?
+             searchInput, // Pass original input as context/url
              language
           );
 
@@ -207,16 +216,15 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
             actions.setError(null);
             toast.success(`成功獲取 ${volumeResult.results.length} 個關鍵詞數據`);
 
-            // --- ADD HISTORY SAVING LOGIC HERE --- 
+            // --- HISTORY SAVING --- 
             try {
               actions.setLoading(true, '正在保存歷史記錄...');
               const saveResult = await saveKeywordResearch(
-                searchInput,
+                searchInput, // Use original input as mainKeyword/url
                 region,
                 language,
                 suggestionsList,
                 volumeResult.results
-                // No need to pass clusters
               );
               
               if (saveResult.historyId) { 
@@ -229,7 +237,7 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
               console.error("[QueryStore] Error saving history:", saveError);
               toast.error(`保存歷史記錄失敗: ${saveError instanceof Error ? saveError.message : '未知錯誤'}`);
             } 
-            // --- END HISTORY SAVING LOGIC --- 
+            // --- END HISTORY SAVING --- 
           }
 
         } catch (error) {

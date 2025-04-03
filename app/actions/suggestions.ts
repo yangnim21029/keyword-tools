@@ -6,8 +6,7 @@ import {
   fetchAutocomplete,
   fetchSuggestionWithDelay, // Keep this if getKeywordSuggestionsWithDelay uses it
 } from '@/app/services/suggestion.service';
-import { SuggestionsResult, SearchVolumeResult } from '@/app/types';
-import { UrlFormData } from '@/types'; // Assuming this is a root level type definition
+import { KeywordSuggestionResult, KeywordVolumeResult } from '@/app/types/keyword.types';
 
 // Note: Caching logic was commented out in the original file and remains so here.
 // Implement server-side caching (e.g., using unstable_cache or external store) if needed.
@@ -19,7 +18,7 @@ export async function getKeywordSuggestions(
   language: string,
   useAlphabet: boolean = true,
   useSymbols: boolean = false
-): Promise<SuggestionsResult> {
+): Promise<KeywordSuggestionResult> {
   const searchPrefix = query.trim();
 
   try {
@@ -74,7 +73,12 @@ export async function getKeywordSuggestions(
 }
 
 // Refactored getUrlSuggestions
-export async function getUrlSuggestions(formData: UrlFormData): Promise<SuggestionsResult> {
+interface UrlFormData {
+  url: string;
+  region: string;
+  language: string;
+}
+export async function getUrlSuggestions(formData: UrlFormData): Promise<KeywordSuggestionResult> {
   const { url, region, language } = formData;
 
   if (!url) {
@@ -129,7 +133,7 @@ export async function getUrlSuggestions(formData: UrlFormData): Promise<Suggesti
 }
 
 // getKeywordSuggestionsWithDelay (Moved from original actions.ts)
-export async function getKeywordSuggestionsWithDelay(query: string, region: string, language: string): Promise<SuggestionsResult> {
+export async function getKeywordSuggestionsWithDelay(query: string, region: string, language: string): Promise<KeywordSuggestionResult> {
   const searchPrefix = query.trim();
   try {
     console.log(`Fetching suggestions with delay for: ${searchPrefix}`);
@@ -159,7 +163,7 @@ export async function fetchSearchVolume(
   region: string,
   url: string | undefined, // Change null to undefined
   language: string
-): Promise<SearchVolumeResult> {
+): Promise<KeywordVolumeResult> {
   console.log(`Fetching search volume for ${keywords.length} keywords. Region: ${region}, Lang: ${language}, URL: ${url}`);
   try {
     // Call the service function
@@ -172,12 +176,13 @@ export async function fetchSearchVolume(
     return result;
   } catch (error) {
     console.error('Error fetching search volume via action:', error);
-    // Return an error structure compatible with SearchVolumeResult
+    // Return an error structure compatible with KeywordVolumeResult
+    // Adjust this structure based on the actual definition of KeywordVolumeResult
     return {
       results: [],
       processingTime: { estimated: 0, actual: 0 },
       sourceInfo: '數據來源: 獲取失敗 (Action Error)',
       error: error instanceof Error ? error.message : 'Unknown error fetching search volume'
-    };
+    } as KeywordVolumeResult; // Type assertion might be needed
   }
 } 

@@ -1,105 +1,110 @@
 "use client"
 
 // Optimize imports
-import { ToolHeader } from "@/components/tools/ToolHeader"
-import { usePastQueryStore } from "@/providers/PastQueryProvider"
-import { useQueryStore } from "@/providers/QueryProvider"
-import { useSettingsStore } from "@/store/settingsStore"
-import { FileText } from "lucide-react"
-import { useEffect, useRef } from "react"
-import KeywordSearchTab from "./KeywordSearchTab"
+import { ToolHeader } from "@/components/tools/ToolHeader";
+// Providers are usually used in layout, maybe import store hooks directly?
+// import { usePastQueryStore } from "@/providers/PastQueryProvider" 
+// import { useQueryStore } from "@/providers/QueryProvider"
+import type { KeywordVolumeItem } from "@/app/types"; // Import KeywordVolumeItem
+import { usePastQueryStore, type PastQueryStore } from "@/store/pastQueryStore";
+import { useQueryStore, type QueryStore } from "@/store/queryStore";
+import { useSettingsStore } from "@/store/settingsStore";
+import { FileText } from "lucide-react";
+import { useEffect, useRef } from "react";
+import KeywordSearchTab from "./KeywordSearchTab";
 
 export default function KeywordToolPage() {
-  // Access stores directly as the component likely did before
+  // Access stores directly
   const settingsState = useSettingsStore((store) => store.state)
   const settingsActions = useSettingsStore((store) => store.actions)
-  // --- Get state and actions from QueryStore ---
   const {
     searchInput,
     lastTriggeredSearch,
+    isLoading, // Get isLoading from store
     error: queryError,
     suggestions: querySuggestions,
     volumeData: queryVolumeData,
-  } = useQueryStore((store) => store.state)
+  } = useQueryStore((store: QueryStore) => store.state)
   const {
-    handleSearchSubmit,
-    setSearchInput, // Action to set search input
-    setSuggestions, // Action to set suggestions
-    setVolumeData, // Action to set volume data
-  } = useQueryStore((store) => store.actions)
-
-  // --- Get state and actions from PastQueryStore ---
+    handleSearchSubmit, 
+    // Actions needed to update QueryStore from history
+    setSearchInput, 
+    setSuggestions, 
+    setVolumeData, 
+    clearResults // Add clearResults if needed when deselected
+  } = useQueryStore((store: QueryStore) => store.actions)
   const {
-    selectedHistoryId, // ID of the selected history item
-    selectedHistoryDetail, // Detailed data of the selected item
-  } = usePastQueryStore((store) => store.state)
-  const { notifyHistorySaved, clearSelectedHistoryDetail } = usePastQueryStore((store) => store.actions)
+    selectedHistoryId, 
+    selectedHistoryDetail, 
+  } = usePastQueryStore((store: PastQueryStore) => store.state)
+  const { notifyHistorySaved, clearSelectedHistoryDetail } = usePastQueryStore((store: PastQueryStore) => store.actions)
 
-  // --- State to track the last processed trigger timestamp ---
   const processedTimestampRef = useRef<number | null>(null)
 
-  // --- Add useEffect to react to lastTriggeredSearch from store ---
+  // useEffect to trigger search when lastTriggeredSearch changes
   useEffect(() => {
-    // Use an async IIFE to allow awaiting handleSearchSubmit
+    // This effect might be simplified or removed if triggerGlobalSearch directly calls handleSearchSubmit
+    // For now, keep it to react to global triggers
     ;(async () => {
       if (
         lastTriggeredSearch &&
-        lastTriggeredSearch.tool === "keyword" &&
         lastTriggeredSearch.timestamp !== processedTimestampRef.current
       ) {
-        console.log("[KeywordPage] Detected global search trigger:", lastTriggeredSearch)
-        const currentTimestamp = lastTriggeredSearch.timestamp
-        processedTimestampRef.current = currentTimestamp
+        console.log("[KeywordPage] Detected global search trigger:", lastTriggeredSearch);
+        const currentTimestamp = lastTriggeredSearch.timestamp;
+        processedTimestampRef.current = currentTimestamp;
 
-        // --- Clear history selection BEFORE submitting search ---
-        console.log("[KeywordPage] Clearing selected history before new search.")
-        clearSelectedHistoryDetail()
+        console.log("[KeywordPage] Clearing selected history before new search.");
+        clearSelectedHistoryDetail();
 
-        // Await the search submission
         await handleSearchSubmit({
           region: settingsState.region,
           language: settingsState.language,
           useAlphabet: settingsState.useAlphabet,
           useSymbols: settingsState.useSymbols,
-        })
-
-        // Check the queryError state variable directly
-        if (!queryError) {
-          console.log("[KeywordPage] Search successful, notifying history saved.")
-          notifyHistorySaved()
+        });
+        
+        // Use queryError from hook which is in dependency array
+        if (!queryError) { 
+          console.log("[KeywordPage] Search successful, notifying history saved.");
+          notifyHistorySaved();
         } else {
-          console.log("[KeywordPage] Search finished with error, not notifying history saved.", queryError)
+          console.log("[KeywordPage] Search finished with error:", queryError);
         }
       }
     })()
-    // Add clearSelectedHistoryDetail to dependencies
   }, [
-    lastTriggeredSearch,
-    handleSearchSubmit,
-    settingsState,
-    notifyHistorySaved,
-    clearSelectedHistoryDetail,
-    queryError,
-  ])
+    lastTriggeredSearch, 
+    handleSearchSubmit, 
+    settingsState, 
+    notifyHistorySaved, 
+    clearSelectedHistoryDetail, 
+    queryError // Add queryError to dependency array
+  ]);
 
-  // --- Effect to load data when history item is selected ---
+  // useEffect to load data into QueryStore when history item is selected
   useEffect(() => {
     if (selectedHistoryDetail) {
-      console.log("[KeywordPage] History item selected, loading data:", selectedHistoryDetail.id)
+      console.log("[KeywordPage] History item selected, updating QueryStore:", selectedHistoryDetail.id);
       // Update QueryStore with data from the selected history item
-      setSearchInput(selectedHistoryDetail.mainKeyword || "") // Update search input
-      setSuggestions(selectedHistoryDetail.suggestions || []) // Update suggestions
-      setVolumeData(selectedHistoryDetail.searchResults || []) // Update volume data
-      // Clear the last triggered search timestamp ref to prevent re-triggering search for this history load
-      processedTimestampRef.current = null
+      setSearchInput(selectedHistoryDetail.mainKeyword || ""); 
+      setSuggestions(selectedHistoryDetail.suggestions || []); 
+      // Ensure searchResults is correctly typed or cast
+      setVolumeData((selectedHistoryDetail.searchResults || []) as KeywordVolumeItem[]); 
+      
+      // Clear the last triggered search timestamp to prevent re-triggering search
+      processedTimestampRef.current = null;
+      
+      // Optionally reset error state in QueryStore
+      // setError(null); // Assuming setError action exists in QueryStore
     } else {
-      // Optional: Handle deselection if needed. For now, do nothing.
-      // console.log('[KeywordPage] History item deselected.');
+      // Optional: Handle deselection - clear QueryStore results?
+      console.log('[KeywordPage] History item deselected, clearing QueryStore results.');
+      // clearResults(); // Uncomment if clearing is desired
+      setSearchInput(''); // Clear search input on deselection
     }
-    // Dependencies: run when the selected item or its details change
-  }, [selectedHistoryId, selectedHistoryDetail, setSearchInput, setSuggestions, setVolumeData])
+  }, [selectedHistoryId, selectedHistoryDetail, setSearchInput, setSuggestions, setVolumeData, clearResults]); // Add setters/clear to dependencies
 
-  // Helper function (assuming it was defined similarly before or is needed by the tab)
   const convertToLanguage = (lang: string): "zh-TW" | "en-US" => {
     const normalizedLang = lang.replace("_", "-")
     if (normalizedLang === "zh-TW" || normalizedLang === "en-US") {
@@ -108,19 +113,25 @@ export default function KeywordToolPage() {
     return "zh-TW"
   }
 
+  // Determine input type based on searchInput
+  const isUrl = searchInput?.startsWith('http') ?? false;
+  const inputType = isUrl ? 'url' : 'keyword';
+
   return (
     <>
       <ToolHeader
         title="關鍵詞研究工具"
         description="搜索相關關鍵詞，獲取搜索量數據，並進行語義分群分析。"
-        activeTool="keyword"
+        activeTool={inputType} // Reflect current input type
         region={settingsState.region}
         language={settingsState.language}
         icon={<FileText className="h-5 w-5 text-blue-500" />}
       />
 
       <KeywordSearchTab
-        // Pass necessary props - mainly reading from stores now
+        // Pass derived inputType
+        inputType={inputType}
+        // Pass settings
         region={settingsState.region}
         language={settingsState.language}
         regions={settingsState.regions}
@@ -129,19 +140,15 @@ export default function KeywordToolPage() {
         onLanguageChange={(val) => settingsActions.setLanguage(convertToLanguage(val))}
         filterZeroVolume={settingsState.filterZeroVolume}
         maxResults={settingsState.maxResults}
-        onHistoryUpdate={(newHistory) => {
-          // Example: update history via store action if needed
-          console.log("History updated in keyword tool:", newHistory)
-          // historyActions.addHistory(newHistory);
-        }}
-        globalSearchInput={searchInput} // Pass global search input if needed by the tab
         useAlphabet={settingsState.useAlphabet}
         useSymbols={settingsState.useSymbols}
-        activeTab="keyword"
-        // activeTab prop is no longer needed as it's implicitly 'keyword'
-        // --- Pass suggestions and volume data from queryStore ---
+        // Pass results from QueryStore
         currentSuggestions={querySuggestions}
         currentVolumeData={queryVolumeData}
+        // Pass history details for context
+        selectedHistoryDetail={selectedHistoryDetail}
+        onHistoryLoaded={() => {}} // Placeholder or remove if not needed
+        // Removed props: activeTab, globalSearchInput, onHistoryUpdate
       />
     </>
   )

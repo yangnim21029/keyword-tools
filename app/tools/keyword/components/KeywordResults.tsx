@@ -1,8 +1,8 @@
 "use client"
 
+import type { SortState } from "@/app/types/keywordTool.d"
 import { Button } from "@/components/ui/button"
 import type { KeywordVolumeItem } from "@/lib/schemas"
-import type { SortState } from "@/types/keywordTool.d"
 import { ArrowDown, ArrowUp, BarChart2 } from "lucide-react"
 import { useMemo } from "react"
 import KeywordCard from "./KeywordCard"
@@ -111,17 +111,7 @@ export default function KeywordResults({
         </h3>
 
         {onSort && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs flex items-center gap-1"
-              onClick={() => onSort("text")}
-            >
-              名稱
-              {sortState.field === "text" &&
-                (sortState.direction === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-            </Button>
+          <div className="flex items-center gap-2 justify-end">
             <Button
               variant="ghost"
               size="sm"
