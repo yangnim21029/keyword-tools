@@ -55,7 +55,7 @@ export const keywordVolumeResultSchema = z.object({
     actual: z.number(),
   }).optional(),
   sourceInfo: z.string().optional(),
-  historyId: z.string().nullable().optional(),
+  researchId: z.string().nullable().optional(),
 });
 
 /**

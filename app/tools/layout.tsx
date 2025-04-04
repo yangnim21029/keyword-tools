@@ -5,13 +5,18 @@ import { SearchShortcutHelp } from "@/components/tools/SearchShortcutHelp"
 import { SettingsDialog } from "@/components/tools/SettingsDialog"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/LoadingButton"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { LayoutWidthContext } from '@/providers/LayoutWidthProvider'; // Import from the new provider
 import { useQueryStore } from "@/providers/QueryProvider"
 import { useSettingsStore } from "@/store/settingsStore"
-import { FileText, Globe, LayoutGrid, Search } from "lucide-react"
+import { FileText, Search } from "lucide-react"
 import { usePathname } from "next/navigation"
 import type React from "react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+
+// --- Remove Layout Width Context --- 
+// const LayoutWidthContext = createContext<boolean>(true); // Default to true (wide)
+// export const useLayoutWidth = () => useContext(LayoutWidthContext);
+// --------------------------
 
 export default function ToolsLayout({
   children,
@@ -26,33 +31,53 @@ export default function ToolsLayout({
   const language = useSettingsStore((store) => store.state.language)
 
   // Query store for search input and loading state
-  const searchInput = useQueryStore((store) => store.state.searchInput)
+  const queryInput = useQueryStore((store) => store.state.queryInput)
   const isLoading = useQueryStore((store) => store.state.isLoading)
   const loadingMessage = useQueryStore((store) => store.state.loadingMessage)
-  const setSearchInput = useQueryStore((store) => store.actions.setSearchInput)
-  const triggerGlobalSearch = useQueryStore((store) => store.actions.triggerGlobalSearch)
+  const setQueryInput = useQueryStore((store) => store.actions.setQueryInput)
+  const triggerGlobalQuery = useQueryStore((store) => store.actions.triggerGlobalQuery)
 
-  // Add state for mobile menu
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  // State to track client-side mount and prevent hydration mismatch
+  const [isMounted, setIsMounted] = useState(false)
+
+  // --- Resize Observer Logic ---
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isWideLayout, setIsWideLayout] = useState(true); // Assume wide initially
+  const WIDTH_THRESHOLD = 768; // Example threshold for 2-column layout (md breakpoint)
+
+  useEffect(() => {
+    const observer = new ResizeObserver(entries => {
+      if (entries[0]) {
+        const { width } = entries[0].contentRect;
+        setIsWideLayout(width >= WIDTH_THRESHOLD);
+      }
+    });
+
+    if (contentRef.current) {
+      observer.observe(contentRef.current);
+    }
+
+    // Initial check
+    if (contentRef.current) {
+       setIsWideLayout(contentRef.current.offsetWidth >= WIDTH_THRESHOLD);
+    }
+
+    return () => observer.disconnect();
+  }, []); // Run only on mount
+  // --------------------------
 
   // Memoize the trigger function to prevent unnecessary re-renders
   const triggerQuery = useCallback(() => {
-    console.log(`[Layout] Triggering search action for ${activeTool} with input: ${searchInput}`)
-    triggerGlobalSearch(activeTool, searchInput)
+    console.log(`[Layout] Triggering search action for ${activeTool} with input: ${queryInput}`)
+    triggerGlobalQuery(activeTool, queryInput)
     window.dispatchEvent(new CustomEvent("search-button-click"))
-  }, [activeTool, searchInput, triggerGlobalSearch])
+  }, [activeTool, queryInput, triggerGlobalQuery])
 
   // Helper to map tool names to display names
   const getToolDisplayName = (tool: string) => {
     switch (tool) {
       case "keyword":
         return "關鍵詞工具"
-      case "url":
-        return "URL分析"
-      case "serp":
-        return "SERP分析"
-      default:
-        return "工具"
     }
   }
 
@@ -60,12 +85,6 @@ export default function ToolsLayout({
     switch (tool) {
       case "keyword":
         return "輸入關鍵詞搜索..."
-      case "url":
-        return "輸入網址分析..."
-      case "serp":
-        return "輸入SERP查詢詞..."
-      default:
-        return "搜索..."
     }
   }
 
@@ -73,12 +92,6 @@ export default function ToolsLayout({
     switch (tool) {
       case "keyword":
         return "獲取建議"
-      case "url":
-        return "分析URL"
-      case "serp":
-        return "分析SERP"
-      default:
-        return "搜索"
     }
   }
 
@@ -86,12 +99,6 @@ export default function ToolsLayout({
     switch (tool) {
       case "keyword":
         return "搜索相關關鍵詞"
-      case "url":
-        return "分析URL關鍵詞"
-      case "serp":
-        return "分析搜索結果頁"
-      default:
-        return "搜索"
     }
   }
 
@@ -100,10 +107,6 @@ export default function ToolsLayout({
     switch (tool) {
       case "keyword":
         return <FileText className="h-4 w-4 mr-2" />
-      case "url":
-        return <Globe className="h-4 w-4 mr-2" />
-      case "serp":
-        return <LayoutGrid className="h-4 w-4 mr-2" />
       default:
         return null
     }
@@ -122,114 +125,67 @@ export default function ToolsLayout({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [triggerQuery])
 
+  // Ensure component is mounted before rendering client-side specific state
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   return (
-    <div className="w-full h-full flex flex-col">
-      {/* Top Bar - Optimized for mobile */}
-      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 py-2 px-3 gap-3 shadow-sm flex-shrink-0">
-        {/* Region/Language Display - Keep as display only to avoid hydration issues */}
-        <div className="flex-shrink-0 text-sm text-gray-600 dark:text-gray-400 hidden md:flex items-center gap-1 whitespace-nowrap">
-          <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs">
-            {region}
-          </span>
-          <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 text-xs">
-            {language ? language.replace("_", "-") : "zh-TW"}
-          </span>
+    <div className="flex flex-col h-full">
+      {/* 简化的顶部导航 */}
+      <header className="sticky top-0 flex h-12 shrink-0 items-center bg-background border-b px-4 z-10">
+        <div className="flex items-center gap-2 mr-3">
+          {getToolIcon(activeTool)}
+          <span className="font-medium">{getToolDisplayName(activeTool)}</span>
+
+          {/* 区域/语言标签 - 简化为一个组件 */}
+          {isMounted && (
+            <div className="flex items-center gap-1 ml-1">
+              <span className="px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground text-xs">
+                {`${region} / ${language ? language.replace("_", "-") : "zh-TW"}`}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Search Input & Button */}
+        {/* 搜索输入框 - 简化结构 */}
         <div className="relative flex-1 max-w-lg">
           <Input
             type="text"
             placeholder={getSearchPlaceholder(activeTool)}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-8 pr-20 h-9 border-gray-200 dark:border-gray-800 shadow-sm focus:border-blue-300 dark:focus:border-blue-600 focus:ring-1 focus:ring-blue-300 dark:focus:ring-blue-600 rounded-full transition-colors"
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            className="pl-8 pr-20 h-8 shadow-sm rounded-full text-sm"
             onKeyDown={(e) => e.key === "Enter" && triggerQuery()}
-            aria-label={`Search ${getToolDisplayName(activeTool)}`}
           />
           <Search
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
             aria-hidden="true"
           />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <LoadingButton
-                  onClick={triggerQuery}
-                  className="absolute right-1 top-1 h-7 bg-blue-500 hover:bg-blue-600 text-white text-xs px-2.5 rounded-full transition-colors shadow-sm"
-                  isLoading={isLoading}
-                  loadingText={loadingMessage || "處理中..."}
-                  aria-label={getButtonText(activeTool)}
-                >
-                  {getButtonText(activeTool)}
-                </LoadingButton>
-              </TooltipTrigger>
-              <TooltipContent className="bg-gray-800 dark:bg-gray-900 text-white shadow-lg">
-                <p className="text-xs">{getTooltipText(activeTool)}</p>
-                <p className="text-xs text-gray-300 mt-1">快捷鍵: Ctrl+Enter</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <LoadingButton
+            onClick={triggerQuery}
+            className="absolute right-1 top-1 h-6 bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-2.5 rounded-full transition-colors shadow-sm"
+            isLoading={isLoading}
+            loadingText={loadingMessage || "處理中..."}
+          >
+            {getButtonText(activeTool)}
+          </LoadingButton>
         </div>
 
-        {/* Mode Toggle & Tabs Navigation */}
-        <div className="flex items-center gap-2">
+        {/* 工具按钮 */}
+        <div className="flex items-center gap-1 ml-3">
           <SearchShortcutHelp />
           <SettingsDialog />
           <ModeToggle />
-
-          {/* Desktop Static Title */}
-          <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full border border-gray-200 dark:border-gray-800 shadow-sm bg-gray-50 dark:bg-gray-850">
-             {getToolIcon("keyword")}
-             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-               {getToolDisplayName("keyword")}
-             </span>
-           </div>
-
-          {/* Mobile Navigation Toggle (remains for potential future use/other actions) */}
-          <button
-            className="md:hidden p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="Toggle navigation menu"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Mobile Navigation Menu - Remove Keyword link as it's the only tool */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-md">
-          {/* Placeholder for potential future mobile menu items */}
-          <div className="p-2 text-sm text-gray-500 dark:text-gray-400">
-            （目前無其他導航選項）
-          </div>
-          {/* Removed Link for Keyword Tool */}
-          {/*
-          <nav className="flex flex-col p-2">
-            <Link
-              href="/tools/keyword"
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${activeTool === "keyword" ? "bg-blue-500 text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              {getToolIcon("keyword")}
-              {getToolDisplayName("keyword")}
-            </Link>
-          </nav>
-          */}
+      {/* 主内容区域 - 直接渲染，移除多余嵌套 */}
+      <LayoutWidthContext.Provider value={{ isWideLayout }}>
+        <div ref={contentRef} className="flex-1 w-full overflow-auto p-4">
+          {children}
         </div>
-      )}
-
-      {/* Main Content Area for Tool Pages */}
-      <div className="flex-grow p-3 overflow-auto transition-all duration-200">{children}</div>
+      </LayoutWidthContext.Provider>
     </div>
   )
 }

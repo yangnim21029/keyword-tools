@@ -1,10 +1,10 @@
 // 導出共享配置
 export { COLLECTIONS, db } from './config';
 
-// 導出歷史相關功能
+// 導出關鍵詞研究相關功能
 export {
-    getSearchHistoryDetail, getSearchHistoryList, saveSearchHistory, updateSearchHistoryWithClusters
-} from './history';
+  getKeywordResearchDetail, getKeywordResearchList, saveKeywordResearch, updateKeywordResearchClusters
+} from './keyword_research';
 
 // 導出統計相關功能
 export { getDatabaseStats } from './stats';

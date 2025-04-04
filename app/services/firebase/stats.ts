@@ -7,7 +7,7 @@ export async function getDatabaseStats() {
   if (!db) return {};
   
   try {
-    const stats: Record<string, any> = {};
+    const stats: Record<string, number | string> = {};
     
     // 獲取各集合的文檔數量
     for (const collection of Object.values(COLLECTIONS)) {

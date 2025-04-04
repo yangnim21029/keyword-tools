@@ -82,9 +82,20 @@ ${limitedKeywords.join(', ')}
     
     console.log(`[Server Action] 收到 OpenAI 完整結果`); // 避免打印可能很大的 text
 
+    // 清理 AI 返回的文本，移除可能的 Markdown 代码块标记
+    let cleanedText = text.trim();
+    if (cleanedText.startsWith("```json")) {
+      cleanedText = cleanedText.substring(7).trim(); // 移除 ```json 并再次 trim
+    } else if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText.substring(3).trim(); // 移除 ``` 并再次 trim
+    }
+    if (cleanedText.endsWith("```")) {
+      cleanedText = cleanedText.substring(0, cleanedText.length - 3).trim(); // 移除末尾的 ``` 并再次 trim
+    }
+
     try {
-      // 尝试解析 JSON
-      const result = JSON.parse(text);
+      // 尝试解析清理后的 JSON
+      const result = JSON.parse(cleanedText);
       // console.log(`[Server Action] 解析後的結果:`, JSON.stringify(result, null, 2)); // 调试时可取消注释
       
       // 验证结果格式
@@ -95,7 +106,7 @@ ${limitedKeywords.join(', ')}
       return validatedResult;
       
     } catch (parseError) {
-      console.error('[Server Action] JSON 解析錯誤:', parseError, '原始文本:', text); // 记录原始文本以帮助调试
+      console.error('[Server Action] JSON 解析錯誤:', parseError, '清理前的原始文本:', text, '清理後的文本:', cleanedText); // 记录原始和清理后的文本
       throw new Error('無法解析 AI 返回的 JSON 格式');
     }
   } catch (error) {

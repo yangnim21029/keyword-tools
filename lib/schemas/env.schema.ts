@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { z } from 'zod';
 
 /**
@@ -50,7 +52,7 @@ export function validateEnv(): Env {
     const errorMessages = Object.entries(formatted)
       .filter(([key]) => key !== '_errors')
       .map(([key, value]) => {
-        const errors = (value as any)._errors;
+        const errors = (value as Record<string, string[]>)._errors;
         return `${key}: ${errors.join(', ')}`;
       });
     
@@ -111,4 +113,51 @@ export function getEnvVar<K extends keyof Env>(
   }
   
   return (value as unknown as Env[K]) || defaultValue;
-} 
+}
+
+// --- Additional helper for client-side access ---
+
+// Helper to parse potentially undefined/empty strings to numbers or keep undefined
+const parseOptionalInt = (val: string | undefined): number | undefined => {
+  if (val === undefined || val === '') return undefined;
+  const parsed = parseInt(val, 10);
+  return isNaN(parsed) ? undefined : parsed;
+};
+
+export const clientEnv = {
+  // Subset of env variables safe for client-side
+  NEXT_PUBLIC_APP_URL: envSchema.shape.NEXT_PUBLIC_APP_URL,
+  // Example: Add other NEXT_PUBLIC variables if needed
+  // Add non-public variables ONLY if absolutely necessary and safe,
+  // but it's generally better to handle them server-side.
+};
+
+// Example of validating a nested object (like FIREBASE_SERVICE_ACCOUNT)
+const serviceAccountSchema = z.object({
+    type: z.string().optional(),
+    project_id: z.string().optional(),
+    private_key_id: z.string().optional(),
+    private_key: z.string().optional(),
+    client_email: z.string().optional(),
+    client_id: z.string().optional(),
+    auth_uri: z.string().optional(),
+    token_uri: z.string().optional(),
+    auth_provider_x509_cert_url: z.string().optional(),
+    client_x509_cert_url: z.string().optional(),
+    universe_domain: z.string().optional(),
+}).passthrough(); // Allow extra fields if present
+
+// Example of parsing a JSON string from env variable
+const parsedServiceAccount = z.preprocess(
+  (val: unknown) => {
+    if (typeof val === 'string' && val) {
+      try {
+        return JSON.parse(val);
+      } catch (e) {
+        console.error('❌ 解析 FIREBASE_SERVICE_ACCOUNT 失敗:', e);
+        return undefined;
+      }
+    }
+  },
+  serviceAccountSchema
+); 

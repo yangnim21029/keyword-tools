@@ -13,7 +13,7 @@ export type SortDirection = "asc" | "desc";
 export type ResultTab = "suggestions" | "volume"; // Removed "clusters" as it's shown within "volume" tab
 
 // Source of the cluster data
-export type ClusterSource = "history" | "new" | null;
+export type ClusterSource = "research" | "new" | null;
 
 // Interface for the sorting state
 export interface SortState {

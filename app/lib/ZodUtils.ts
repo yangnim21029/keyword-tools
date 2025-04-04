@@ -17,7 +17,7 @@ export function formatZodError(error: z.ZodError) {
 /**
  * 創建標準格式的 API 响應
  */
-export function createApiResponse<T>(success: boolean, data?: T, error?: any) {
+export function createApiResponse<T>(success: boolean, data?: T, error?: unknown) {
   return {
     success,
     data: data || null,
@@ -76,11 +76,11 @@ export function validateOrNull<T extends z.ZodType>(schema: T, data: unknown): z
  * @param handler 處理驗證通過的數據的函數
  * @returns 返回一個處理 Request 的函數
  */
-export function validateRequest<T extends z.ZodType>(
+export function validateRequest<T extends z.ZodType, R = Response>(
   schema: T,
-  handler: (data: z.infer<T>) => Promise<any>
+  handler: (data: z.infer<T>) => Promise<R>
 ) {
-  return async (req: Request) => {
+  return async (req: Request): Promise<Response> => {
     try {
       const body = await req.json();
       const result = schema.safeParse(body);
@@ -92,7 +92,7 @@ export function validateRequest<T extends z.ZodType>(
         );
       }
       
-      return handler(result.data);
+      return handler(result.data) as unknown as Response;
     } catch (error) {
       console.error('請求處理錯誤:', error);
       return Response.json(

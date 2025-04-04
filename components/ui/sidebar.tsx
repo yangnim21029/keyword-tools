@@ -1,12 +1,10 @@
 "use client"
 
-import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
+import * as React from "react"
 
-import { useIsMobile } from "@/hooks/UseMobile"
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -24,10 +22,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useIsMobile } from "@/hooks/UseMobile"
+import { cn } from "@/lib/utils"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH_RIGHT = "24rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -164,7 +165,10 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
-
+  
+  // 根据侧边栏位置决定使用的宽度
+  const sidebarWidth = side === "right" ? SIDEBAR_WIDTH_RIGHT : SIDEBAR_WIDTH
+  
   if (collapsible === "none") {
     return (
       <div
@@ -173,6 +177,11 @@ function Sidebar({
           "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
           className
         )}
+        style={
+          {
+            "--sidebar-width": sidebarWidth,
+          } as React.CSSProperties
+        }
         {...props}
       >
         {children}
@@ -190,7 +199,7 @@ function Sidebar({
           className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              "--sidebar-width": side === "right" ? SIDEBAR_WIDTH_RIGHT : SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
           side={side}
@@ -213,6 +222,11 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      style={
+        {
+          "--sidebar-width": sidebarWidth,
+        } as React.CSSProperties
+      }
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
@@ -225,6 +239,11 @@ function Sidebar({
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
+        style={
+          {
+            "--sidebar-width": sidebarWidth,
+          } as React.CSSProperties
+        }
       />
       <div
         data-slot="sidebar-container"
@@ -239,12 +258,22 @@ function Sidebar({
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
+        style={
+          {
+            "--sidebar-width": sidebarWidth,
+          } as React.CSSProperties
+        }
         {...props}
       >
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
           className="bg-sidebar group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm"
+          style={
+            {
+              "--sidebar-width": sidebarWidth,
+            } as React.CSSProperties
+          }
         >
           {children}
         </div>
@@ -721,5 +750,6 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar,
+  useSidebar
 }
+

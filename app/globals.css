@@ -38,6 +38,11 @@
   --sidebar-ring: oklch(0.87 0 0);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  
+  /* 移动设备变量 */
+  --header-height: 3.5rem;
+  --footer-height: 3rem;
+  --mobile-sidebar-width: 85vw;
 }
 
 .dark {
@@ -195,5 +200,80 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+  
+  /* 移动设备特定样式 */
+  @media (max-width: 768px) {
+    html, body {
+      font-size: 15px;
+    }
+    
+    input, button, select, textarea {
+      font-size: 16px; /* 防止iOS缩放 */
+    }
+    
+    /* 增强移动设备上的触摸目标大小 */
+    button, a, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* 调整移动设备上的间距 */
+    .p-4 {
+      @apply p-3;
+    }
+    
+    .gap-4 {
+      @apply gap-3;
+    }
+  }
+  
+  /* 修复iOS Safari 100vh问题 */
+  .h-screen {
+    height: 100vh;
+    height: 100dvh;
+  }
+  
+  /* 添加平滑滚动 */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* 提高移动设备上的可点击区域 */
+@media (max-width: 768px) {
+  .mobile-touch-target {
+    @apply relative;
+  }
+  
+  .mobile-touch-target::after {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    bottom: -8px;
+    left: -8px;
+    z-index: 0;
+  }
+}
+
+/* 优化滚动条在移动设备上的显示 */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 2px;
   }
 }

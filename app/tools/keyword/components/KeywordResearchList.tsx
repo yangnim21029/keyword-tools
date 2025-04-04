@@ -1,0 +1,191 @@
+"use client"
+
+import type React from "react"
+
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { ResearchStore } from "@/store/keywordResearchStore"
+import { useResearchStore } from "@/store/keywordResearchStore"
+import { formatDistanceToNow } from "date-fns"
+import { zhTW } from "date-fns/locale"
+import { Clock, FileText, RefreshCw, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
+
+// 定義常量以提高可維護性
+const COMPONENT_LOG_PREFIX = "[KeywordResearchList]"
+const UI_STRINGS = {
+  emptyState: "暫無研究記錄",
+  deleteSuccess: "研究記錄已刪除",
+  deleteError: "刪除研究記錄失敗",
+}
+
+interface KeywordResearchListProps {
+  hideRefreshButton?: boolean;
+}
+
+export default function KeywordResearchList({ hideRefreshButton = false }: KeywordResearchListProps) {
+  // --- 從 Zustand Store 讀取狀態 ---
+  const {
+    researches,
+    loading,
+    selectedResearchId,
+  } = useResearchStore((store: ResearchStore) => store.state)
+  const {
+    setSelectedResearchId,
+    deleteResearch,
+    fetchResearches,
+  } = useResearchStore((store: ResearchStore) => store.actions)
+
+  // --- 本地狀態只保留刪除中的 ID ---
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Demand: Load initial research list on component mount.
+  useEffect(() => {
+    console.log(`${COMPONENT_LOG_PREFIX} 組件掛載，獲取初始研究記錄...`);
+    fetchResearches();
+  }, [fetchResearches]);
+
+  // Demand: Automatically refresh list when new research is saved (via 'researchSaved' event).
+  useEffect(() => {
+    const handleResearchSaved = (event: Event) => {
+      console.log(`${COMPONENT_LOG_PREFIX} 檢測到研究記錄通過事件保存，刷新列表...`, (event as CustomEvent).detail);
+      fetchResearches(true); // 刷新列表
+    };
+
+    console.log(`${COMPONENT_LOG_PREFIX} 添加 researchSaved 事件監聽器`);
+    window.addEventListener('researchSaved', handleResearchSaved);
+
+    // 清理函數
+    return () => {
+      console.log(`${COMPONENT_LOG_PREFIX} 移除 researchSaved 事件監聽器`);
+      window.removeEventListener('researchSaved', handleResearchSaved);
+    };
+  }, [fetchResearches]); // 依賴 fetchResearches 以確保其穩定性
+
+  // 處理研究記錄點擊
+  const handleResearchClick = (researchId: string) => {
+    setSelectedResearchId(researchId)
+    // 注意：此處不觸發SERP分析，僅設置所選研究ID
+  }
+
+  // 處理刪除研究記錄
+  const handleDelete = async (e: React.MouseEvent<HTMLButtonElement>, researchId: string) => {
+    e.stopPropagation()
+    if (deletingId) return
+
+    setDeletingId(researchId)
+    try {
+      console.log(`${COMPONENT_LOG_PREFIX} 準備刪除研究記錄 ID:`, researchId)
+      await deleteResearch(researchId)
+      console.log(`${COMPONENT_LOG_PREFIX} deleteResearch Action 調用完成`)
+      toast.success(UI_STRINGS.deleteSuccess)
+    } catch (err) {
+      console.error(`${COMPONENT_LOG_PREFIX} 刪除研究記錄過程中捕獲到錯誤:`, err)
+      toast.error(UI_STRINGS.deleteError)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  // 刷新处理
+  const handleRefresh = () => {
+    if (loading) return
+    console.log(`${COMPONENT_LOG_PREFIX} 手動觸發刷新`)
+    fetchResearches(true)
+  }
+
+  // 渲染内容 - 简化为三个主要部分
+  return (
+    <div className="flex flex-col w-full max-w-full">
+      {/* 1. 刷新按钮 */}
+      {!hideRefreshButton && (
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-7 w-7 rounded-full text-foreground/50 hover:text-foreground self-end mb-2 mr-2" 
+          onClick={handleRefresh} 
+          disabled={loading}
+          aria-label="刷新研究記錄"
+        >
+          {loading ? (
+            <div className="h-4 w-4 border-t-2 border-b-2 border-primary/30 rounded-full animate-spin"></div>
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+        </Button>
+      )}
+
+      {/* 2. 内容区域 (加载状态、空状态或研究列表) */}
+      {loading && researches.length === 0 ? (
+        // 加载状态
+        <div className="px-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="py-1.5 flex items-center gap-2 w-full opacity-60">
+              <Skeleton className="h-4 w-4 rounded-full flex-shrink-0" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : researches.length === 0 ? (
+        // 空状态
+        <div className="text-center py-8 px-2">
+          <Clock className="h-10 w-10 mx-auto mb-2 text-muted-foreground/30" />
+          <p className="text-muted-foreground">{UI_STRINGS.emptyState}</p>
+        </div>
+      ) : (
+        // 研究记录列表 - 进一步简化嵌套结构，减少内部间距
+        <div className="w-64 space-y-1 px-1">
+          {researches.map((research) => {
+            const isSelected = research.id === selectedResearchId
+            const timeAgo = formatDistanceToNow(new Date(research.updatedAt || research.createdAt), {
+              addSuffix: true,
+              locale: zhTW,
+            })
+
+            return (
+              <div 
+                key={research.id}
+                className={`py-1.5 px-1.5 cursor-pointer rounded-md flex items-center max-w-full ${
+                  isSelected 
+                  ? 'bg-gradient-to-r from-amber-100 to-amber-50 text-black border-l-4 border-amber-500 pl-1' 
+                  : 'hover:bg-accent/50'
+                }`}
+                onClick={() => handleResearchClick(research.id)}
+              >
+                <FileText className={`h-4 w-4 mr-1.5 flex-shrink-0 ${isSelected ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                
+                {/* 内容区域最小宽度0，确保可以被压缩 */}
+                <div className="min-w-0 flex-1 overflow-hidden mr-1">
+                  <h3 className={`text-sm leading-tight truncate ${isSelected ? 'font-bold' : ''}`}>
+                    {research.query}
+                  </h3>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {timeAgo}
+                  </p>
+                </div>
+                
+                {/* 删除按钮 */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => handleDelete(e, research.id)}
+                  disabled={deletingId === research.id}
+                  aria-label={`刪除研究記錄: ${research.query}`}
+                >
+                  {deletingId === research.id ? (
+                    <div className="h-3 w-3 border-t-2 border-b-2 border-destructive/50 rounded-full animate-spin"></div>
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+

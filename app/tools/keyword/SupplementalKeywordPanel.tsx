@@ -3,11 +3,11 @@ import { getSearchVolume } from '@/app/services/KeywordDataService';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle
 } from "@/components/ui/sheet";
 import { KeywordVolumeItem } from '@/lib/schemas';
 import { BarChart2, Copy, Loader, PlusSquare, Search } from 'lucide-react';
@@ -107,7 +107,7 @@ export function SupplementalKeywordPanel({
 
     try {
       const keywordsToFetch = supplementalKeywords.map(k => k.text);
-      const volumeResult = await getSearchVolume(keywordsToFetch, region, language, keyword);
+      const volumeResult = await getSearchVolume(keywordsToFetch, region);
       
       if (volumeResult.error) {
         throw new Error(volumeResult.error);
@@ -191,34 +191,6 @@ export function SupplementalKeywordPanel({
   const formatSearchVolume = (volume?: number) => {
     if (volume === undefined || volume === null) return '無數據';
     return new Intl.NumberFormat().format(volume);
-  };
-  
-  // 獲取競爭程度顯示樣式
-  const getCompetitionStyle = (competition?: string) => {
-    if (!competition) return {};
-    
-    switch (competition) {
-      case 'Low':
-        return 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-500 border-green-100 dark:border-green-900/30';
-      case 'Medium':
-        return 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-500 border-orange-100 dark:border-orange-900/30';
-      case 'High':
-        return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-500 border-red-100 dark:border-red-900/30';
-      default:
-        return 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400';
-    }
-  };
-  
-  // 獲取競爭程度翻譯
-  const getCompetitionLabel = (competition?: string) => {
-    if (!competition) return '未知';
-    
-    switch (competition) {
-      case 'Low': return '低競爭';
-      case 'Medium': return '中競爭';
-      case 'High': return '高競爭';
-      default: return competition;
-    }
   };
 
   return (

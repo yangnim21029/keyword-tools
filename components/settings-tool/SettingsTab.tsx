@@ -7,10 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSettingsStore } from "@/store/settingsStore";
 import { Globe } from "lucide-react";
 
-interface SettingsTabProps {
-  // 移除所有 props
-}
-
 export default function SettingsTab() {
   // 使用 store 獲取狀態和操作方法
   const settingsState = useSettingsStore(store => store.state);

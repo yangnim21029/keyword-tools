@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { firestoreTimestampSchema as TimestampSchema } from "./common.schema";
 
 export const UserPersonaSchema = z.object({
   name: z.string().min(1),
@@ -22,10 +23,12 @@ export const UserPersonaResponseSchema = z.object({
 export type UserPersona = z.infer<typeof UserPersonaSchema>;
 export type UserPersonaResponse = z.infer<typeof UserPersonaResponseSchema>;
 
-// 新增：用於歷史記錄的用戶畫像類型
-export const HistoryUserPersonaSchema = z.object({
-  personas: z.array(UserPersonaSchema),
-  lastUpdated: z.date(),
+// Renamed from HistoryUserPersonaSchema
+export const KeywordResearchUserPersonaSchema = z.object({
+  id: z.string(),
+  persona: z.string().min(10, "用戶畫像描述過短"),
+  createdAt: TimestampSchema.default(() => new Date()),
 });
 
-export type HistoryUserPersona = z.infer<typeof HistoryUserPersonaSchema>; 
+// Renamed from HistoryUserPersona
+export type KeywordResearchUserPersona = z.infer<typeof KeywordResearchUserPersonaSchema>; 

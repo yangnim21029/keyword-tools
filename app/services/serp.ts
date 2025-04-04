@@ -1,19 +1,53 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use server';
 
 import { REGIONS } from '@/app/config/constants';
 import { safeParse } from '@/app/lib/ZodUtils';
-import type { FirebaseSerpResultsMap, ProcessedSerpResult } from '@/app/types/serp.types';
 import {
-  ApifyOrganicResult,
   apifyOrganicResultSchema,
   apifyResultItemSchema,
+  enhancedOrganicResultSchema,
+  firebaseSerpResultsMapSchema,
   htmlAnalysisResultSchema,
   processedSerpResultSchema,
-  serpApiInputSchema
-} from '@/lib/schemas';
+  serpAnalysisSchema,
+  SerpSchema,
+  type HtmlAnalysisResult,
+  type Serp
+} from '@/lib/schemas/serp.schema';
 import * as cheerio from 'cheerio';
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from 'zod';
+import { COLLECTIONS, db } from './firebase/config';
 import { savePageContent } from './firebase/content_storage';
+
+// Infer types locally
+type FirebaseSerpResultsMap = z.infer<typeof firebaseSerpResultsMapSchema>;
+type ApifyOrganicResult = z.infer<typeof apifyOrganicResultSchema>;
+type ApifyResultItem = z.infer<typeof apifyResultItemSchema>;
+
+// 從網址中提取基本域名
+const extractBaseDomain = (url: string): string => {
+    if (!url) return ''; // Handle empty/null/undefined input
+    // 移除協議
+    let domain = url;
+    if (domain.includes('://')) {
+        domain = domain.split('://')[1];
+    }
+    
+    // 移除路徑和查詢參數
+    if (domain.includes('/')) {
+        domain = domain.split('/')[0];
+    }
+    
+    // 移除'www.'前綴
+    if (domain.startsWith('www.')) {
+        domain = domain.substring(4);
+    }
+    
+    return domain;
+};
 
 // 將區域名稱轉換為 Apify 接受的 ISO 國家代碼
 function getCountryCodeFromRegion(region: string): string {
@@ -74,17 +108,6 @@ function formatLanguageCode(language: string): string {
   return language;
 }
 
-// --- 定義 HtmlAnalysisResult 類型 ---
-type HtmlAnalysisResult = z.infer<typeof htmlAnalysisResultSchema>;
-
-// --- Cheerio 輔助函數 (修改 checkH1Consistency) ---
-// Remove extractTags function as it's no longer needed
-/*
-function extractTags($: ReturnType<typeof cheerio.load>, tagName: string): string[] {
-  // ... (old implementation)
-}
-*/
-
 // Modify checkH1Consistency to use the new headings structure
 function checkH1Consistency($: ReturnType<typeof cheerio.load>, headings: { level: string; text: string }[]): boolean {
   const h1s = headings.filter(h => h.level === 'h1').map(h => h.text);
@@ -93,23 +116,43 @@ function checkH1Consistency($: ReturnType<typeof cheerio.load>, headings: { leve
   return h1s.some(h1 => title.includes(h1.toLowerCase().trim()) || h1.toLowerCase().trim().includes(title));
 }
 
-// --- 重新添加 ensureOriginalQuery 輔助函數 ---
-const ensureOriginalQuery = (resultsMap: Record<string, any>): Record<string, any> => {
-  const newResultsMap = { ...resultsMap };
-  Object.keys(newResultsMap).forEach(key => {
-    if (newResultsMap[key] && typeof newResultsMap[key] === 'object' && !newResultsMap[key].originalQuery) {
-      newResultsMap[key] = {
-        ...newResultsMap[key],
-        originalQuery: key
-      };
-    }
-  });
-  return newResultsMap;
+// Helper function to generate Firestore document ID
+const generateSerpDocId = (keyword: string, region: string, language: string, device: string = 'desktop'): string => {
+  // Normalize and combine inputs for a consistent ID
+  const normalizedKeyword = keyword.toLowerCase().replace(/\s+/g, '_');
+  const normalizedRegion = region.toLowerCase();
+  const normalizedLanguage = language.toLowerCase();
+  const normalizedDevice = device.toLowerCase();
+  // Simple example: combine elements. Consider hashing for very long keywords.
+  return `${normalizedKeyword}_${normalizedRegion}_${normalizedLanguage}_${normalizedDevice}`;
 };
-// --- 結束 ensureOriginalQuery ---
+
+// Define freshness threshold in days
+const STALE_THRESHOLD_DAYS = 7; 
 
 /**
- * 分析 SERP (搜索引擎結果頁面)
+ * Fetches and analyzes SERP data for given keywords, using Firestore cache first.
+ * 
+ * Logic Flow:
+ * 1. Generate a unique document ID based on the primary keyword, region, language, and device.
+ * 2. Attempt to fetch an existing analysis document from the Firestore 'serp' collection using the generated ID.
+ * 3. Check Firestore Document:
+ *    - If the document exists:
+ *      a. Validate the data against the SerpSchema.
+ *      b. Check the 'updatedAt' timestamp against a freshness threshold (STALE_THRESHOLD_DAYS).
+ *      c. If the data is valid and fresh:
+ *         i. Reconstruct the result format expected by the calling functions (FirebaseSerpResultsMap).
+ *         ii. Return the cached data from Firestore, indicating the source.
+ *      d. If the data is invalid or stale, proceed to fetch fresh data from the API.
+ *    - If the document does not exist, proceed to fetch fresh data from the API.
+ * 4. Fetch from Apify API:
+ *    - If Firestore cache check fails, call the Apify API to get fresh SERP data.
+ *    - Process the results returned by Apify.
+ * 5. Save/Update Firestore:
+ *    - After successfully fetching and processing data from Apify, save the new/updated data back to the Firestore document using the generated ID.
+ *    - Use { merge: true } for upsert.
+ * 6. Return Data:
+ *    - Return the processed data (either fresh from Apify or valid cache from Firestore).
  */
 export async function getSerpAnalysis(
   keywords: string[],
@@ -117,254 +160,345 @@ export async function getSerpAnalysis(
   language: string,
   maxResults: number = 100
 ): Promise<{ results: FirebaseSerpResultsMap; sourceInfo: string; error?: string }> {
+  
+  // Basic input validation
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+      return { results: {}, sourceInfo: '輸入錯誤', error: 'Keywords array cannot be empty.' };
+  }
+  const primaryKeyword = keywords[0];
+  if (typeof region !== 'string' || !region) {
+      return { results: {}, sourceInfo: '輸入錯誤', error: 'Region cannot be empty.' };
+  }
+  if (typeof language !== 'string' || !language) {
+      return { results: {}, sourceInfo: '輸入錯誤', error: 'Language cannot be empty.' };
+  }
+  if (typeof maxResults !== 'number' || maxResults <= 0) {
+      console.warn(`Invalid maxResults (${maxResults}), defaulting to 100.`);
+      maxResults = 100;
+  }
+  const deviceType = 'desktop';
+
+  // --- Firestore Cache Check --- 
+  if (db) {
+      const docId = generateSerpDocId(primaryKeyword, region, language, deviceType);
+      const docRef = db.collection(COLLECTIONS.SERP).doc(docId);
+      console.log(`檢查 Firestore 快取 (ID: ${docId})`);
+
+      try {
+          const docSnap = await docRef.get(); 
+
+          // Check the 'exists' property (Admin SDK)
+          if (docSnap.exists) { 
+              console.log(`Firestore 文件 ${docId} 存在，檢查有效性和新鮮度...`);
+              const data = docSnap.data();
+              const updatedAt = data?.updatedAt;
+              
+              // Check if updatedAt exists and looks like a Firestore Timestamp (has toDate method)
+              if (data && updatedAt && typeof updatedAt.toDate === 'function') { 
+                   // Cast to Timestamp after check for type safety if needed elsewhere
+                   const firestoreTimestamp = updatedAt as Timestamp;
+                   const validation = SerpSchema.safeParse({ ...data, id: docId }); 
+
+                  if (validation.success) {
+                      const parsedData: Serp = validation.data;
+                      const now = Timestamp.now(); 
+                      // Use the validated firestoreTimestamp here
+                      const diffDays = (now.seconds - firestoreTimestamp.seconds) / (60 * 60 * 24); 
+                      console.log(`數據新鮮度: ${diffDays.toFixed(1)} 天 (閾值: ${STALE_THRESHOLD_DAYS} 天)`);
+
+                      if (diffDays <= STALE_THRESHOLD_DAYS) {
+                          console.log(`從 Firestore 快取返回新鮮數據 (ID: ${docId})`);
+                          
+                          const reconstructedResult: z.infer<typeof processedSerpResultSchema> = {
+                              results: (parsedData.serpResults || [])
+                                .map(r => {
+                                  // Attempt to parse each item using the schema
+                                  const parseResult = enhancedOrganicResultSchema.safeParse(r); 
+                                  if (!parseResult.success) {
+                                    console.warn(`[Cache Reco] Failed to parse cached result item:`, parseResult.error.flatten());
+                                    return null; // Or handle error differently
+                                  }
+                                  // Ensure position has default applied by Zod
+                                  return parseResult.data; 
+                                })
+                                .filter((item): item is z.infer<typeof enhancedOrganicResultSchema> => item !== null), // Filter out nulls
+                              
+                              // Validate and assign analysis, providing a conforming default if needed
+                              analysis: (() => {
+                                const defaultAnalysis = { domains: {}, topDomains: [], totalResults: 0, avgTitleLength: 0, avgDescriptionLength: 0 };
+                                if (!parsedData.analysis) return defaultAnalysis;
+                                const validation = serpAnalysisSchema.safeParse(parsedData.analysis);
+                                return validation.success ? validation.data : defaultAnalysis;
+                              })(),
+                              
+                              timestamp: parsedData.updatedAt?.toISOString() || new Date().toISOString(), 
+                              originalQuery: parsedData.query,
+                              totalResults: parsedData.analysis?.totalResults,
+                              relatedQueries: [], 
+                              peopleAlsoAsk: [], 
+                          };
+
+                          const reconstructedMap: FirebaseSerpResultsMap = {
+                              [primaryKeyword]: reconstructedResult
+                          };
+                          
+                           const mapValidation = firebaseSerpResultsMapSchema.safeParse(reconstructedMap);
+                           if (!mapValidation.success) {
+                               console.warn(`Failed to reconstruct/validate FirebaseSerpResultsMap from Firestore for ${docId}:`, mapValidation.error.flatten());
+                           } else {
+                               return {
+                                   results: mapValidation.data,
+                                   sourceInfo: '數據來源: Firestore 快取',
+                               };
+                           }
+                      } else {
+                           console.log(`Firestore 快取數據過期 (ID: ${docId})`);
+                      }
+                  } else {
+                      console.warn(`Firestore 快取數據結構無效 (ID: ${docId}):`, validation.error.flatten());
+                  }
+              } else {
+                   console.warn(`Firestore 快取數據缺少或無效的 updatedAt 時間戳 (ID: ${docId})`);
+              }
+          } else {
+              console.log(`Firestore 快取未命中 (ID: ${docId})`);
+          }
+      } catch (cacheError) {
+          console.error(`檢查 Firestore 快取時出錯 (ID: ${docId}):`, cacheError);
+      }
+  } else {
+        console.error("Firestore DB instance is not available from config.");
+  }
+  // --- End Firestore Cache Check ---
+
+  // --- Fetch from Apify API (If cache missed or was stale/invalid) ---
+  console.log(`從 Apify API 獲取 SERP 數據...`);
+  let processedResultsMap: FirebaseSerpResultsMap = {};
+  let apifyError: string | undefined = undefined;
   const sourceInfo = '數據來源: Apify API';
 
-  const inputValidation = serpApiInputSchema.safeParse({ keywords, region, language, maxResults });
-  if (!inputValidation.success) {
-    return {
-      results: {},
-      sourceInfo: '數據來源: 輸入驗證失敗',
-      error: '無效的輸入參數: ' + inputValidation.error.message
-    };
-  }
-
-  const validInput = inputValidation.data;
-  validInput.maxResults = 100;
-
   try {
-    const MAX_KEYWORDS = 100;
-    const limitedKeywords = validInput.keywords.slice(0, MAX_KEYWORDS);
-    
+    const MAX_KEYWORDS_API = 10; // Limit API batch size further if needed
+    const limitedKeywords = keywords.slice(0, MAX_KEYWORDS_API);
+
     console.log(`開始分析關鍵詞 SERP 數據: ${limitedKeywords.join(', ')} (共 ${limitedKeywords.length} 個關鍵詞)`);
-    
-    console.log('直接從 Apify API 獲取數據...');
-    
+
     const apiToken = process.env.APIFY_API_TOKEN || '';
     const actorId = process.env.APIFY_ACTOR_ID || '';
-    
+
     if (!apiToken || !actorId) {
       throw new Error('未設置 APIFY_API_TOKEN 或 APIFY_ACTOR_ID 環境變量');
     }
-    
+
     const apiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apiToken}`;
-    const countryCode = getCountryCodeFromRegion(validInput.region);
-    const languageCode = formatLanguageCode(validInput.language);
-    
+    const countryCode = getCountryCodeFromRegion(region); 
+    const languageCode = formatLanguageCode(language); 
+
     const requestBody = {
       queries: limitedKeywords.join('\n'),
-      resultsPerPage: validInput.maxResults,
+      resultsPerPage: maxResults, 
       maxPagesPerQuery: 1,
       languageCode: languageCode,
       countryCode: countryCode,
       forceExactMatch: false,
-      mobileResults: false,
+      // @ts-expect-error - deviceType is currently hardcoded to 'desktop', but comparison is valid for future extension
+      mobileResults: deviceType === 'mobile', 
       includeUnfilteredResults: false,
-      saveHtml: false,
-      saveHtmlToKeyValueStore: false,
+      saveHtml: false, 
+      saveHtmlToKeyValueStore: false, 
       includeIcons: false
     };
-    
-    console.log(`調用 Apify API...(國家: ${countryCode}, 語言: ${languageCode})`);
-    console.log('Apify API 請求內容:', JSON.stringify(requestBody));
-    
+
+    console.log(`調用 Apify API...(國家: ${countryCode}, 語言: ${languageCode}, 設備: ${deviceType})`);
+    // console.log('Apify API 請求內容:', JSON.stringify(requestBody)); // Reduce verbosity
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(requestBody),
       cache: 'no-store'
     });
-    
+
     if (!response.ok) {
       let errorDetails = '';
-      try { errorDetails = `: ${await response.text()}`; } catch {} 
+      try { errorDetails = `: ${await response.text()}`; } catch {}
       throw new Error(`Apify API 請求失敗: ${response.status} ${response.statusText}${errorDetails}`);
     }
-    
+
     const items = await response.json();
     console.log(`API 返回 ${Array.isArray(items) ? items.length : 0} 項`);
-    
-    const apiResponseValidation = Array.isArray(items) 
-      ? z.array(apifyResultItemSchema).safeParse(items)
-      : { success: false, error: new Error('API 返回非數組') };
-      
-    if (!apiResponseValidation.success) {
-      console.warn('Apify API 回應驗證警告:', apiResponseValidation.error instanceof Error ? apiResponseValidation.error.message : JSON.stringify(apiResponseValidation.error));
+
+    if (!Array.isArray(items)) {
+        console.error('Apify API did not return an array:', items);
+        throw new Error('Apify API did not return an array.');
     }
-    
-    const processedResults: FirebaseSerpResultsMap = await processApifyResults(items);
-    console.log(`處理了 ${Object.keys(processedResults).length} 個關鍵詞結果`);
-    
+
+    // Process Apify results (this function needs to exist)
+    processedResultsMap = await processApifyResults(items as ApifyResultItem[]);
+    console.log(`處理了 ${Object.keys(processedResultsMap).length} 個關鍵詞結果`);
+
+    // --- Save to Firestore (after successful API fetch & process) --- 
+    if (db && Object.keys(processedResultsMap).length > 0) {
+        const collectionName = COLLECTIONS.SERP; 
+        console.log(`準備將 ${Object.keys(processedResultsMap).length} 個關鍵詞結果保存/更新到 Firestore...`);
+
+        for (const [keyword, processedResult] of Object.entries(processedResultsMap)) {
+            const docId = generateSerpDocId(keyword, region, language, deviceType);
+            const docRef = db.collection(collectionName).doc(docId);
+
+            try {
+                const dataToSave = {
+                    type: 'serp' as const,
+                    query: keyword,
+                    location: region,
+                    language: language,
+                    device: deviceType,
+                    serpResults: processedResult.results || [],
+                    analysis: processedResult.analysis || null,
+                    searchEngine: 'google',
+                    updatedAt: FieldValue.serverTimestamp(),
+                };
+                
+                await docRef.set({ ...dataToSave, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+                console.log(`成功將 ${keyword} 的 SERP 結果保存/更新到 Firestore (ID: ${docId})`);
+
+            } catch (saveError) {
+                console.error(`保存關鍵詞 "${keyword}" 的 SERP 結果到 Firestore 失敗 (ID: ${docId}):`, saveError);
+            }
+        }
+    } else if (!db) {
+         console.warn("Firestore DB 未初始化，跳過保存步驟。");
+    }
+    // --- End Firestore Save --- 
+
     return {
-      results: processedResults,
-      sourceInfo: sourceInfo
+      results: processedResultsMap,
+      sourceInfo: sourceInfo,
     };
+
   } catch (error) {
-    console.error('獲取 SERP 分析失敗:', error);
+    console.error('獲取或處理 SERP 分析時出錯:', error);
+    apifyError = error instanceof Error ? error.message : '獲取或處理 SERP 分析失敗';
+    // Return empty results map on error, but include the error message
     return {
       results: {},
-      sourceInfo: sourceInfo,
-      error: error instanceof Error ? error.message : '獲取 SERP 分析失敗'
+      sourceInfo: sourceInfo, // Indicate source was Apify attempt
+      error: apifyError
     };
   }
 }
 
 /**
  * 處理 Apify 結果數據
+ * (Implementation needs to exist and return Promise<FirebaseSerpResultsMap>)
  */
-async function processApifyResults(items: any[]): Promise<FirebaseSerpResultsMap> {
-  const results: FirebaseSerpResultsMap = {};
-  
-  console.log('Apify API 回傳的原始資料:', JSON.stringify(items).substring(0, 200) + '...');
-  
-  if (!Array.isArray(items) || items.length === 0) {
-    console.log('API 未返回有效資料，返回空結果');
-    return {};
-  }
-  
-  for (const item of items) {
-    try {
-      // 使用 Zod 驗證 item
-      const validItem = safeParse(
-        apifyResultItemSchema, 
-        item, 
-        'Apify 結果項目'
-      );
-      
-      if (!validItem) {
-        console.log('跳過無效的 Apify 項目');
-        continue;
-      }
-      
-      // 找到這個項目對應的關鍵詞
-      let keyword = '';
-      
-      // 處理新API格式 - 從 searchQuery.term 中獲取關鍵詞
-      if (typeof validItem.searchQuery === 'object' && validItem.searchQuery?.term) {
-        keyword = validItem.searchQuery.term;
-      } else if (typeof validItem.searchQuery === 'string') {
-        // 兼容舊格式
-        keyword = validItem.searchQuery;
-      }
-      
-      if (!keyword) {
-        console.log('跳過沒有關鍵詞的項目');
-        continue;
-      }
-      
-      console.log(`處理關鍵詞 "${keyword}" 的結果`);
-      
-      // 處理搜索結果 - 使用 Zod 驗證和轉換
-      const searchResults = validItem.organicResults || [];
-      
-      if (searchResults.length === 0) {
-        console.log(`關鍵詞 "${keyword}" 沒有找到有機搜索結果`);
-      }
-      
-      // 提取重要資訊 - 使用 Zod 進行驗證
-      const processedResults = searchResults.map(result => {
-        // 擴展結果以包含必要的字段
-        const extendedResult = {
-          ...result,
-          displayUrl: result.displayedUrl || result.url || '',
-          htmlAnalysis: null // 初始化 HTML 分析結果為 null
-        };
-        
-        // 使用 Zod 驗證並提供預設值
-        return apifyOrganicResultSchema.parse(extendedResult);
-      });
-      
-      // 分析結果數據
-      const analysis = analyzeSerpResults(processedResults);
-      
-      // Construct the ProcessedSerpResult object for the keyword
-      // Handle different possible types for queryDetails
-      let queryDetailsObject: Record<string, any> | undefined;
-      if (typeof validItem.searchQuery === 'object' && validItem.searchQuery !== null) {
-          queryDetailsObject = validItem.searchQuery;
-      } else if (typeof validItem.searchQuery === 'string') {
-          queryDetailsObject = { query: validItem.searchQuery }; // Wrap string in an object
-      } else {
-          queryDetailsObject = undefined; // Assign undefined if null or other type
-      }
+async function processApifyResults(items: ApifyResultItem[]): Promise<FirebaseSerpResultsMap> {
+   const processedMap: FirebaseSerpResultsMap = {};
 
-      const keywordResultData: ProcessedSerpResult = {
-        results: processedResults,
-        analysis,
-        timestamp: new Date().toISOString(),
-        originalQuery: keyword,
-        queryDetails: queryDetailsObject,
-        totalResults: validItem.resultsTotal || 0,
-        relatedQueries: validItem.relatedQueries || [],
-        peopleAlsoAsk: validItem.peopleAlsoAsk || [],
-        rawData: validItem
-      };
+   console.log('Apify API 返回原始數據 (前200字符):', JSON.stringify(items).substring(0, 200) + '...');
 
-      // Use Zod to validate the constructed object before assigning
-      const validatedKeywordResult = processedSerpResultSchema.safeParse(keywordResultData);
+   if (!Array.isArray(items) || items.length === 0) {
+      console.log('API 未返回有效數據，返回空結果');
+      return {};
+   }
 
-      if (validatedKeywordResult.success) {
-        results[keyword] = validatedKeywordResult.data;
-        console.log(`已處理關鍵詞 "${keyword}" 的搜索結果，找到 ${validatedKeywordResult.data.results.length} 個結果`);
-        console.log(`相關查詢數量: ${(validatedKeywordResult.data.relatedQueries || []).length}`);
-      } else {
-        console.warn(`關鍵詞 "${keyword}" 的處理結果驗證失敗:`, validatedKeywordResult.error.format());
-      }
-    } catch (error) {
-      console.error('處理 SERP 結果項目時出錯:', error);
-    }
-  }
-  
-  console.log(`成功處理了 ${Object.keys(results).length} 個關鍵詞的 SERP 結果`);
-  return results;
+   for (const item of items) {
+     try {
+       const validItem = safeParse( apifyResultItemSchema, item, 'Apify 結果項目' );
+
+       if (!validItem) { continue; }
+       
+       let keyword = '';
+       if (typeof validItem.searchQuery === 'object' && validItem.searchQuery !== null && 'term' in validItem.searchQuery) {
+         keyword = validItem.searchQuery.term;
+       } else if (typeof validItem.searchQuery === 'string') {
+         keyword = validItem.searchQuery;
+       }
+       if (!keyword) { continue; }
+             
+       // Map and parse results individually
+       const searchResults = (validItem.organicResults || [])
+         .map((r) => {
+            // First, create the object structure expected by the schema
+            const itemToParse = {
+                title: r.title || '',
+                url: r.url || '',
+                description: r.description || '',
+                position: r.position, // Let Zod handle optional + default
+                type: 'organic', 
+                device: undefined, 
+                displayedUrl: r.displayedUrl || r.url || '',
+                // Include other fields from r that enhancedOrganicResultSchema might expect (like htmlAnalysis if applicable later)
+                ...(r as Record<string, unknown>), 
+            };
+            // Attempt to parse each item using the schema
+            const parseResult = enhancedOrganicResultSchema.safeParse(itemToParse); 
+            if (!parseResult.success) {
+                console.warn(`[API Process] Failed to parse result item for ${keyword}:`, parseResult.error.flatten());
+                return null; // Or handle error differently
+            }
+            // Return the Zod-validated data (includes defaults)
+            return parseResult.data;
+         })
+         .filter((item): item is z.infer<typeof enhancedOrganicResultSchema> => item !== null); // Filter out nulls
+       
+       // Use the parsed and filtered searchResults for analysis
+       const analysisResult = analyzeSerpResults(searchResults);
+
+       const processedData: z.infer<typeof processedSerpResultSchema> = {
+           results: searchResults, // Use the Zod-parsed results
+           analysis: analysisResult,
+           timestamp: new Date().toISOString(), 
+           originalQuery: keyword,
+           totalResults: validItem.resultsTotal ?? undefined,
+           relatedQueries: validItem.relatedQueries || [],
+           peopleAlsoAsk: validItem.peopleAlsoAsk || [],
+       };
+
+       const validation = processedSerpResultSchema.safeParse(processedData);
+        if (!validation.success) {
+            console.warn(`Processed SERP data validation failed for ${keyword}:`, validation.error.flatten());
+            continue; 
+        } 
+
+       processedMap[keyword] = validation.data;
+
+     } catch (processingError) {
+       const errorKw = typeof item?.searchQuery === 'object' ? item?.searchQuery?.term : item?.searchQuery;
+       console.error(`處理關鍵詞 ${errorKw || 'unknown'} 的 SERP 結果時出錯:`, processingError);
+     }
+   }
+   return processedMap;
 }
 
-/**
- * 分析 SERP 結果並提取見解
- */
-function analyzeSerpResults(results: ApifyOrganicResult[]) {
-  const analysis = {
-    totalResults: results.length,
-    domains: {} as Record<string, number>,
-    topDomains: [] as string[],
-    avgTitleLength: 0,
-    avgDescriptionLength: 0,
-  };
-  
-  let totalTitleLength = 0;
-  let totalDescLength = 0;
-  
-  // 用於 URL 驗證的 schema
-  const urlSchema = z.string().url().transform(urlStr => new URL(urlStr));
-  
-  // 計算各種指標
-  for (const result of results) {
-    // 提取域名 - 使用 Zod 驗證 URL
-    if (result.url) {
-      const urlValidation = urlSchema.safeParse(result.url);
-      if (urlValidation.success) {
-        const domain = urlValidation.data.hostname;
-        analysis.domains[domain] = (analysis.domains[domain] || 0) + 1;
-      }
-    }
-    
-    // 累計標題和描述長度
-    if (result.title) totalTitleLength += result.title.length;
-    if (result.description) totalDescLength += result.description.length;
-  }
-  
-  // 計算平均值
-  if (results.length > 0) {
-    analysis.avgTitleLength = Math.round(totalTitleLength / results.length);
-    analysis.avgDescriptionLength = Math.round(totalDescLength / results.length);
-  }
-  
-  // 獲取頂級域名
-  analysis.topDomains = Object.entries(analysis.domains)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([domain]) => domain);
-  
-  return analysis;
+// --- Helper function to analyze results (Update parameter type) ---
+function analyzeSerpResults(results: z.infer<typeof enhancedOrganicResultSchema>[]) { 
+    const domains: Record<string, number> = {};
+    let totalTitleLength = 0;
+    let totalDescriptionLength = 0;
+    const validResults = results.filter(r => r.url); 
+
+    validResults.forEach(result => {
+        const domain = extractBaseDomain(result.url || ''); 
+        if (domain) {
+            domains[domain] = (domains[domain] || 0) + 1;
+        }
+        totalTitleLength += result.title?.length || 0;
+        totalDescriptionLength += result.description?.length || 0;
+    });
+
+    const topDomains = Object.entries(domains)
+        .sort(([, countA], [, countB]) => countB - countA)
+        .slice(0, 10) 
+        .map(([domain]) => domain);
+
+    return {
+        totalResults: validResults.length,
+        domains,
+        topDomains,
+        avgTitleLength: validResults.length > 0 ? Math.round(totalTitleLength / validResults.length) : 0,
+        avgDescriptionLength: validResults.length > 0 ? Math.round(totalDescriptionLength / validResults.length) : 0,
+    };
 }
 
 /**
@@ -475,68 +609,13 @@ export async function analyzeSerpResultsHtml(
   keywords: string[],
   region: string,
   language: string
-): Promise<{ success: boolean; message: string; documentsProcessed: number; errors?: number }> {
+): Promise<{ success: boolean, message: string, documentsProcessed: number, errors: number }> {
   console.log(`[analyzeSerpResultsHtml] 開始分析 SERP HTML for keywords: ${keywords.join(', ')}`);
-  let documentsProcessed = 0;
+  const documentId = `serp-${keywords.sort().join('-')}-${region}-${language}`; // Temporary placeholder ID logic if needed
+  const documentsProcessed = 0;
   let errors = 0;
 
-  // Removed dependency on Firestore cache ID generation and retrieval
-  // const documentId = generateSerpDocumentId(keywords, region, language);
-  const documentId = `serp-${keywords.sort().join('-')}-${region}-${language}`; // Temporary placeholder ID logic if needed
-
   try {
-    // Removed attempt to fetch cached results from Firestore
-    // console.log(`[analyzeSerpResultsHtml] 正在獲取文檔 ${documentId} 以處理 HTML`);
-    // const serpData = await getSerpResults(keywords, region, language);
-
-    // if (!serpData) {
-    //   console.log(`[analyzeSerpResultsHtml] 未找到文檔 ${documentId} 或已過期/無效，跳過處理`);
-    //   return { success: false, message: `未找到文檔 ${documentId} 或已過期/無效`, documentsProcessed: 0 };
-    // }
-
-    // --- Start Review Block: Logic depends on removed cache --- 
-    // The following logic iterates over `serpData` which was fetched from the Firestore cache.
-    // Since the cache is removed, this logic needs to be adapted.
-    // Option 1: Fetch fresh SERP data here using getSerpAnalysis.
-    // Option 2: Pass the necessary SERP data directly into this function.
-    // Option 3: Re-evaluate the purpose of this function entirely.
-    // For now, commenting out the main processing loop.
-    /*
-    console.log(`[analyzeSerpResultsHtml] 獲取到數據，包含 ${Object.keys(serpData).length} 個關鍵詞。開始處理每個關鍵詞的結果...`);
-    for (const keyword in serpData) {
-      const keywordResults = serpData[keyword]?.results;
-      if (!Array.isArray(keywordResults) || keywordResults.length === 0) {
-        console.log(`[analyzeSerpResultsHtml] 關鍵詞 ${keyword} 沒有結果，跳過`);
-        continue;
-      }
-
-      console.log(`[analyzeSerpResultsHtml] 處理關鍵詞 ${keyword} (${keywordResults.length} 個結果)`);
-      for (const result of keywordResults) {
-        if (result && result.url && !result.htmlAnalysis) { // 只處理尚未分析的 URL
-          console.log(`[analyzeSerpResultsHtml] 分析 URL: ${result.url} (關鍵詞: ${keyword})`);
-          try {
-            const analysis = await analyzeHtmlContent(result.url);
-            if (analysis) {
-              await updateSerpResultWithHtmlAnalysis(documentId, keyword, result.url, analysis);
-              documentsProcessed++;
-            } else {
-              console.log(`[analyzeSerpResultsHtml] URL ${result.url} 的分析返回 null，可能已處理或出錯`);
-              // Optionally update with an empty analysis marker if needed
-            }
-          } catch (error) {
-            console.error(`[analyzeSerpResultsHtml] 分析或更新 URL ${result.url} 時出錯:`, error);
-            errors++;
-          }
-        } else if (result && result.url && result.htmlAnalysis) {
-          // console.log(`[analyzeSerpResultsHtml] URL ${result.url} 已包含 HTML 分析，跳過`);
-        } else {
-           console.log(`[analyzeSerpResultsHtml] 跳過無效的結果項:`, result);
-        }
-      }
-    }
-    */
-    // --- End Review Block ---
-
     // Placeholder return value since the core logic is commented out
     const message = `分析任務完成 (核心邏輯已註釋)。已處理文檔: ${documentsProcessed}, 錯誤: ${errors}. Document ID placeholder: ${documentId}`;
     console.log(`[analyzeSerpResultsHtml] ${message}`);

@@ -1,6 +1,10 @@
 // utils/serpUtils.ts
 import { languageStandards } from "@/lib/constants/serpConstants";
-import { ApifyOrganicResult } from "@/lib/schemas"; // Import the correct type
+import { apifyOrganicResultSchema } from "@/lib/schemas/serp.schema"; // Import schema from specific file
+import { z } from 'zod'; // Import zod for inference
+
+// Infer the type from the imported schema
+type ApifyOrganicResult = z.infer<typeof apifyOrganicResultSchema>;
 
 // Define the structure for language standard (can be inferred or defined explicitly)
 type LanguageStandard = typeof languageStandards.default;

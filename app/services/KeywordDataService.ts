@@ -23,7 +23,7 @@ const API_VERSION = 'v19';
  */
 export function estimateProcessingTime(keywords: string[], withVolume: boolean = false): number {
   // Base processing time
-  let baseTime = 1.0;
+  const baseTime = 1.0;
   
   // Keyword count factor
   const keywordFactor = keywords.length * 0.1;
@@ -88,7 +88,7 @@ export function detectChineseType(text: string): 'simplified' | 'traditional' | 
         hasSimplified = true;
       } else {
         // 檢查字符是否為繁體字
-        for (const [simplified, traditional] of Object.entries(simplifiedToTraditional)) {
+        for (const traditional of Object.values(simplifiedToTraditional)) {
           if (char === traditional) {
             hasTraditional = true;
             break;
@@ -196,10 +196,28 @@ export async function getAccessToken(): Promise<string> {
   }
 }
 
+// Define a basic interface for the Google Ads API response (replace any)
+// TODO: Define a more detailed interface based on actual API response structure
+interface GoogleAdsKeywordIdea {
+    text?: string;
+    keywordIdeaMetrics?: {
+        avgMonthlySearches?: string | number | null; // Can be string or number
+        competition?: number; // Enum value
+        competitionIndex?: number;
+        lowTopOfPageBidMicros?: string | number | null; // Can be string or number
+    };
+}
+
+interface GoogleAdsKeywordIdeaResponse {
+    results?: GoogleAdsKeywordIdea[];
+    // Add other potential top-level fields if known
+}
+
 /**
  * Fetches keyword ideas from Google Ads API.
  */
-export async function fetchKeywordIdeas(keywords: string[], locationId: number, languageId: number): Promise<any> {
+// Use the defined interface instead of any
+export async function fetchKeywordIdeas(keywords: string[], locationId: number, languageId: number): Promise<GoogleAdsKeywordIdeaResponse> {
   try {
     const accessToken = await getAccessToken();
     const apiUrl = `https://googleads.googleapis.com/${API_VERSION}/customers/${CUSTOMER_ID}:generateKeywordIdeas`;
@@ -239,7 +257,8 @@ export async function fetchKeywordIdeas(keywords: string[], locationId: number, 
     }
     const data = await response.json();
     console.log(`Successfully received response, keywords count: ${data.results ? data.results.length : 0}`);
-    return data;
+    // Cast the response to the defined interface
+    return data as GoogleAdsKeywordIdeaResponse;
   } catch (error) {
     console.error('Error sending API request:', error);
     throw error;
@@ -266,13 +285,14 @@ export function getCompetitionLevel(competitionEnum: number): string {
 export async function getSearchVolume(
   keywords: string[],
   region: string,
-  mainKeyword: string = '',
-  language: string = 'zh-TW',
-  clusters: Record<string, string[]> | null = null
+  // Remove unused parameters: mainKeyword, language, clusters
+  // mainKeyword: string = '',
+  // language: string = 'zh-TW',
+  // clusters: Record<string, string[]> | null = null
 ): Promise<KeywordVolumeResult> {
   const startTime = Date.now();
   const estimatedTime = estimateProcessingTime(keywords, true);
-  let sourceInfo = "Google Ads API";
+  const sourceInfo = "Google Ads API"; // Use const
 
   try {
     const batchSize = 20;
@@ -317,8 +337,8 @@ export async function getSearchVolume(
             searchVolume: searchVolumeValue,
             competition: getCompetitionLevel(metrics.competition || 0),
             competitionIndex: typeof metrics.competitionIndex === 'number' ? Number(metrics.competitionIndex.toFixed(2)) : undefined,
-            cpc: metrics.lowTopOfPageBidMicros
-              ? Number((metrics.lowTopOfPageBidMicros / 1000000).toFixed(2))
+            cpc: metrics.lowTopOfPageBidMicros != null && !isNaN(Number(metrics.lowTopOfPageBidMicros))
+              ? Number((Number(metrics.lowTopOfPageBidMicros) / 1000000).toFixed(2))
               : null,
           };
           allResults.push(result);
@@ -329,7 +349,7 @@ export async function getSearchVolume(
       }
     }
     const endTime = Date.now();
-    const actualTime = Math.round((endTime - startTime) / 1000);
+    const actualTime: number = Math.round((endTime - startTime) / 1000);
     console.log(`Successfully fetched search volume data for ${allResults.length} keywords`);
     return {
       results: allResults,
@@ -338,13 +358,13 @@ export async function getSearchVolume(
         actual: actualTime
       },
       sourceInfo: sourceInfo,
-      historyId: null
+      researchId: null
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching search volume:', error);
     const endTime = Date.now();
-    const actualTime = Math.round((endTime - startTime) / 1000);
-    const errorMessage = error.message || '無法獲取關鍵詞搜索量數據';
+    const actualTime: number = Math.round((endTime - startTime) / 1000);
+    const errorMessage = error instanceof Error ? error.message : '無法獲取關鍵詞搜索量數據';
     return {
       results: [],
       processingTime: {
@@ -353,7 +373,7 @@ export async function getSearchVolume(
       },
       error: errorMessage,
       sourceInfo: "Error",
-      historyId: null
+      researchId: null
     } as KeywordVolumeResult;
   }
 } 

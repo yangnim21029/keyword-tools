@@ -1,69 +1,37 @@
 import {
-  apifyOrganicResultSchema,
-  apifyResultItemSchema,
-  enhancedOrganicResultSchema,
-  firebaseSerpDocumentSchema,
-  firebaseSerpResultsMapSchema,
-  htmlAnalysisResultSchema,
-  processedSerpResultSchema,
-  serpAnalysisSchema,
-  serpApiInputSchema,
+  type CreateSerpInput,
+  type HtmlAnalysisResult,
+  type Serp,
+  type SerpAnalysisMetrics,
+  type SerpResultItem,
+  type TriggerSerpAnalysisInput,
+  type UpdateSerpInput,
 } from '@/lib/schemas/serp.schema';
-import { z } from 'zod';
+
+// Re-export the core types inferred from the new schemas
+export type {
+  CreateSerpInput, HtmlAnalysisResult, Serp, SerpAnalysisMetrics, SerpResultItem, TriggerSerpAnalysisInput, UpdateSerpInput
+};
 
 /**
- * SERP API Input parameters derived from schema.
+ * Data structure for displaying SERP analysis in the UI (Optional).
+ * This can be adapted based on UI requirements, potentially using the Serp type directly
+ * or creating a simplified version.
  */
-export type SerpApiInput = z.infer<typeof serpApiInputSchema>;
+export interface SerpDisplayData extends Partial<Serp> { // Example: Extend partial Serp type
+  // Add any UI-specific fields if needed
+  isLoading?: boolean;
+  error?: string;
+}
+
+// --- Potentially useful utility types (Example) ---
 
 /**
- * Organic result structure from Apify SERP API, derived from schema.
- * Note: Corresponds to `SerpResult` in old `app/types.ts` (structure might differ slightly).
+ * Type representing a single domain and its count from the analysis.
  */
-export type ApifyOrganicResult = z.infer<typeof apifyOrganicResultSchema>;
+export type DomainCount = { domain: string; count: number };
 
 /**
- * Result of HTML analysis for a SERP item, derived from schema.
+ * Type representing a single result type and its count.
  */
-export type HtmlAnalysisResult = z.infer<typeof htmlAnalysisResultSchema>;
-
-/**
- * Organic result enhanced with HTML analysis, derived from schema.
- */
-export type EnhancedOrganicResult = z.infer<typeof enhancedOrganicResultSchema>;
-
-/**
- * Single item structure returned by Apify API (containing organic results, etc.), derived from schema.
- */
-export type ApifyResultItem = z.infer<typeof apifyResultItemSchema>;
-
-/**
- * SERP analysis metrics (domain counts, lengths), derived from schema.
- * Note: Corresponds to `SerpAnalysis` in old `app/types.ts`.
- */
-export type SerpAnalysis = z.infer<typeof serpAnalysisSchema>;
-
-/**
- * Processed result for a single keyword's SERP, derived from schema.
- * Note: Corresponds to `SerpKeywordResult` in old `app/types.ts`.
- */
-export type ProcessedSerpResult = z.infer<typeof processedSerpResultSchema>;
-
-/**
- * Structure for storing multiple SERP results keyed by keyword in Firebase, derived from schema.
- * Note: Corresponds to the `results` part of `SerpAnalysisResult` in old `app/types.ts`.
- */
-export type FirebaseSerpResultsMap = z.infer<typeof firebaseSerpResultsMapSchema>;
-
-/**
- * Document structure for storing SERP results in Firebase, derived from schema.
- */
-export type FirebaseSerpDocument = z.infer<typeof firebaseSerpDocumentSchema>;
-
-// --- Potentially missing/different types from old app/types.ts ---
-// export interface SerpAnalysisResult {
-//   results: Record<string, SerpKeywordResult>; // Now FirebaseSerpResultsMap
-//   sourceInfo?: string;
-//   error?: string;
-// }
-// ^^^ SerpAnalysisResult seems covered by FirebaseSerpDocument/Map + optional fields 
+export type ResultTypeCount = { type: string; count: number }; 

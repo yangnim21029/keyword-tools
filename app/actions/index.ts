@@ -1,5 +1,5 @@
 export * from './config';
-export * from './history';
+export * from './keywordResearch';
 export * from './SemanticClustering';
 export * from './stats';
 export * from './suggestions';

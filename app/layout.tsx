@@ -1,10 +1,9 @@
 import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay"
-import { PastQueryProvider } from "@/providers/PastQueryProvider"
+import { ResearchProvider } from "@/providers/keywordResearchProvider"
 import { QueryProvider } from "@/providers/QueryProvider"
 import { SettingsProvider } from "@/providers/SettingsProvider"
-import { TabProvider } from "@/providers/TabProvider"
 import { ThemeProvider } from "@/providers/ThemeProvider"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter, Roboto } from "next/font/google"
 import type React from "react"
 import { Toaster as SonnerToaster } from "sonner"
@@ -23,9 +22,25 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: "Keyword Killer - Professional Keyword Research Tool",
-  description:
-    "A powerful keyword research tool for SEO professionals. Analyze search volumes, competition, and get semantic clustering insights.",
+  title: "Keyword Killer - 專業關鍵詞研究工具",
+  description: "強大的SEO關鍵詞研究工具，分析搜索量、競爭度，獲取語義分群見解。",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Keyword Killer"
+  },
+}
+
+// 添加視口配置
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "black" }
+  ],
 }
 
 export default function RootLayout({
@@ -35,33 +50,28 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-TW" suppressHydrationWarning>
-      <body className={`${inter.variable} ${roboto.variable} bg-background text-foreground antialiased`}>
+      <body className={`${inter.variable} ${roboto.variable} font-sans bg-background text-foreground antialiased min-h-screen overflow-x-hidden`}>
         <ThemeProvider>
           <SettingsProvider>
-            <TabProvider>
-              <QueryProvider>
-                <PastQueryProvider>
-                  {/* Use client component for interactive sidebar */}
-                  <ClientLayout>{children}</ClientLayout>
-
-                  {/* Global loading overlay */}
-                  <GlobalLoadingOverlay />
-                </PastQueryProvider>
-              </QueryProvider>
-            </TabProvider>
+            <QueryProvider>
+              <ResearchProvider>
+                <ClientLayout>{children}</ClientLayout>
+                <GlobalLoadingOverlay />
+              </ResearchProvider>
+            </QueryProvider>
           </SettingsProvider>
           <SonnerToaster
-            position="top-right"
+            position="bottom-right"
             expand={false}
             visibleToasts={6}
             toastOptions={{
-              duration: 6000,
+              duration: 5000,
               style: {
-                borderLeft: "4px solid #3b82f6",
+                borderLeft: "4px solid hsl(var(--primary))",
                 borderRadius: "0.5rem",
-                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                maxWidth: "350px",
+                boxShadow: "var(--shadow-sm)",
               },
+              className: "sm:max-w-[356px] max-w-[90vw]",
             }}
             closeButton
             theme="system"

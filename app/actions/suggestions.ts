@@ -49,7 +49,7 @@ export async function getKeywordSuggestions(
     }
 
     // Filter and deduplicate
-    let filteredSuggestions = filterSimplifiedChinese(allSuggestions);
+    const filteredSuggestions = filterSimplifiedChinese(allSuggestions);
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
 
     // Calculate estimated time
@@ -107,7 +107,7 @@ export async function getUrlSuggestions(formData: UrlFormData): Promise<KeywordS
     }
 
     // Filter and deduplicate
-    let filteredSuggestions = filterSimplifiedChinese(allSuggestions);
+    const filteredSuggestions = filterSimplifiedChinese(allSuggestions);
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
 
     console.log(`從 URL 獲取到 ${uniqueSuggestions.length} 個建議`);
@@ -166,8 +166,9 @@ export async function fetchSearchVolume(
 ): Promise<KeywordVolumeResult> {
   console.log(`Fetching search volume for ${keywords.length} keywords. Region: ${region}, Lang: ${language}, URL: ${url}`);
   try {
-    // Call the service function
-    const result = await getSearchVolumeService(keywords, region, url, language);
+    // Correct the number of arguments passed to getSearchVolumeService
+    // Assuming getSearchVolumeService corresponds to the updated getSearchVolume
+    const result = await getSearchVolumeService(keywords, region);
     // Return the result directly (assuming the service function handles errors appropriately or throws)
     // Add basic error handling if service doesn't throw
     if (!result || !result.results) {
