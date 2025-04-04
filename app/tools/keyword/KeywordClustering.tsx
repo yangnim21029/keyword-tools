@@ -4,7 +4,7 @@ import { performSemanticClustering } from '@/app/actions/SemanticClustering';
 import type { Keyword } from '@/app/types/keyword-research.types';
 import { Button } from "@/components/ui/button";
 import { useQueryStore } from '@/providers/QueryProvider';
-import { useResearchStore } from '@/store/keywordResearchStore';
+import { useResearchStore } from '@/providers/keywordResearchProvider';
 import { Check, ChevronDown, ChevronUp, Copy, LayoutGrid, Search, TrendingUp, User } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -29,12 +29,12 @@ export default function KeywordClustering({
   clusteringTrigger,
   personasMap
 }: KeywordClusteringProps) {
-  // 状态管理
+  // Component's local state
   const [state, setState] = useState({
     isClustering: false,
     clusters: null as Record<string, string[]> | null,
     copiedClusterIndex: null as number | null,
-    keywords: null as string[] | null,
+    keywords: null as string[] | null, // Initially null to indicate loading/not yet loaded
     showAllClusters: false,
     expandedClusters: {} as Record<string, boolean>
   });
@@ -46,14 +46,16 @@ export default function KeywordClustering({
   
   const prevTriggerRef = useRef<number | undefined>(undefined);
   
-  // 全局存储
+  // Global stores
   const setGlobalLoading = useQueryStore((state) => state.actions.setLoading);
   const requestSerpAnalysis = useResearchStore((state) => state.actions.requestSerpAnalysis);
+  const selectedResearchId = useResearchStore((store) => store.state.selectedResearchId); // Get selected ID
   const selectedResearchDetail = useResearchStore((store) => store.state.selectedResearchDetail);
+  const loadingDetail = useResearchStore((store) => store.state.loadingDetail); 
   const researchLocation = selectedResearchDetail?.location || 'tw';
   const researchLanguage = selectedResearchDetail?.language || 'zh-TW';
 
-  // 更新状态辅助函数
+  // Update state helper
   const updateState = useCallback((newState: Partial<typeof state>) => {
     setState(prev => ({ ...prev, ...newState }));
   }, []);
@@ -111,45 +113,72 @@ export default function KeywordClustering({
   useEffect(() => {
     if (clusteringTrigger && clusteringTrigger !== prevTriggerRef.current) {
       prevTriggerRef.current = clusteringTrigger;
-      handleClustering();
-    }
-  }, [clusteringTrigger, handleClustering]);
-
-  // 加載關鍵詞和現有聚類
-  useEffect(() => {
-    try {
-      updateState({ isClustering: false });
-      
-      if (selectedResearchDetail) {
-        // 加载现有分群
-        if (selectedResearchDetail.clusters && Object.keys(selectedResearchDetail.clusters).length > 0) {
-          updateState({ clusters: selectedResearchDetail.clusters });
-        }
-
-        // 从详细信息加载关键词
-        const keywordsFromDetail = selectedResearchDetail.keywords
-          ?.map((item: Keyword) => item.text?.trim())
-          .filter((text): text is string => Boolean(text));
-
-        if (keywordsFromDetail && keywordsFromDetail.length > 0) {
-          updateState({ keywords: keywordsFromDetail });
-          return;
-        }
+      // Ensure keywords are loaded before clustering
+      if (keywords !== null) { 
+          handleClustering();
+      } else {
+          console.log('[KeywordClustering] Clustering trigger ignored: keywords not loaded yet.');
       }
-      
-      // 重置状态
-      updateState({ 
-        clusters: null,
-        keywords: null
-      });
-    } catch (error) {
-      console.error('[KeywordClustering] Error:', error);
-      updateState({ 
-        clusters: null,
-        keywords: null
-      });
     }
-  }, [selectedResearchDetail, updateState]);
+  }, [clusteringTrigger, handleClustering, keywords]); // Add keywords dependency
+
+  // Effect to load keywords and clusters based on selection and loading state
+  useEffect(() => {
+    console.log('[KeywordClustering Effect Triggered]', { 
+      selectedResearchId, 
+      loadingDetail, 
+      hasSelectedDetail: !!selectedResearchDetail,
+      detailIdMatch: selectedResearchDetail?.id === selectedResearchId 
+    });
+    
+    try {
+      // Case 1: No research item is selected
+      if (!selectedResearchId) {
+        console.log('[KeywordClustering Effect] Case 1: No ID selected. Resetting.');
+        updateState({ keywords: null, clusters: null });
+        return;
+      }
+
+      // Case 2: A research item IS selected (selectedResearchId is not null)
+
+      // Subcase 2a: Details are currently being loaded for the selected ID
+      if (loadingDetail) {
+        console.log('[KeywordClustering Effect] Case 2a: Loading detail. Setting keywords to null.');
+        updateState({ keywords: null, clusters: null }); 
+        return; // Wait for loading to complete
+      }
+
+      // Subcase 2b: Loading is finished for the selected ID
+      console.log('[KeywordClustering Effect] Case 2b: Loading finished. Checking detail...');
+      if (selectedResearchDetail && selectedResearchDetail.id === selectedResearchId) {
+        console.log('[KeywordClustering Effect] Detail found and matches ID. Processing...', selectedResearchDetail);
+        // Details are loaded and match the selected ID
+        
+        const loadedClusters = selectedResearchDetail.clusters && Object.keys(selectedResearchDetail.clusters).length > 0
+          ? selectedResearchDetail.clusters
+          : null;
+
+        const loadedKeywords = selectedResearchDetail.keywords
+          ? selectedResearchDetail.keywords
+              .map((item: Keyword) => item.text?.trim())
+              .filter((text): text is string => Boolean(text))
+          : []; 
+
+        console.log('[KeywordClustering Effect] Updating state with:', { loadedClusters, loadedKeywords });
+        updateState({ clusters: loadedClusters, keywords: loadedKeywords });
+
+      } else {
+        // Inconsistent state or detail not found after loading
+        console.warn(`[KeywordClustering Effect] Case 2b Inconsistency: loadingDetail=${loadingDetail}, detail available=${!!selectedResearchDetail}, detail ID=${selectedResearchDetail?.id}, expected ID=${selectedResearchId}. Resetting to null.`);
+        updateState({ keywords: null, clusters: null });
+      }
+
+    } catch (error) {
+      console.error('[KeywordClustering] Error in useEffect loading data:', error);
+      updateState({ keywords: null, clusters: null }); // Reset on error
+    }
+    // Depend on ID, Detail, Loading status, and the updater function
+  }, [selectedResearchId, selectedResearchDetail, loadingDetail, updateState]);
 
   // 优化排序计算
   const sortedClusters = useMemo(() => {
@@ -230,26 +259,30 @@ export default function KeywordClustering({
 
   // 判断各种状态并返回相应UI
 
-  // 数据加载中
-  if (keywords === null) {
+  // Show loading if the internal keywords state is null.
+  // This covers: no selection, loading details, or inconsistent state recovery.
+  if (keywords === null) { 
     return (
       <div className="flex items-center justify-center p-4">
         <div className="animate-spin h-5 w-5 border-t-2 border-b-2 border-blue-500 rounded-full mr-2"></div>
-        <span className="text-base text-gray-500">加載中...</span>
+        {/* Provide context-aware loading message */}
+        <span className="text-base text-gray-500">
+          {selectedResearchId ? '加載關鍵詞和分群...' : '請先選擇一個研究項目'}
+        </span>
       </div>
     );
   }
   
-  // 无关键词
+  // No keywords found (keywords is an empty array)
   if (keywords.length === 0) {
     return (
       <div className="text-amber-800 dark:text-amber-300 p-4 rounded-lg text-base">
-        <p>沒有找到關鍵詞。請先進行關鍵詞搜索。</p>
+        <p>此研究項目沒有關鍵詞。請檢查數據源或重新搜索。</p> {/* More specific message */}
       </div>
     );
   }
   
-  // 关键词太少
+  // Not enough keywords for clustering
   if (keywords.length < 5) {
     return (
       <div className="text-amber-800 dark:text-amber-300 p-4 rounded-lg text-base">

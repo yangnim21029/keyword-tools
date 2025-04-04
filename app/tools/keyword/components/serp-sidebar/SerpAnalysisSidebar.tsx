@@ -171,23 +171,27 @@ export default function SerpAnalysisTab({
 
   // Effect to handle changes in globalSearchInput
   useEffect(() => {
+    // Only react if the sidebar tab is active
     if (activeTab === "serp" && globalSearchInput !== undefined) {
+      // Update the internal input state regardless
       updateState({ serpKeywordsInput: globalSearchInput });
       
       const currentQuery = currentSerpDisplayData?.query;
       const inputChanged = globalSearchInput !== currentQuery;
 
-      if (inputChanged && globalSearchInput.trim()) {
-        handleSerpAnalysis(globalSearchInput);
-      } else if (!globalSearchInput.trim()) {
-        updateState({
-          currentSerpDisplayData: null,
-          error: null,
-        });
-        onSerpAnalysisLoaded(null);
+      // DO NOT automatically trigger analysis just because the global input changed.
+      // Analysis should be triggered more explicitly, e.g., by selecting an item or clicking a button.
+      // We only clear the display if the input becomes empty.
+      if (!globalSearchInput.trim()) {
+          console.log("[SerpSidebar] Global input cleared, clearing SERP data.");
+          updateState({
+              currentSerpDisplayData: null,
+              error: null,
+          });
+          onSerpAnalysisLoaded(null);
       }
     }
-  }, [globalSearchInput, activeTab, onSerpAnalysisLoaded, handleSerpAnalysis, region, language, currentSerpDisplayData?.query]);
+  }, [globalSearchInput, activeTab, onSerpAnalysisLoaded, currentSerpDisplayData?.query]);
 
   // Analyze HTML Content Function (优化)
   const handleSerpHtmlAnalysis = useCallback(async () => {

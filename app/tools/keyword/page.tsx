@@ -81,6 +81,7 @@ export default function KeywordToolPage() {
   const [sortState, setSortState] = useState<SortState>({ field: "searchVolume", direction: "desc" })
   // Add state for model selection
   const [selectedModel, setSelectedModel] = useState<"gpt-4o-mini" | "gpt-4o">("gpt-4o-mini");
+  const [isClusteringLoading, setIsClusteringLoading] = useState(false); // <-- Add clustering loading state
 
   // Get layout width context
   const isWideLayout = useLayoutWidth();
@@ -147,69 +148,99 @@ export default function KeywordToolPage() {
     setIsMounted(true);
   }, []);
 
-  // Global Search Trigger Effect
+  // Global Search Trigger Effect (Modified with more logging)
   useEffect(() => {
     ;(async () => {
+      // Log current state *before* the condition check
+      const currentTimestamp = lastTriggeredQuery?.timestamp;
+      const processedTimestamp = processedTimestampRef.current;
+      console.log('[KeywordPage Effect Check]', { 
+        isMounted, 
+        hasTrigger: !!lastTriggeredQuery,
+        currentTimestamp, 
+        processedTimestamp, 
+        shouldProcess: isMounted && !!lastTriggeredQuery && currentTimestamp !== processedTimestamp 
+      });
+
       if (
         isMounted &&
         lastTriggeredQuery &&
-        lastTriggeredQuery.timestamp !== processedTimestampRef.current
+        currentTimestamp !== processedTimestamp // Use pre-calculated currentTimestamp
       ) {
-        console.log("[KeywordPage] Detected global search trigger:", lastTriggeredQuery);
-        const currentTimestamp = lastTriggeredQuery.timestamp;
-        processedTimestampRef.current = currentTimestamp;
+        console.log(`[KeywordPage] Condition met. Processing trigger ${currentTimestamp}. Previously processed: ${processedTimestamp}`);
+        
+        // Update processed timestamp immediately *before* async operations
+        // Use nullish coalescing to handle potential undefined timestamp
+        processedTimestampRef.current = currentTimestamp ?? null;
+        console.log(`[KeywordPage] Updated processedTimestampRef to: ${processedTimestampRef.current}`);
 
         console.log("[KeywordPage] Clearing selected research before new search.");
-        clearSelectedResearchDetail();
+        clearSelectedResearchDetail(); // Clear selection first
         setLocalError(null);
         setStep("input");
 
-        await handleQuerySubmit({
+        console.log(`[KeywordPage] >>> Calling handleQuerySubmit for trigger ${currentTimestamp}...`); // Log before call
+        const newResearchId = await handleQuerySubmit({
           region: settingsState.region,
           language: settingsState.language,
           useAlphabet: settingsState.useAlphabet,
           useSymbols: settingsState.useSymbols,
         });
+        console.log(`[KeywordPage] <<< handleQuerySubmit returned: ${newResearchId}`); // Log after call
 
-        if (!queryError) {
-          console.log("[KeywordPage] Search successful, notifying research saved.");
-          // NOTE: notifyResearchSaved needs the research object. 
-          // This effect currently doesn't have enough info to construct it.
-          // Consider if notification is needed here or only after explicit save.
-          // notifyResearchSaved(); // Original call removed as it's missing arg
+        // If a new ID was successfully created, select it immediately
+        if (newResearchId) {
+          console.log(`[KeywordPage] New research created (${newResearchId}), selecting it.`);
+          setSelectedResearchId(newResearchId);
+          // Step will be updated by the 'Load Research Data Effect' below
+        } else if (queryError) {
+          console.log("[KeywordPage] Global search finished with error:", queryError);
+          setLocalError(queryError);
         } else {
-          console.log("[KeywordPage] Search finished with error:", queryError);
+          console.log("[KeywordPage] Global search finished without creating a new record (or failed silently).");
+        }
+      } else {
+        // Log why the condition was not met
+        if (isMounted && lastTriggeredQuery && currentTimestamp === processedTimestamp) {
+          console.log(`[KeywordPage] Trigger ${currentTimestamp} skipped, already processed.`);
         }
       }
     })()
+    // Dependencies remain largely the same, add setSelectedResearchId
   }, [
     isMounted,
-    lastTriggeredQuery,
-    handleQuerySubmit,
-    settingsState,
-    _handleResearchSavedOrUpdated,
-    clearSelectedResearchDetail,
-    queryError
+    lastTriggeredQuery, // The primary trigger
+    handleQuerySubmit,  // Action
+    settingsState.region, // Settings used in submit
+    settingsState.language,
+    settingsState.useAlphabet,
+    settingsState.useSymbols,
+    clearSelectedResearchDetail, // Action
+    queryError, // State to react to errors
+    setSelectedResearchId // Action
   ]);
 
   // Load Research Data Effect
   useEffect(() => {
     if (isMounted && selectedResearchDetail) {
-      console.log("[KeywordPage] Research item selected, updating state:", selectedResearchDetail.id);
+      console.log("[KeywordPage] Research item selected/updated, updating state:", selectedResearchDetail.id);
       setQueryInput(selectedResearchDetail.query || "");
       setSuggestions(selectedResearchDetail.keywords?.map((k: Keyword) => k.text || '') || []);
       setVolumeData((selectedResearchDetail.keywords || []));
       processedTimestampRef.current = null;
       setLocalError(null);
 
-      if (selectedResearchDetail.keywords && selectedResearchDetail.keywords.length > 0) {
-        setStep(selectedResearchDetail.clusters ? "clusters" : "volumes");
-      } else if (selectedResearchDetail.keywords && selectedResearchDetail.keywords.length === 0) {
+      if (selectedResearchDetail.clusters && Object.keys(selectedResearchDetail.clusters).length > 0) {
+        setStep("clusters");
+      } else if (selectedResearchDetail.keywords && selectedResearchDetail.keywords.length > 0) {
+        setStep("volumes");
+      } else {
         setStep("input");
+        console.log("[KeywordPage] Selected research has no keywords.");
       }
 
     } else if (isMounted && !selectedResearchId) {
-       console.log('[KeywordPage] Research item deselected.');
+       console.log('[KeywordPage] No research item selected. Resetting fields.');
     }
   }, [isMounted, selectedResearchId, selectedResearchDetail, setQueryInput, setSuggestions, setVolumeData]);
 
@@ -229,7 +260,9 @@ export default function KeywordToolPage() {
   // Callbacks
   const handleTriggerClustering = useCallback(() => {
       console.log("[KeywordPage] Triggering clustering manually.");
+      setIsClusteringLoading(true); // <-- Use dedicated state
       setClusteringTrigger(prev => prev + 1); // Increment trigger to initiate clustering
+      // Note: KeywordClustering component might need its own internal loading state as well
   }, []);
 
   const handleGetVolumes = useCallback(async () => {
@@ -309,9 +342,11 @@ export default function KeywordToolPage() {
   const handleClusteringComplete = useCallback(async (clusters: Record<string, string[]>) => {
     if (!selectedResearchId) {
       toast.warning("無法保存分群，未選中任何研究記錄");
+      setIsClusteringLoading(false); // <-- End dedicated state
       return;
     }
-    setQueryLoading(true, "正在保存分群結果...");
+    setIsClusteringLoading(true); // <-- Start saving with dedicated state
+    setQueryLoading(true, "正在保存分群結果..."); // <-- Keep global loading message for feedback
     try {
       await saveClusters(selectedResearchId, { clusters, updatedAt: new Date() });
       toast.success("分群結果已更新至歷史記錄");
@@ -322,13 +357,14 @@ export default function KeywordToolPage() {
       const message = updateError instanceof Error ? updateError.message : "更新歷史記錄失敗";
       toast.error(message);
     } finally {
-      setQueryLoading(false); // Turn off loading after clustering save attempt
+      setQueryLoading(false); // End global loading message
+      setIsClusteringLoading(false); // <-- End dedicated state
     }
   }, [
     selectedResearchId,
     saveClusters,
     setSelectedResearchId,
-    setQueryLoading,
+    setQueryLoading, // Keep dependency for global message
   ]);
 
   // Restore and modify callback to initiate persona generation for a single cluster
@@ -401,13 +437,13 @@ export default function KeywordToolPage() {
         icon={<FileText className="h-5 w-5 text-blue-500" />}
       />
 
-      {/* 模型選擇和分群按鈕區域 - 始終顯示在頂部，減少條件渲染 */}
+      {/* Model selection and clustering button area */}
       {canCluster && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Select
             value={selectedModel}
             onValueChange={(value) => setSelectedModel(value as "gpt-4o-mini" | "gpt-4o")}
-            disabled={isQueryLoading}
+            disabled={isClusteringLoading || isQueryLoading} // <-- Check both loading states
           >
             <SelectTrigger className="w-[150px] sm:w-[180px]">
               <SelectValue placeholder="選擇模型" />
@@ -420,8 +456,8 @@ export default function KeywordToolPage() {
 
           <LoadingButton
             onClick={handleTriggerClustering}
-            isLoading={isQueryLoading && loadingText?.includes('分群')}
-            disabled={!canCluster || (isQueryLoading && !loadingText?.includes('分群'))}
+            isLoading={isClusteringLoading} // <-- Use dedicated state for spinner
+            disabled={!canCluster || isClusteringLoading || isQueryLoading} // <-- Disable if clustering or general query is loading
             className="whitespace-nowrap"
           >
             {hasClusters ? '重新分群' : '開始分群'}
@@ -429,11 +465,11 @@ export default function KeywordToolPage() {
         </div>
       )}
 
-      {/* 主內容 - 使用三列網格直接排列主要組件 */}
-      <div className={`grid ${isWideLayout ? 'grid-cols-1' : 'grid-cols-1'} gap-4`}>
-        {/* 1. 關鍵詞建議區域 */}
+      {/* Main Content - Simplified Layout */}
+      <div className="space-y-4"> {/* Removed grid, use simple vertical spacing */}
+        {/* 1. Keyword Suggestions Area */}
         {step === 'suggestions' && querySuggestions && querySuggestions.length > 0 && (
-          <div className="border rounded-md p-4 bg-muted/20">
+          <div className="border rounded-md p-4 bg-muted/20"> {/* Consider removing border/bg if not needed */}
             <h3 className="text-lg font-semibold mb-2">關鍵詞建議 ({querySuggestions.length})</h3>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-muted-foreground">點擊獲取搜索量</span>
@@ -450,40 +486,40 @@ export default function KeywordToolPage() {
           </div>
         )}
 
-        {/* 2. 分群結果區域 */}
+        {/* 2. Clustering Results Area */}
         {canCluster && (
-          <div className={`${!isWideLayout && 'mt-4'}`}>
-            <KeywordClustering
-              keywordVolumeMap={keywordVolumeMap}
-              onClusteringComplete={handleClusteringComplete}
-              onStartPersonaChat={handleStartPersonaChat}
-              clusteringTrigger={clusteringTrigger} 
-              personasMap={selectedResearchDetail?.personas} 
-            />
-          </div>
+          /* Removed outer div and mt-4 */
+          <KeywordClustering
+            keywordVolumeMap={keywordVolumeMap}
+            onClusteringComplete={handleClusteringComplete}
+            onStartPersonaChat={handleStartPersonaChat}
+            clusteringTrigger={clusteringTrigger}
+            personasMap={selectedResearchDetail?.personas}
+            // Pass isClusteringLoading if the component needs it internally
+            // isLoading={isClusteringLoading}
+          />
         )}
 
-        {/* 3. 搜索量結果區域 */}
+        {/* 3. Volume Results Area */}
         {queryVolumeData && queryVolumeData.length > 0 && (
-          <div className={`${!isWideLayout && 'mt-4'}`}>
-            <KeywordResults
-              data={{
-                results: volumeDataWithCluster,
-                error: undefined
-              }}
-              isLoading={isLoading}
-              onKeywordClick={handleKeywordCardClick}
-            />
-          </div>
+           /* Removed outer div and mt-4 */
+          <KeywordResults
+            data={{
+              results: volumeDataWithCluster,
+              error: undefined
+            }}
+            isLoading={isLoading} // Keep using general isLoading for volume results
+            onKeywordClick={handleKeywordCardClick}
+          />
         )}
 
-        {/* 空狀態顯示 */}
-        {step === 'input' && !isLoading && !localError && !queryError && 
+        {/* Empty State Display */}
+        {step === 'input' && !isLoading && !localError && !queryError &&
           (!querySuggestions || querySuggestions.length === 0) && (
-          <div className="col-span-full flex items-center justify-center h-[50vh]">
-            <EmptyState 
-              title="開始進行關鍵詞研究" 
-              description="在上方輸入框輸入關鍵詞或網址，然後點擊搜索按鈕。" 
+          <div className="flex items-center justify-center h-[50vh]"> {/* Removed col-span */}
+            <EmptyState
+              title="開始進行關鍵詞研究"
+              description="在上方輸入框輸入關鍵詞或網址，然後點擊搜索按鈕。"
             />
           </div>
         )}

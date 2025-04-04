@@ -56,7 +56,7 @@ interface QueryActions {
   setError: (error: string | null) => void;
   clearResults: () => void;
   triggerGlobalQuery: (tool: string, query: string) => void;
-  handleQuerySubmit: (settings: QuerySettings) => Promise<void>;
+  handleQuerySubmit: (settings: QuerySettings) => Promise<string | null>;
 }
 
 export type QueryStore = {
@@ -108,15 +108,14 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
         }));
       },
 
-      handleQuerySubmit: async (settings) => {
+      handleQuerySubmit: async (settings): Promise<string | null> => {
         const { queryInput } = get().state;
         const actions = get().actions;
-        // Destructure settings - remove userId
         const { region, language, useAlphabet, useSymbols } = settings;
 
         if (!queryInput.trim()) {
           console.log(`[QueryStore] Skipping submit due to empty input.`);
-          return;
+          return null;
         }
 
         actions.setLoading(true, '正在處理請求...');
@@ -125,7 +124,7 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
         let suggestionsList: string[] = [];
         const isUrl = queryInput.startsWith('http');
         const currentInputType = isUrl ? 'url' : 'keyword';
-        console.log(`[QueryStore] Input type detected: ${currentInputType}`);
+        let savedResearchId: string | null = null;
 
         try {
           // 1. Fetch Suggestions
@@ -139,7 +138,7 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
 
           if (suggestionsResult.error || !suggestionsResult.suggestions || suggestionsResult.suggestions.length === 0) {
             const errorMsg = suggestionsResult.error || (currentInputType === 'keyword' ? '未找到關鍵詞建議' : '無法從 URL 獲取建議');
-            throw new Error(errorMsg); // Throw error to be caught below
+            throw new Error(errorMsg);
           }
 
           suggestionsList = suggestionsResult.suggestions;
@@ -149,43 +148,35 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
           const suggestionsToProcess = suggestionsList.slice(0, 80);
           if (suggestionsToProcess.length === 0) {
             console.log("[QueryStore] No suggestions left after slicing, skipping volume fetch.");
-            toast.info("建議列表為空，無法獲取搜索量。");
-            actions.setLoading(false); // Stop loading
-            return;
-          }
-
-          actions.setLoading(true, `正在獲取 ${suggestionsToProcess.length} 個關鍵詞搜索量...`);
-          const volumeResult = await fetchSearchVolume(
-             suggestionsToProcess,
-             region,
-             isUrl ? queryInput : undefined, // Pass URL only if input was URL
-             language
-          );
-
-          if (volumeResult.error || !volumeResult.results) {
-             throw new Error(volumeResult.error || '獲取搜索量數據失敗'); // Throw error
+            toast.info("建議列表為空，無法獲取搜索量。繼續保存研究記錄。");
+          } else {
+              actions.setLoading(true, `正在獲取 ${suggestionsToProcess.length} 個關鍵詞搜索量...`);
+              const volumeResult = await fetchSearchVolume(
+                 suggestionsToProcess,
+                 region,
+                 isUrl ? queryInput : undefined, 
+                 language
+              );
+    
+              if (volumeResult.error || !volumeResult.results) {
+                 console.error("[QueryStore] Error fetching volume:", volumeResult.error);
+                 toast.error(volumeResult.error || '獲取搜索量數據失敗，但仍會嘗試保存研究記錄');
+                 actions.setVolumeData([]); 
+              } else {
+                  actions.setVolumeData(volumeResult.results);
+                  toast.success(`成功獲取 ${volumeResult.results.length} 個關鍵詞數據`);
+              }
           }
           
-          actions.setVolumeData(volumeResult.results);
-          toast.success(`成功獲取 ${volumeResult.results.length} 個關鍵詞數據`);
-          actions.setError(null);
-
-          // 3. Save Keyword Research & Keywords
-          let savedResearchId: string | null = null;
+          // 3. Save Keyword Research & Keywords (regardless of volume success/failure)
           try {
             actions.setLoading(true, '正在創建研究記錄...');
-            
-            // Create input object for the action.
-            // Remove userId as Firebase Admin handles it server-side.
             const researchInput = {
                 query: queryInput,
-                // userId: userId, // Removed
                 location: region,
                 language: language,
-                // Optional fields are not included here unless provided in settings
             };
 
-            // Type assertion no longer needed as the schema is corrected.
             const saveResult = await createKeywordResearch(researchInput);
 
             if (saveResult.researchItem && saveResult.researchItem.id) {
@@ -193,24 +184,24 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
               console.log(`[QueryStore] KeywordResearch created successfully with ID: ${savedResearchId}`);
               toast.success('研究記錄已創建');
 
-              // Demand: Notify KeywordResearchList to refresh after saving data.
-              // Dispatch global event to notify other components (like KeywordResearchList) about the new data.
               if (typeof window !== 'undefined') {
                 const saveEvent = new CustomEvent('researchSaved', { detail: saveResult.researchItem });
                 window.dispatchEvent(saveEvent);
                 console.log('[QueryStore] Dispatched researchSaved event.');
               }
 
-              // Now, save the keywords using the new ID
-              if (volumeResult.results && volumeResult.results.length > 0) {
+              const currentVolumeData = get().state.volumeData;
+              if (currentVolumeData && currentVolumeData.length > 0) {
                   actions.setLoading(true, '正在保存關鍵詞數據...');
-                  // Assuming updateKeywordResearchKeywords action exists and works correctly
-                  const keywordsUpdateResult = await updateKeywordResearchKeywords(savedResearchId, volumeResult.results);
+                  const keywordsUpdateResult = await updateKeywordResearchKeywords(savedResearchId, currentVolumeData);
                   if (keywordsUpdateResult.success) {
                       toast.success('關鍵詞數據已關聯至研究記錄');
                   } else {
-                      throw new Error(keywordsUpdateResult.error || '保存關鍵詞數據失敗');
+                      console.error("[QueryStore] Error updating keywords:", keywordsUpdateResult.error);
+                      toast.error(keywordsUpdateResult.error || '保存關鍵詞數據失敗');
                   }
+              } else {
+                  console.log('[QueryStore] No volume data to save for keywords.');
               }
 
             } else {
@@ -218,18 +209,21 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
             }
           } catch (saveError) {
             console.error("[QueryStore] Error saving keywordResearch or keywords:", saveError);
+            savedResearchId = null; 
             toast.error(`保存關鍵詞研究失敗: ${saveError instanceof Error ? saveError.message : '未知錯誤'}`);
           }
 
         } catch (error) {
-           // Catch errors from suggestions or volume fetching
            console.error("[QueryStore] Error during query submission:", error);
            const message = error instanceof Error ? error.message : '處理查詢時發生錯誤';
            actions.setError(message);
            toast.error(message);
+           savedResearchId = null;
         } finally {
           actions.setLoading(false);
         }
+        
+        return savedResearchId;
       },
     }
   }))
