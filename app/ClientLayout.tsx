@@ -51,7 +51,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   
   // 侧边栏状态
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(!isMobile);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(!isMobile);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   
   // Get selected detail and the analysis request state from store
   const { selectedResearchDetail, serpAnalysisRequest } = useResearchStore((store) => store.state);

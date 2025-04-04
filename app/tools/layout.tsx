@@ -132,15 +132,16 @@ export default function ToolsLayout({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 简化的顶部导航 */}
-      <header className="sticky top-0 flex h-12 shrink-0 items-center bg-background border-b px-4 z-10">
-        <div className="flex items-center gap-2 mr-3">
+      {/* 简化的顶部导航 - 添加 justify-between */}
+      <header className="sticky top-0 flex h-12 shrink-0 items-center justify-between bg-background border-b px-3 md:px-4 z-10 gap-2">
+        {/* Tool Info - Hide on mobile (md:flex) */}
+        <div className="hidden md:flex items-center gap-2">
           {getToolIcon(activeTool)}
           <span className="font-medium">{getToolDisplayName(activeTool)}</span>
 
-          {/* 区域/语言标签 - 简化为一个组件 */}
+          {/* 区域/语言标签 - Hide on mobile (md:flex) */}
           {isMounted && (
-            <div className="flex items-center gap-1 ml-1">
+            <div className="hidden md:flex items-center gap-1 ml-1">
               <span className="px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground text-xs">
                 {`${region} / ${language ? language.replace("_", "-") : "zh-TW"}`}
               </span>
@@ -148,33 +149,40 @@ export default function ToolsLayout({
           )}
         </div>
 
-        {/* 搜索输入框 - 简化结构 */}
-        <div className="relative flex-1 max-w-lg">
-          <Input
-            type="text"
-            placeholder={getSearchPlaceholder(activeTool)}
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            className="pl-8 pr-20 h-8 shadow-sm rounded-full text-sm"
-            onKeyDown={(e) => e.key === "Enter" && triggerQuery()}
-          />
-          <Search
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <LoadingButton
-            onClick={triggerQuery}
-            className="absolute right-1 top-1 h-6 bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-2.5 rounded-full transition-colors shadow-sm"
-            isLoading={isLoading}
-            loadingText={loadingMessage || "處理中..."}
-          >
-            {getButtonText(activeTool)}
-          </LoadingButton>
+        {/* Search group - takes remaining space */}
+        <div className="flex items-center flex-1 gap-2 max-w-lg">
+            {/* Search Icon - Hide on mobile (md:block) */}
+            <Search
+                className="hidden md:block h-4 w-4 text-muted-foreground flex-shrink-0"
+                aria-hidden="true"
+            />
+            {/* Input - takes remaining space within the group */}
+            <Input
+                type="text"
+                placeholder={getSearchPlaceholder(activeTool)}
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                // Adjusted padding for mobile when icon is hidden
+                className="h-8 shadow-sm rounded-md text-sm flex-1 min-w-0 md:pl-2 pl-3"
+                onKeyDown={(e) => e.key === "Enter" && triggerQuery()}
+            />
+            {/* Loading Button */}
+            <LoadingButton
+                onClick={triggerQuery}
+                className="h-8 bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-3 rounded-md transition-colors shadow-sm flex-shrink-0"
+                isLoading={isLoading}
+                loadingText={loadingMessage || "處理中..."}
+            >
+                {getButtonText(activeTool)}
+            </LoadingButton>
         </div>
 
-        {/* 工具按钮 */}
-        <div className="flex items-center gap-1 ml-3">
-          <SearchShortcutHelp />
+        {/* Right side controls */}
+        <div className="flex items-center gap-1">
+          {/* Search Shortcut Help - Hide on mobile (md:block) */}
+          <div className="hidden md:block">
+            <SearchShortcutHelp />
+          </div>
           <SettingsDialog />
           <ModeToggle />
         </div>
