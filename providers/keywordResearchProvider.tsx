@@ -91,14 +91,26 @@ const useResearchStoreBase = create<ResearchStore>((set, get) => ({
 
       try {
         const researchDetail = await fetchKeywordResearchDetail(researchId);
+        
         set((state) => {
-          // 只在当前选中ID未变的情况下更新
+          // Only update if the selected ID hasn't changed
           if (state.state.selectedResearchId === researchId) {
+            if (!researchDetail) {
+              return {
+                state: {
+                  ...state.state,
+                  selectedResearchDetail: null,
+                  error: `Research with ID ${researchId} not found`,
+                  loadingDetail: false,
+                }
+              };
+            }
+            
             return {
               state: {
                 ...state.state,
                 selectedResearchDetail: researchDetail,
-                error: researchDetail ? null : '未找到研究詳情',
+                error: null,
                 loadingDetail: false,
               }
             };
@@ -107,17 +119,18 @@ const useResearchStoreBase = create<ResearchStore>((set, get) => ({
         });
         
         if (!researchDetail) {
-          toast.error('加載研究詳情失敗');
+          toast.error(`Research with ID ${researchId} not found`);
         }
       } catch (error) {
         console.error('[ResearchProvider] Error fetching detail:', error);
-        const message = error instanceof Error ? error.message : '加載研究詳情失敗';
+        const message = error instanceof Error ? error.message : 'Failed to load research details';
         
         set((state) => {
           if (state.state.selectedResearchId === researchId) {
             return {
               state: {
                 ...state.state,
+                selectedResearchDetail: null,
                 error: message,
                 loadingDetail: false,
               }

@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useRouter } from 'next/navigation';
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -25,14 +26,14 @@ interface KeywordResearchListProps {
 }
 
 export default function KeywordResearchList({ hideRefreshButton = false }: KeywordResearchListProps) {
+  const router = useRouter();
+
   // --- 從 Zustand Store 讀取狀態 ---
+  const researches = useResearchStore((store: ResearchStore) => store.state.researches)
+  const loading = useResearchStore((store: ResearchStore) => store.state.loading)
+  const selectedResearchId = useResearchStore((store: ResearchStore) => store.state.selectedResearchId) // Keep this to highlight the selected item
   const {
-    researches,
-    loading,
-    selectedResearchId,
-  } = useResearchStore((store: ResearchStore) => store.state)
-  const {
-    setSelectedResearchId,
+    // setSelectedResearchId, // Will be removed later
     deleteResearch,
     fetchResearches,
   } = useResearchStore((store: ResearchStore) => store.actions)
@@ -42,9 +43,16 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
 
   // Demand: Load initial research list on component mount.
   useEffect(() => {
-    console.log(`${COMPONENT_LOG_PREFIX} 組件掛載，獲取初始研究記錄...`);
-    fetchResearches();
-  }, [fetchResearches]);
+    console.log(`${COMPONENT_LOG_PREFIX} useEffect hook fired.`);
+    // Check if researches are already loaded to avoid unnecessary fetches
+    if (!researches || researches.length === 0) {
+        console.log(`${COMPONENT_LOG_PREFIX} Researches not loaded, calling fetchResearches().`);
+        fetchResearches(); // Call without forceRefresh initially
+    } else {
+        console.log(`${COMPONENT_LOG_PREFIX} Researches already loaded (${researches.length} items), skipping initial fetch.`);
+    }
+    // Dependency array only includes fetchResearches, which should be stable from Zustand
+  }, [fetchResearches]); // Removed researches from dependencies to prevent re-fetching on list update
 
   // Demand: Automatically refresh list when new research is saved (via 'researchSaved' event).
   useEffect(() => {
@@ -63,10 +71,10 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
     };
   }, [fetchResearches]); // 依賴 fetchResearches 以確保其穩定性
 
-  // 處理研究記錄點擊
+  // 處理研究記錄點擊 - Updated to use router
   const handleResearchClick = (researchId: string) => {
-    setSelectedResearchId(researchId)
-    // 注意：此處不觸發SERP分析，僅設置所選研究ID
+    console.log(`${COMPONENT_LOG_PREFIX} Navigating to results page for ID:`, researchId);
+    router.push(`/tools/keyword/${researchId}`);
   }
 
   // 處理刪除研究記錄
@@ -98,7 +106,7 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
   // 渲染内容 - 简化为三个主要部分
   return (
     <div className="flex flex-col w-full max-w-full">
-      {/* 1. 刷新按钮 */}
+      {/* 1. 刷新按钮 - Keep hidden based on prop */}
       {!hideRefreshButton && (
         <Button 
           variant="ghost" 
@@ -135,7 +143,7 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
         </div>
       ) : (
         // 研究记录列表 - 进一步简化嵌套结构，减少内部间距
-        <div className="w-64 space-y-1 px-1">
+        <div className="space-y-0 px-0">
           {researches.map((research) => {
             const isSelected = research.id === selectedResearchId
             const timeAgo = formatDistanceToNow(new Date(research.updatedAt || research.createdAt), {
@@ -146,30 +154,29 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
             return (
               <div 
                 key={research.id}
-                className={`py-1.5 px-1.5 cursor-pointer rounded-md flex items-center max-w-full ${
+                className={`group py-2 px-2 cursor-pointer flex items-center max-w-full border-b border-border/50 last:border-b-0 rounded-sm ${ 
                   isSelected 
-                  ? 'bg-gradient-to-r from-amber-100 to-amber-50 text-black border-l-4 border-amber-500 pl-1' 
+                  ? 'bg-muted font-semibold'
                   : 'hover:bg-accent/50'
                 }`}
                 onClick={() => handleResearchClick(research.id)}
               >
-                <FileText className={`h-4 w-4 mr-1.5 flex-shrink-0 ${isSelected ? 'text-amber-600' : 'text-muted-foreground'}`} />
-                
-                {/* 内容区域最小宽度0，确保可以被压缩 */}
-                <div className="min-w-0 flex-1 overflow-hidden mr-1">
-                  <h3 className={`text-sm leading-tight truncate ${isSelected ? 'font-bold' : ''}`}>
+                {/* 内容区域最小宽度0，确保可以被压缩 - Give it slightly more margin since icon is removed */}
+                <div className="min-w-0 flex-1 overflow-hidden mr-1.5 ml-1"> 
+                  <h3 className={`text-base leading-tight truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
                     {research.query}
                   </h3>
-                  <p className="text-xs text-muted-foreground truncate">
+                  <p className="text-sm text-muted-foreground truncate">
                     {timeAgo}
                   </p>
                 </div>
                 
-                {/* 删除按钮 */}
+                {/* 删除按钮 - Hide by default, show on group-hover */}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  // Apply group-hover visibility and default opacity-0
+                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                   onClick={(e) => handleDelete(e, research.id)}
                   disabled={deletingId === research.id}
                   aria-label={`刪除研究記錄: ${research.query}`}
@@ -187,5 +194,4 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
       )}
     </div>
   )
-}
-
+} 

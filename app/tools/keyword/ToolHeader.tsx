@@ -1,6 +1,10 @@
 import { Badge } from "@/components/ui/badge"
 import type React from "react"
 import { SearchShortcutHelp } from "../../../components/tools/SearchShortcutHelp"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 interface ToolHeaderProps {
   title: string
@@ -8,37 +12,24 @@ interface ToolHeaderProps {
   region?: string
   language?: string
   icon?: React.ReactNode
+  showBackButton?: boolean
 }
 
-export function ToolHeader({ title, description, region, language, icon }: ToolHeaderProps) {
+export function ToolHeader({ title, description, region, language, icon, showBackButton = true }: ToolHeaderProps) {
   return (
-    <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          {icon}
-          {title}
-        </h1>
-        <p className="text-sm text-muted-foreground max-w-2xl">{description}</p>
-
-        {/* Display region and language if provided */}
-        {(region || language) && (
-          <div className="flex items-center gap-2 mt-1">
-            {region && (
-              <Badge variant="outline" className="text-xs">
-                地區: {region}
-              </Badge>
-            )}
-            {language && (
-              <Badge variant="outline" className="text-xs">
-                語言: {language.replace("_", "-")}
-              </Badge>
-            )}
+    <Card className="mb-6">
+      {(description || region || language) && (
+        <CardContent>
+          {description && (
+            <p className="text-sm text-muted-foreground mb-2">{description}</p>
+          )}
+          <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+            {region && <span>地區: {region}</span>}
+            {language && <span>語言: {language}</span>}
           </div>
-        )}
-      </div>
-
-      <SearchShortcutHelp />
-    </div>
+        </CardContent>
+      )}
+    </Card>
   )
 }
 
