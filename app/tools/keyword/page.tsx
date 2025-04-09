@@ -25,24 +25,17 @@ export default function KeywordToolLandingPage() {
   // --- Logic --- 
   // Function to handle search submission (moved from layout)
   const triggerQuery = useCallback(async () => {
-    if (!queryInput.trim()) {
-      console.log("[KeywordPage] Skipping submit due to empty input.");
-      return;
-    }
-    console.log(`[KeywordPage] Triggering handleQuerySubmit for input: ${queryInput}`);
+    if (!queryInput.trim()) return;
 
-          const newResearchId = await handleQuerySubmit({
-            region: settingsState.region,
-            language: settingsState.language,
-            useAlphabet: settingsState.useAlphabet,
-            useSymbols: settingsState.useSymbols,
-          });
+    const newResearchId = await handleQuerySubmit({
+      region: settingsState.region,
+      language: settingsState.language,
+      useAlphabet: settingsState.useAlphabet,
+      useSymbols: settingsState.useSymbols,
+    });
 
-          if (newResearchId) {
-      console.log(`[KeywordPage] New research created/found: ${newResearchId}. Navigating...`);
+    if (newResearchId) {
       router.push(`/tools/keyword/${newResearchId}`);
-          } else {
-      console.warn("[KeywordPage] handleQuerySubmit did not return an ID.");
     }
   }, [queryInput, handleQuerySubmit, settingsState, router]);
 
@@ -59,7 +52,7 @@ export default function KeywordToolLandingPage() {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !isLoading) {
         // Ensure the focus isn't already on an input to avoid double submission
         if (!(document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) {
-           triggerQuery();
+          triggerQuery();
         }
       }
     }

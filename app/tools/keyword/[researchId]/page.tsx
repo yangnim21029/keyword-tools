@@ -1,11 +1,9 @@
 "use client"
 
 // Optimize imports
-import { ToolHeader } from "../ToolHeader"; // Adjusted path
+import { ToolHeader } from "../ToolHeader";
 import type { KeywordVolumeItem, KeywordVolumeResult } from "@/app/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// Remove QueryProvider hook, no longer needed for triggering query here
-// import { useQueryStore } from '@/providers/QueryProvider';
 import { useResearchStore } from "@/store/keywordResearchStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { FileText, Loader2 } from "lucide-react";
@@ -13,22 +11,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { toast } from "sonner";
 
 // Actions
-import {
-  // fetchSearchVolume, // Likely handled by store action for specific research ID
-  performSemanticClustering
-} from "@/app/actions";
+import { performSemanticClustering } from "@/app/actions";
 import { generateUserPersonaFromClusters } from "@/app/actions/generatePersona";
-// import { detectChineseType } from "@/app/services/KeywordDataService"; // Unused?
 
 // Internal Components
 import { LoadingButton } from "@/components/ui/LoadingButton";
-import { EmptyState } from "../EmptyState"; // Adjusted path
-import KeywordClustering from "../KeywordClustering"; // Adjusted path
+import { EmptyState } from "../EmptyState";
+import KeywordClustering from "../KeywordClustering";
 
-// Corrected import path for types - FINAL ATTEMPT
-import {
-  type Keyword
-} from "@/app/types/keyword-research.types";
+// Types
+import { type Keyword } from "@/app/types/keyword-research.types";
 
 // Define the steps for the results page workflow
 type WorkflowStep = "loadingDetails" | "clustering" | "generatingPersonas" | "results" | "error";
@@ -229,7 +221,7 @@ export default function KeywordResultPage({ params }: KeywordResultPageProps) {
     setLocalError(null);
 
     const clusterEntries = Object.entries(currentClusters);
-    let generatedPersonas: Record<string, string> = { ...(currentPersonas || {}) };
+    const generatedPersonas: Record<string, string> = { ...(currentPersonas || {}) };
     let errorsEncountered = 0;
 
     const personaPromises = clusterEntries.map(async ([clusterName, keywords]) => {

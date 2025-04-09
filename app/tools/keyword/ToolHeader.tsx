@@ -1,8 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import type React from "react"
-import { SearchShortcutHelp } from "../../../components/tools/SearchShortcutHelp"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
@@ -15,20 +13,40 @@ interface ToolHeaderProps {
   showBackButton?: boolean
 }
 
-export function ToolHeader({ title, description, region, language, icon, showBackButton = true }: ToolHeaderProps) {
+export function ToolHeader({ 
+  title, 
+  description, 
+  region, 
+  language, 
+  icon, 
+  showBackButton = true 
+}: ToolHeaderProps) {
   return (
     <Card className="mb-6">
-      {(description || region || language) && (
-        <CardContent>
-          {description && (
-            <p className="text-sm text-muted-foreground mb-2">{description}</p>
+      <CardContent className="pt-6">
+        <div className="flex items-center gap-4 mb-4">
+          {showBackButton && (
+            <Link href="/tools/keyword">
+              <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
+            </Link>
           )}
-          <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-            {region && <span>地區: {region}</span>}
-            {language && <span>語言: {language}</span>}
+          <div className="flex items-center gap-2">
+            {icon}
+            <h1 className="text-2xl font-semibold">{title}</h1>
           </div>
-        </CardContent>
-      )}
+        </div>
+        {(description || region || language) && (
+          <div>
+            {description && (
+              <p className="text-sm text-muted-foreground mb-2">{description}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {region && <Badge variant="outline">地區: {region}</Badge>}
+              {language && <Badge variant="outline">語言: {language}</Badge>}
+            </div>
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
