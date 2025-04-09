@@ -344,7 +344,6 @@ export default function KeywordResultPage({ params }: KeywordResultPageProps) {
   // 3. Results State (Data loaded, clusters available)
   if (workflowStep === "results" && selectedResearchDetail?.id === researchId && currentClusters) {
     const hasPersonas = !!(currentPersonas && Object.keys(currentPersonas).length > 0);
-    const canGeneratePersonas = !hasPersonas;
 
     return (
       <div className="space-y-6">
@@ -363,15 +362,12 @@ export default function KeywordResultPage({ params }: KeywordResultPageProps) {
             </SelectContent>
           </Select>
 
-          {canGeneratePersonas && (
-             <LoadingButton
-                onClick={handleGenerateAllPersonas}
-                disabled={!canGeneratePersonas}
-                className="whitespace-nowrap"
-             >
-                生成所有用戶畫像
-             </LoadingButton>
-          )}
+          <LoadingButton
+            onClick={handleGenerateAllPersonas}
+            className="whitespace-nowrap"
+          >
+            {hasPersonas ? "更新所有用戶畫像" : "生成所有用戶畫像"}
+          </LoadingButton>
            {hasPersonas && (
              <span className="text-sm text-muted-foreground italic">用戶畫像已生成</span>
            )}
