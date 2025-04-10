@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run next dev",
-    "build": "npm run next build",
-    "start": "npm run next start",
-    "lint": "npm run next lint"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.3.9",
