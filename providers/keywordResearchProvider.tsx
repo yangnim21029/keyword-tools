@@ -174,7 +174,7 @@ const useResearchStoreBase = create<ResearchStore>((set, get) => ({
       console.log('[ResearchProvider] Fetching research list...');
       
       try {
-        const result = await fetchKeywordResearchList(50, forceRefresh);
+        const result = await fetchKeywordResearchList(undefined, undefined, 50, forceRefresh);
         
         if (result.error || !result.data) {
           throw new Error(result.error || '從 Action 返回的數據無效');

@@ -1,46 +1,7 @@
 // Firebase 配置和初始化
-import { App, cert, getApps, initializeApp, ServiceAccount } from 'firebase-admin/app';
-import { Firestore, getFirestore } from 'firebase-admin/firestore';
+// (Initialization moved to app/services/firebase/config.ts)
 
-// 初始化 Firebase Admin
-let app: App | undefined;
-export let db: Firestore | undefined;
-
-// 确保 Firebase Admin 只初始化一次
-if (typeof process !== 'undefined' && !getApps().length) {
-  try {
-    // 检查必要的环境变量是否存在
-    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
-      console.error("Firebase 環境變量未設置，請在 .env.local 中配置 FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY 和 FIREBASE_CLIENT_EMAIL");
-    }
-    
-    // 从环境变量获取 Firebase 凭证
-    const serviceAccount: Partial<ServiceAccount> = {
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    };
-
-    if (!serviceAccount.projectId || !serviceAccount.privateKey || !serviceAccount.clientEmail) {
-      throw new Error("Missing essential Firebase Admin credentials in environment variables.");
-    }
-
-    app = initializeApp({
-      credential: cert(serviceAccount as ServiceAccount),
-      databaseURL: `https://${serviceAccount.projectId}.firebaseio.com`
-    });
-    
-    db = getFirestore(app);
-    console.log("Firebase Admin SDK 初始化成功");
-  } catch (error) {
-    console.error("Firebase Admin SDK 初始化錯誤", error);
-  }
-} else if (getApps().length > 0) {
-  app = getApps()[0];
-  db = getFirestore(app);
-} else {
-    console.warn("Firebase Admin SDK not initialized (not in Node.js env or already initialized elsewhere).");
-}
+// Keep the Firestore structure comments if they are useful here
 
 /**
  * Firebase 文档结构说明 (根據 README.md):

@@ -177,35 +177,25 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
                 language: language,
             };
 
+            set({ state: { ...get().state, isLoading: true, error: null } });
+
             const saveResult = await createKeywordResearch(researchInput);
 
-            if (saveResult.researchItem && saveResult.researchItem.id) {
-              savedResearchId = saveResult.researchItem.id;
+            // Check for errors first
+            if (saveResult.error) {
+              throw new Error(saveResult.error);
+            }
+
+            // Check if data exists and has an id
+            if (saveResult.data && saveResult.data.id) {
+              savedResearchId = saveResult.data.id;
               console.log(`[QueryStore] KeywordResearch created successfully with ID: ${savedResearchId}`);
               toast.success('研究記錄已創建');
-
-              if (typeof window !== 'undefined') {
-                const saveEvent = new CustomEvent('researchSaved', { detail: saveResult.researchItem });
-                window.dispatchEvent(saveEvent);
-                console.log('[QueryStore] Dispatched researchSaved event.');
-              }
-
-              const currentVolumeData = get().state.volumeData;
-              if (currentVolumeData && currentVolumeData.length > 0) {
-                  actions.setLoading(true, '正在保存關鍵詞數據...');
-                  const keywordsUpdateResult = await updateKeywordResearchKeywords(savedResearchId, currentVolumeData);
-                  if (keywordsUpdateResult.success) {
-                      toast.success('關鍵詞數據已關聯至研究記錄');
-                  } else {
-                      console.error("[QueryStore] Error updating keywords:", keywordsUpdateResult.error);
-                      toast.error(keywordsUpdateResult.error || '保存關鍵詞數據失敗');
-                  }
-              } else {
-                  console.log('[QueryStore] No volume data to save for keywords.');
-              }
-
+              // Optionally: Update research list in the other store
+              // researchStoreActions._handleResearchSavedOrUpdated?.(saveResult.data);
             } else {
-              throw new Error(saveResult.error || '創建關鍵詞研究失敗，未返回有效項目');
+               // Handle case where data is null/missing ID even without error
+               throw new Error('創建研究記錄後未能獲取有效數據');
             }
           } catch (saveError) {
             console.error("[QueryStore] Error saving keywordResearch or keywords:", saveError);
