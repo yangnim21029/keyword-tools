@@ -1,13 +1,15 @@
 import GlobalLoadingOverlay from "@/components/common/GlobalLoadingOverlay"
-import { ResearchProvider } from "@/providers/keywordResearchProvider"
-import { QueryProvider } from "@/providers/QueryProvider"
 import { SettingsProvider } from "@/providers/SettingsProvider"
 import { ThemeProvider } from "@/providers/ThemeProvider"
 import type { Metadata, Viewport } from "next"
 import { Inter, Roboto } from "next/font/google"
 import type React from "react"
 import { Toaster as SonnerToaster } from "sonner"
-import ClientLayout from "./ClientLayout"
+import Link from "next/link"
+import { FileText } from "lucide-react"
+import { SettingsDialog } from "@/components/settings-tool/SettingsDialog"
+import { ModeToggle } from "@/components/common/ModeToggle"
+import SettingBar from "@/components/settings-tool/SettingBar"
 import "./globals.css"
 
 // 使用 Inter 作为主要字体
@@ -53,12 +55,41 @@ export default function RootLayout({
       <body className={`${inter.variable} ${roboto.variable} font-sans bg-background text-foreground antialiased min-h-screen overflow-x-hidden`}>
         <ThemeProvider>
           <SettingsProvider>
-            <QueryProvider>
-              <ResearchProvider>
-                <ClientLayout>{children}</ClientLayout>
-                <GlobalLoadingOverlay />
-              </ResearchProvider>
-            </QueryProvider>
+            <div className="flex flex-col h-full w-full">
+              <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 bg-background border-b px-4">
+                <div className="flex items-center gap-6">
+                  <Link href="/tools/keyword" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <span className="font-medium">關鍵詞研究</span>
+                  </Link>
+                  <nav className="hidden md:flex items-center gap-4">
+                    <Link 
+                      href="/tools/keyword" 
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      新研究
+                    </Link>
+                    <Link 
+                      href="/history" 
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      歷史記錄
+                    </Link>
+                  </nav>
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <SettingBar />
+                  <div className="flex items-center gap-1">
+                    <SettingsDialog />
+                    <ModeToggle />
+                  </div>
+                </div>
+              </header>
+              <main className="flex-1 w-full overflow-auto p-4">
+                {children}
+              </main>
+            </div>
+            <GlobalLoadingOverlay />
           </SettingsProvider>
           <SonnerToaster
             position="bottom-right"

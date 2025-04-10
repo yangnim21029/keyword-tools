@@ -1,26 +1,29 @@
 // components/common/GlobalLoadingOverlay.tsx
 'use client';
 
-import { useQueryStore } from '@/providers/QueryProvider';
+// import { useQueryStore } from '@/providers/QueryProvider'; // Removed import
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutGrid } from 'lucide-react'; // 增加 LayoutGrid 圖標
 import { useEffect, useState } from 'react';
 
 export default function GlobalLoadingOverlay() {
-  const isLoading = useQueryStore((state) => state.state.isLoading);
-  const loadingMessage = useQueryStore((state) => state.state.loadingMessage);
-  const [visible, setVisible] = useState(false);
+  // const isLoading = useQueryStore((state) => state.state.isLoading); // Removed hook call
+  // const loadingMessage = useQueryStore((state) => state.state.loadingMessage); // Removed hook call
   
-  // 添加延時效果，避免閃爍
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isLoading) {
-      timer = setTimeout(() => setVisible(true), 100);
-    } else {
-      setVisible(false);
-    }
-    return () => clearTimeout(timer);
-  }, [isLoading]);
+  // Temporarily disable the overlay by keeping visible false
+  const [visible, setVisible] = useState(false); 
+  const loadingMessage = '處理中...'; // Provide a default message if needed when re-enabled
+
+  // Removed the useEffect that depended on isLoading
+  // useEffect(() => {
+  //   let timer: NodeJS.Timeout;
+  //   if (isLoading) {
+  //     timer = setTimeout(() => setVisible(true), 100);
+  //   } else {
+  //     setVisible(false);
+  //   }
+  //   return () => clearTimeout(timer);
+  // }, [isLoading]);
 
   return (
     <AnimatePresence>

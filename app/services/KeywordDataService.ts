@@ -118,7 +118,8 @@ export function detectChineseType(text: string): 'simplified' | 'traditional' | 
 export function filterSimplifiedChinese(keywords: string[]): string[] {
   return keywords.filter(keyword => {
     const type = detectChineseType(keyword);
-    return type !== 'simplified';
+    // Keep the keyword if it's NOT simplified (regardless of spaces)
+    return type !== 'simplified'; // Removed the whitespace check: && !/\s/.test(keyword)
   });
 }
 
@@ -279,52 +280,99 @@ export function getCompetitionLevel(competitionEnum: number): string {
   return competitionLevels[competitionEnum] || String(competitionEnum);
 }
 
+// Regex to check for CJK characters
+const cjkRegex = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/;
+// Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
+const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
+
 /**
  * Gets keyword search volume data.
  */
 export async function getSearchVolume(
   keywords: string[],
   region: string,
-  // Remove unused parameters: mainKeyword, language, clusters
-  // mainKeyword: string = '',
-  // language: string = 'zh-TW',
-  // clusters: Record<string, string[]> | null = null
+  url: string | undefined,
+  language: string
 ): Promise<KeywordVolumeResult> {
   const startTime = Date.now();
   const estimatedTime = estimateProcessingTime(keywords, true);
-  const sourceInfo = "Google Ads API"; // Use const
+  const sourceInfo = "Google Ads API";
+  const isUrl = url !== undefined;
+
+  // Map the input language to a Google Ads API language code/ID.
+  // Use 'en' as a fallback if the specific language isn't mapped or invalid.
+  const apiLanguageCode = language.replace('-', '_'); // e.g., 'zh-TW' -> 'zh_TW'
+  const languageId = LANGUAGE_CODES[apiLanguageCode] || LANGUAGE_CODES['en'] || 1000; // Default to English (ID 1000) if specific language not found
+
+  // Map region to Google Ads API location ID. Default to Taiwan (2158) if not found.
+  const locationId = LOCATION_CODES[region.toUpperCase()] || 2158; // Default to Taiwan
+
+  console.log(`Fetching search volume data for Region: ${region} (Loc ID: ${locationId}), Language: ${language} (Lang ID: ${languageId})`);
+  // Log if URL was provided, even if not used in this specific function's core logic
+  if (isUrl) {
+    console.log(`URL provided (currently informational): ${url}`);
+  }
+
+  if (!DEVELOPER_TOKEN || !CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !CUSTOMER_ID) {
+    // Consider using a more specific error type or logging details appropriately
+    throw new Error('Missing Google Ads API credentials, check environment variables');
+  }
+
+  const allResults: KeywordVolumeItem[] = [];
+  const processedKeywords = new Map<string, boolean>(); // Track processed keywords to avoid duplicates from API variations
 
   try {
-    const batchSize = 20;
-    const filteredKeywords = filterSimplifiedChinese(keywords);
-    const uniqueKeywords = [...new Set(filteredKeywords)];
-    if (uniqueKeywords.length < keywords.length) {
-      console.log(`Removed ${keywords.length - uniqueKeywords.length} duplicate or simplified Chinese keywords`);
+    const batchSize = 20; // Google Ads API recommended max keywords per request is higher, but batching helps manage load/timeouts
+    
+    // Filter out unwanted keywords (e.g., duplicates, specific scripts if necessary)
+    // Example: filterSimplifiedChinese might be relevant depending on target languages
+    const filteredKeywords = filterSimplifiedChinese(keywords); 
+    const uniqueBaseKeywords = [...new Set(filteredKeywords)];
+    
+    // Generate spaced variations ONLY for CJK keywords if applicable and sensible
+    const spacedVariations: string[] = [];
+    for (const keyword of uniqueBaseKeywords) {
+      // Check if the keyword consists only of CJK characters, has no spaces, and is within a reasonable length
+      if (onlyCjkRegex.test(keyword) && keyword.length > 1 && keyword.length <= 10 && !keyword.includes(' ')) { 
+        const spacedKeyword = keyword.split('').join(' ');
+        spacedVariations.push(spacedKeyword);
+      }
     }
-    console.log(`Fetching search volume data for ${region} directly from API`);
-    const apiLanguage = region === 'TW' || region === 'HK' ? 'zh_TW' :
-                     region === 'CN' ? 'zh_CN' : 'en';
-    console.log(`Fetching search volume data for ${region} (Language: ${apiLanguage})`);
-    if (!DEVELOPER_TOKEN || !CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !CUSTOMER_ID) {
-      throw new Error('Missing Google Ads API credentials, check environment variables');
+    
+    // Combine original keywords and spaced variations, ensuring final uniqueness
+    const keywordsToQuery = [...new Set([...spacedVariations, ...uniqueBaseKeywords, ])];
+
+    if (keywordsToQuery.length > uniqueBaseKeywords.length) {
+      console.log(`Added ${keywordsToQuery.length - uniqueBaseKeywords.length} spaced variations for CJK keywords.`);
+    } else if (uniqueBaseKeywords.length < keywords.length) {
+      console.log(`Removed ${keywords.length - uniqueBaseKeywords.length} duplicate or potentially filtered keywords initially.`);
     }
-    const allResults: KeywordVolumeItem[] = [];
-    const processedKeywords = new Map<string, boolean>();
-    for (let i = 0; i < uniqueKeywords.length; i += batchSize) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const batchKeywords = uniqueKeywords.slice(i, i + batchSize);
-      const locationId = LOCATION_CODES[region.toUpperCase()] || 2158;
-      const languageId = LANGUAGE_CODES[apiLanguage] || (apiLanguage === 'zh_TW' ? 1018 : 1000);
-      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}, ${batchKeywords.length} keywords, Loc: ${locationId}, Lang: ${languageId}`);
+
+    // --- API Call Loop ---
+    for (let i = 0; i < keywordsToQuery.length; i += batchSize) {
+      // Add a small delay between batches to avoid hitting rate limits
+      await new Promise(resolve => setTimeout(resolve, 250)); // 250ms delay
+
+      const batchKeywords = keywordsToQuery.slice(i, i + batchSize);
+      
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(keywordsToQuery.length/batchSize)}, ${batchKeywords.length} keywords.`);
+
+      // Call the underlying function to fetch keyword ideas/volumes from Google Ads API
+      // This function needs the correct locationId and languageId
       const response = await fetchKeywordIdeas(batchKeywords, locationId, languageId);
-      const keywordIdeas = response.results || [];
+      const keywordIdeas = response.results || []; // Ensure results is an array
+
+      // --- Process Batch Results ---
       for (const idea of keywordIdeas) {
         try {
           const text = idea.text || '';
-          if (!text || processedKeywords.has(text)) continue;
-          if (isSimplifiedChinese(text)) continue;
+          // Skip if the keyword text is empty or already processed
+          if (!text || processedKeywords.has(text)) continue; 
+
           const metrics = idea.keywordIdeaMetrics || {};
-          const rawSearchVolume = metrics.avgMonthlySearches;
+          const rawSearchVolume = metrics.avgMonthlySearches; // 月搜索量
+          
+          // Safely parse search volume
           let searchVolumeValue: number | undefined = undefined;
           if (rawSearchVolume != null) {
               const parsed = parseInt(String(rawSearchVolume), 10);
@@ -332,25 +380,52 @@ export async function getSearchVolume(
                   searchVolumeValue = parsed;
               }
           }
+
+          // Safely parse CPC (Low Top of Page Bid Micros)
+          let cpcValue: number | null = null;
+          if (metrics.lowTopOfPageBidMicros != null) {
+            const parsedCpc = Number(metrics.lowTopOfPageBidMicros);
+            if (!isNaN(parsedCpc)) {
+              // Convert micros to standard currency unit (e.g., USD) and round
+              cpcValue = Number((parsedCpc / 1000000).toFixed(2));
+            }
+          }
+
+          // Safely parse Competition Index
+          let competitionIndexValue: number | undefined = undefined;
+          if (metrics.competitionIndex != null) {
+              const parsedCompIndex = Number(metrics.competitionIndex);
+              if (!isNaN(parsedCompIndex)) {
+                  competitionIndexValue = Number(parsedCompIndex.toFixed(2)); // Round to 2 decimal places
+              }
+          }
           const result: KeywordVolumeItem = {
             text: text,
             searchVolume: searchVolumeValue,
-            competition: getCompetitionLevel(metrics.competition || 0),
-            competitionIndex: typeof metrics.competitionIndex === 'number' ? Number(metrics.competitionIndex.toFixed(2)) : undefined,
-            cpc: metrics.lowTopOfPageBidMicros != null && !isNaN(Number(metrics.lowTopOfPageBidMicros))
-              ? Number((Number(metrics.lowTopOfPageBidMicros) / 1000000).toFixed(2))
-              : null,
+            competition: getCompetitionLevel(metrics.competition || 0), // Map numeric competition enum to string
+            competitionIndex: competitionIndexValue,
+            cpc: cpcValue,
           };
+
           allResults.push(result);
-          processedKeywords.set(text, true);
+          processedKeywords.set(text, true); // Mark this keyword text as processed
+
         } catch (itemError) {
-          console.error(`Error processing keyword \"${idea.text}\":`, itemError);
+          // Log errors processing individual items but continue the loop
+          console.error(`Error processing keyword idea "${idea.text || 'N/A'}":`, itemError);
         }
-      }
-    }
+      } // End processing items in batch
+    } // End batch loop
+
     const endTime = Date.now();
     const actualTime: number = Math.round((endTime - startTime) / 1000);
-    console.log(`Successfully fetched search volume data for ${allResults.length} keywords`);
+
+    console.log(`Successfully processed ${keywordsToQuery.length} keywords/variations. Found volume data for ${allResults.length} unique keywords.`);
+    // log allResults
+    for (const result of allResults) {
+      console.log(`result: ${result.text} ${result.searchVolume} ${result.competition} ${result.competitionIndex} ${result.cpc}`);
+    }
+
     return {
       results: allResults,
       processingTime: {
@@ -358,22 +433,27 @@ export async function getSearchVolume(
         actual: actualTime
       },
       sourceInfo: sourceInfo,
-      researchId: null
+      researchId: null // Assuming researchId is handled elsewhere or not applicable here
     };
+
+
   } catch (error: unknown) {
-    console.error('Error fetching search volume:', error);
+    console.error('Error fetching search volume from Google Ads API:', error);
     const endTime = Date.now();
     const actualTime: number = Math.round((endTime - startTime) / 1000);
-    const errorMessage = error instanceof Error ? error.message : '無法獲取關鍵詞搜索量數據';
+    // Provide a more informative error message back to the caller
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while fetching keyword volume data.';
+    
+    // Return an error structure consistent with the expected return type
     return {
       results: [],
       processingTime: {
-        estimated: 0,
+        estimated: estimatedTime, // Keep estimated time if available
         actual: actualTime,
       },
       error: errorMessage,
       sourceInfo: "Error",
       researchId: null
-    } as KeywordVolumeResult;
+    }; // Explicitly cast or ensure type compatibility if needed
   }
 } 

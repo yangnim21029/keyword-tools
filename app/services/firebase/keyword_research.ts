@@ -126,7 +126,6 @@ export async function getKeywordResearchDetail(researchId: string): Promise<Keyw
         const researchDetail: KeywordResearchItem = {
             id: researchId,
             query: data.query || '',
-            userId: data.userId || '',
             createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
             updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
             keywords: data.keywords || [],

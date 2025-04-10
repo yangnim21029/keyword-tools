@@ -48,12 +48,31 @@ export async function getKeywordSuggestions(
       allSuggestions = [...allSuggestions, ...symbolResults.flat()];
     }
 
+    // Add space variations for chinese keywords, not CJK
+    const spaceVariations: string[] = [];
+    // use query without english letters and symbols
+    const queryWithoutEnglish = query.replace(/[a-zA-Z0-9]/g, '');
+    // 在不同的 index 插入空格
+    for (let i = 0; i < queryWithoutEnglish.length; i++) {
+      const spacedKeyword = queryWithoutEnglish.slice(0, i) + ' ' + queryWithoutEnglish.slice(i);
+      spaceVariations.push(spacedKeyword);
+    }
+    console.log(spaceVariations); 
+    allSuggestions = [...spaceVariations, ...allSuggestions, ];
+
+
     // Filter and deduplicate
     const filteredSuggestions = filterSimplifiedChinese(allSuggestions);
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
 
+    console.log(uniqueSuggestions);
+    
+
     // Calculate estimated time
     const estimatedVolumeTime = estimateProcessingTime(uniqueSuggestions, true);
+
+    console.log(`從API獲取到 ${uniqueSuggestions.length} 個建議`);
+    console.log(uniqueSuggestions);
 
     return {
       suggestions: uniqueSuggestions,
@@ -131,59 +150,3 @@ export async function getUrlSuggestions(formData: UrlFormData): Promise<KeywordS
     };
   }
 }
-
-// getKeywordSuggestionsWithDelay (Moved from original actions.ts)
-export async function getKeywordSuggestionsWithDelay(query: string, region: string, language: string): Promise<KeywordSuggestionResult> {
-  const searchPrefix = query.trim();
-  try {
-    console.log(`Fetching suggestions with delay for: ${searchPrefix}`);
-    const suggestions = await fetchSuggestionWithDelay(searchPrefix, region, language);
-    const uniqueSuggestions = [...new Set(filterSimplifiedChinese(suggestions))];
-    const estimatedTime = estimateProcessingTime(uniqueSuggestions, true);
-
-    return {
-      suggestions: uniqueSuggestions,
-      estimatedProcessingTime: estimatedTime,
-      sourceInfo: '數據來源: Google Autocomplete API (with delay)'
-    };
-  } catch (error) {
-    console.error('Error fetching suggestions with delay:', error);
-    return {
-      suggestions: [],
-      estimatedProcessingTime: 0,
-      sourceInfo: '數據來源: 獲取失敗 (with delay)',
-      error: error instanceof Error ? error.message : 'Unknown error fetching delayed suggestions'
-    };
-  }
-}
-
-// Action to fetch search volume
-export async function fetchSearchVolume(
-  keywords: string[],
-  region: string,
-  url: string | undefined, // Change null to undefined
-  language: string
-): Promise<KeywordVolumeResult> {
-  console.log(`Fetching search volume for ${keywords.length} keywords. Region: ${region}, Lang: ${language}, URL: ${url}`);
-  try {
-    // Correct the number of arguments passed to getSearchVolumeService
-    // Assuming getSearchVolumeService corresponds to the updated getSearchVolume
-    const result = await getSearchVolumeService(keywords, region);
-    // Return the result directly (assuming the service function handles errors appropriately or throws)
-    // Add basic error handling if service doesn't throw
-    if (!result || !result.results) {
-        throw new Error('Invalid response from search volume service');
-    }
-    return result;
-  } catch (error) {
-    console.error('Error fetching search volume via action:', error);
-    // Return an error structure compatible with KeywordVolumeResult
-    // Adjust this structure based on the actual definition of KeywordVolumeResult
-    return {
-      results: [],
-      processingTime: { estimated: 0, actual: 0 },
-      sourceInfo: '數據來源: 獲取失敗 (Action Error)',
-      error: error instanceof Error ? error.message : 'Unknown error fetching search volume'
-    } as KeywordVolumeResult; // Type assertion might be needed
-  }
-} 

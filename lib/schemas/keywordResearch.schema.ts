@@ -11,7 +11,6 @@ export const PersonaSchema = z.record(z.string(), z.string())
 // Base schema for keyword research data
 export const KeywordResearchBaseSchema = z.object({
   query: z.string().min(1, '主關鍵詞不能為空').describe('主關鍵詞'),
-  userId: UserIDSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   keywords: z.array(keywordVolumeItemSchema).optional().describe('關鍵詞列表及其搜索量數據'),

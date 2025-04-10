@@ -49,7 +49,7 @@ export interface KeywordResearchState { // Renamed from PastResearchState
 }
 
 export interface KeywordResearchActions { // Renamed from PastResearchActions
-  fetchResearches: (userId: string, filters?: KeywordResearchFilter) => Promise<void>; // Renamed, added optional filters
+  fetchResearches: (filters?: KeywordResearchFilter) => Promise<void>; // Removed userId, Renamed, added optional filters
   fetchResearchDetail: (researchId: string) => Promise<void>; // Added action to fetch full details
   setSelectedResearchId: (id: string | null) => void;
   clearSelectedResearchDetail: () => void;
