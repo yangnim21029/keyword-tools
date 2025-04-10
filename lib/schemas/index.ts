@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * 通用 Schema
  */
@@ -6,7 +8,7 @@ export * from './common.schema';
 /**
  * 環境變數相關 Schema
  */
-export * from './env.schema';
+// export * from './env.schema';
 
 /**
  * 關鍵詞相關 Schema

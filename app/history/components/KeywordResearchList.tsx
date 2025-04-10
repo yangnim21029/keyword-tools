@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ResearchStore } from "@/store/keywordResearchStore"
 import { useResearchStore } from "@/store/keywordResearchStore"
-import { formatDistanceToNow } from "date-fns"
-import { zhTW } from "date-fns/locale"
 import { Clock, FileText, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -157,10 +155,6 @@ export default function KeywordResearchList({
         <div className="space-y-0 px-0">
           {researches.map((research) => {
             const isSelected = research.id === selectedResearchId
-            const timeAgo = formatDistanceToNow(new Date(research.updatedAt || research.createdAt), {
-              addSuffix: true,
-              locale: zhTW,
-            })
 
             return (
               <div 
@@ -177,9 +171,6 @@ export default function KeywordResearchList({
                   <h3 className={`text-base leading-tight truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
                     {research.query}
                   </h3>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {timeAgo}
-                  </p>
                 </div>
                 
                 {/* 删除按钮 - Hide by default, show on group-hover */}

@@ -15,7 +15,8 @@ import {
 } from '@/app/actions';
 // Import types
 import {
-  type KeywordVolumeItem
+  type KeywordVolumeItem,
+  type Keyword
 } from '@/app/types'; // Assuming types index exports KeywordVolumeItem and CreateKeywordResearchInput
 
 // --- Define the type for the query settings --- 
@@ -197,6 +198,43 @@ const createQueryStore = (initState: QueryState = defaultQueryState) => {
                // Handle case where data is null/missing ID even without error
                throw new Error('創建研究記錄後未能獲取有效數據');
             }
+
+            // 4. Update the created record with the fetched keywords & volume
+            if (savedResearchId && suggestionsList.length > 0) {
+              actions.setLoading(true, '正在保存關鍵詞數據...');
+              try {
+                // Get the latest volume data from the store
+                const currentVolumeData = get().state.volumeData;
+                const volumeMap = new Map(currentVolumeData.map(item => [item.text, item.searchVolume]));
+
+                // Format keywords with their volumes
+                const keywordsToSave: Keyword[] = suggestionsList.map(text => ({
+                  text: text,
+                  searchVolume: volumeMap.get(text) ?? 0, // Use fetched volume or default to 0
+                  // Add other Keyword fields if necessary, e.g., cpc, competition
+                }));
+
+                console.log(`[QueryStore] Attempting to save ${keywordsToSave.length} keywords to research ID: ${savedResearchId}`);
+
+                const updateResult = await updateKeywordResearchKeywords(savedResearchId, keywordsToSave);
+
+                if (!updateResult.success) {
+                  // Log the error but don't necessarily throw, as the record was created
+                  console.error("[QueryStore] Error updating keywords:", updateResult.error);
+                  toast.error(`未能將關鍵詞保存到研究記錄: ${updateResult.error || '未知錯誤'}`);
+                } else {
+                  console.log(`[QueryStore] Successfully saved keywords for research ID: ${savedResearchId}`);
+                  toast.info('關鍵詞數據已保存'); // Use info or success
+                }
+              } catch (updateError) {
+                console.error("[QueryStore] Exception during keyword update:", updateError);
+                toast.error(`保存關鍵詞時發生意外錯誤: ${updateError instanceof Error ? updateError.message : '未知錯誤'}`);
+              }
+            } else if (savedResearchId) {
+               console.warn("[QueryStore] Research record created, but no suggestions were available to save.");
+               toast.info("研究記錄已創建，但沒有可保存的關鍵詞建議。");
+            }
+
           } catch (saveError) {
             console.error("[QueryStore] Error saving keywordResearch or keywords:", saveError);
             savedResearchId = null; 
