@@ -13,9 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // Actions
 import { 
-    performSemanticClustering, 
-    updateKeywordResearchClusters, 
-    updateKeywordResearchPersonas 
+    updateKeywordResearchPersonas, 
+    triggerKeywordClustering
 } from "@/app/actions";
 import { generateUserPersonaFromClusters } from "@/app/actions/generatePersona";
 
@@ -96,65 +95,53 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
     }
   }, [currentClusters]); // Run when clusters data changes (e.g., after clustering finishes)
 
-  // --- Clustering Logic (modified to use deduplicated keywords) --- 
+  // --- Clustering Logic (SIMPLIFIED: Calls Server Action) --- 
   const triggerClustering = useCallback(async () => {
-    console.log("[KeywordResearchDetail] triggerClustering called."); 
+    console.log("[KeywordResearchDetail] triggerClustering (calling server action) called."); 
 
-    if (!researchId || sortedUniqueKeywords.length < 5) {
-      console.warn("[KeywordResearchDetail] triggerClustering aborted: Missing researchId or not enough keywords.", { researchId, keywordsCount: sortedUniqueKeywords.length });
-      setLocalError("Cannot start clustering: Need research ID and at least 5 unique keywords.");
+    // Keep basic guard
+    if (!researchId) {
+      console.warn("[KeywordResearchDetail] triggerClustering aborted: Missing researchId.");
+      setLocalError("Cannot start clustering: Missing research ID.");
       return;
     }
+    // Remove keyword count check, server action will handle it
 
     console.log("[KeywordResearchDetail] Setting isClustering = true");
     setIsClustering(true);
     setLocalError(null);
-    // Use deduplicated and potentially volume-sorted keywords for clustering
-    const keywordsToCluster = sortedUniqueKeywords
-      .map(k => k.text?.trim())
-      .filter((text): text is string => Boolean(text))
-      .slice(0, 150); // Use slice if needed
+    toast.info("開始重新分群..."); // Give user feedback
 
-    console.log(`[KeywordResearchDetail] Starting semantic clustering with ${keywordsToCluster.length} keywords using model ${selectedModel}...`);
     try {
-      const clusterResult = await performSemanticClustering({ keywords: keywordsToCluster, model: selectedModel });
+      console.log(`[KeywordResearchDetail] Calling triggerKeywordClustering server action for ${researchId}...`);
+      const result = await triggerKeywordClustering(researchId);
       
-      console.log("[KeywordResearchDetail] Semantic clustering finished.", clusterResult);
-      
-      if (!clusterResult.clusters || Object.keys(clusterResult.clusters).length === 0) {
-         console.error("[KeywordResearchDetail] Clustering result invalid or empty.");
-         throw new Error((clusterResult as { error?: string }).error || 'Clustering failed or returned no clusters.');
-      }
-      
-      console.log("[KeywordResearchDetail] Saving clusters...");
-      const updateInput: UpdateClustersInput = { clusters: clusterResult.clusters, updatedAt: new Date() }; // Temp updatedAt
-      const updateResult = await updateKeywordResearchClusters(researchId, updateInput);
-      
-      if (updateResult.success) {
-          console.log("[KeywordResearchDetail] Clusters saved successfully. Refreshing router...");
-          toast.success("Keyword clustering complete!");
+      if (result.success) {
+          console.log("[KeywordResearchDetail] Server action triggerKeywordClustering successful. Refreshing router...");
+          toast.success("關鍵詞重新分群完成!");
           router.refresh(); // Refresh to get updated clusters
-          // setView('cluster'); // View will update automatically via useEffect
       } else {
-          console.error("[KeywordResearchDetail] Failed to save clusters:", updateResult.error);
-          throw new Error(updateResult.error || "Failed to save clusters.");
+          console.error("[KeywordResearchDetail] Server action triggerKeywordClustering failed:", result.error);
+          throw new Error(result.error || "Failed to trigger clustering.");
       }
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown clustering error';
-        console.error("[KeywordResearchDetail] Error during clustering process:", message, error);
-        toast.error(`Clustering failed: ${message}`);
-        setLocalError(`Clustering failed: ${message}`);
+        const message = error instanceof Error ? error.message : 'Unknown clustering trigger error';
+        console.error("[KeywordResearchDetail] Error calling triggerKeywordClustering server action:", message, error);
+        toast.error(`重新分群失敗: ${message}`);
+        setLocalError(`重新分群失敗: ${message}`);
     } finally {
         console.log("[KeywordResearchDetail] Setting isClustering = false");
         setIsClustering(false);
     }
-  }, [ researchId, sortedUniqueKeywords, selectedModel, router ]);
+    // Remove dependencies on sortedUniqueKeywords and selectedModel
+  }, [ researchId, router ]); 
 
   // --- Effect to auto-trigger clustering if needed --- 
+  // This useEffect now relies on the simpler triggerClustering
   useEffect(() => {
     console.log("[KeywordResearchDetail Auto-Cluster Effect] Checking conditions:", {
       hasClusters: !!(currentClusters && Object.keys(currentClusters).length > 0), 
-      keywordsCount: sortedUniqueKeywords.length,
+      keywordsCount: sortedUniqueKeywords.length, // Still useful for the >= 5 check
       isClustering: isClustering,
       currentClustersValue: currentClusters
     });
@@ -166,14 +153,12 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
 
     if (shouldTrigger) {
       console.log("[KeywordResearchDetail Auto-Cluster Effect] Conditions met. Calling triggerClustering().");
-      triggerClustering();
+      triggerClustering(); // Calls the simplified server action trigger
     } else {
       console.log("[KeywordResearchDetail Auto-Cluster Effect] Conditions not met. Skipping trigger.");
     }
     
-    // REVISED Dependency Array: Remove isClustering
-    // Only re-run check when the input data changes, or the trigger function identity changes (rare).
-  }, [initialResearchDetail, triggerClustering]); // Removed isClustering
+  }, [initialResearchDetail, triggerClustering, sortedUniqueKeywords.length, isClustering, currentClusters]); // Re-added dependencies needed for the check
 
   // --- Persona Generation Logic (remains largely the same) --- 
   const handleSavePersona = useCallback(async (clusterName: string, keywords: string[]) => {
@@ -321,26 +306,20 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
                 {isClustering ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />分群中...</>) : "分群視圖"}
               </TabsTrigger>
             </TabsList>
-            {/* Action Buttons - Move controls near relevant view trigger */} 
+            {/* Action Buttons - Remove the old trigger button */} 
             <div className="flex flex-wrap items-center justify-end gap-2">
-                {view === 'volume' && !hasClusters && sortedUniqueKeywords.length >= 5 && (
-                    <LoadingButton 
-                        onClick={triggerClustering}
-                        isLoading={isClustering}
-                        disabled={isClustering}
-                        loadingText="分群中..."
-                    >
-                        生成分群
-                    </LoadingButton>
-                )}
+                {/* REMOVED: The old trigger button is no longer needed here, handled by Recluster button in child */}
+                {/* {view === 'volume' && !hasClusters && sortedUniqueKeywords.length >= 5 && (...)} */}
+                
+                {/* Persona generation controls remain */}
                 {view === 'cluster' && hasClusters && (
                     <>
                         <Select
                             value={selectedModel}
                             onValueChange={(value) => setSelectedModel(value as "gpt-4o-mini" | "gpt-4o")}
-                            disabled={isGeneratingPersonas} 
+                            disabled={isGeneratingPersonas || isClustering} // Also disable model select during clustering 
                         >
-                            <SelectTrigger className="w-[150px] sm:w-[180px]"><SelectValue placeholder="選擇模型" /></SelectTrigger>
+                            <SelectTrigger className="w-[150px] sm:w-[180px] h-9"><SelectValue placeholder="選擇模型" /></SelectTrigger> {/* Adjusted height */} 
                             <SelectContent>
                             <SelectItem value="gpt-4o">GPT-4o (最佳質量)</SelectItem>
                             <SelectItem value="gpt-4o-mini">GPT-4o-mini (推薦)</SelectItem>
@@ -349,9 +328,9 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
                         <LoadingButton
                             onClick={handleGenerateAllPersonas}
                             isLoading={isGeneratingPersonas}
-                            disabled={isGeneratingPersonas} 
+                            disabled={isGeneratingPersonas || isClustering} // Disable during clustering too
                             loadingText="生成中..."
-                            className="whitespace-nowrap"
+                            className="whitespace-nowrap h-9" // Adjusted height
                         >
                             {currentPersonas && Object.keys(currentPersonas).length > 0 ? "更新所有用戶畫像" : "生成所有用戶畫像"}
                         </LoadingButton>
@@ -383,7 +362,7 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
           </TabsContent>
 
           <TabsContent value="cluster">
-            {/* --- Cluster View Rendering --- */} 
+            {/* --- Cluster View Rendering (props passed correctly) --- */} 
              {hasClusters ? (
                  <KeywordClustering
                     keywordVolumeMap={keywordVolumeMap}
@@ -396,6 +375,8 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
                     researchId={researchId}
                     onSavePersona={handleSavePersona}
                     isSavingPersona={isSavingPersona}
+                    onRecluster={triggerClustering} 
+                    isClustering={isClustering}   
                  />
              ) : isClustering ? ( 
                  <div className="flex flex-col items-center justify-center h-[40vh] space-y-3">
@@ -403,9 +384,26 @@ export default function KeywordResearchDetail({ initialResearchDetail, researchI
                     <p className="text-md text-muted-foreground">正在進行語義分群...</p>
                  </div>
              ) : (
-                 // Should not be reachable if tab is disabled correctly, but include fallback
-                 <div className="flex items-center justify-center h-[40vh]">
-                    <EmptyState title="無分群數據" description="請先生成分群。"/>
+                 // Updated empty state message
+                 <div className="flex flex-col items-center justify-center h-[40vh] text-center">
+                    <EmptyState 
+                       title="無分群數據" 
+                       description="系統在處理關鍵詞時未自動生成分群，或尚未觸發分群。" 
+                    />
+                    {/* Optionally add the button here too if you want a trigger in this state */} 
+                    {sortedUniqueKeywords.length >= 5 && (
+                      <LoadingButton 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={triggerClustering} 
+                        disabled={isClustering}
+                       >
+                          {isClustering ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          立即嘗試分群
+                      </LoadingButton>
+                    )}
                  </div>
              )}
           </TabsContent>

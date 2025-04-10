@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, FilePlus2, LayoutGrid, Loader2, Search, TrendingUp, User } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, FilePlus2, LayoutGrid, Loader2, Search, TrendingUp, User, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,6 +34,8 @@ interface KeywordClusteringProps {
   researchId: string; // <<< Added researchId prop
   onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>; // <<< Added callback prop for saving persona
   isSavingPersona: string | null; // <<< Added prop to indicate saving state for a specific persona
+  onRecluster: () => void; // <<< Added prop for recluster action
+  isClustering: boolean; // <<< Added prop for loading state
 }
 
 export default function KeywordClustering({ 
@@ -47,6 +49,8 @@ export default function KeywordClustering({
   researchId, // <<< Destructure new prop
   onSavePersona, // <<< Destructure new prop
   isSavingPersona, // <<< Destructure new prop
+  onRecluster, // <<< Destructure new prop
+  isClustering, // <<< Destructure new prop
 }: KeywordClusteringProps) {
   const router = useRouter();
   // Remove setQuery from store
@@ -173,22 +177,44 @@ export default function KeywordClustering({
 
   return (
     <TooltipProvider delayDuration={200}> 
-      <div className="w-full max-w-7xl mx-auto">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Main Title and Summary List */}
-        <div className="mb-8 pb-4 border-b">
-            <h1 className="text-2xl font-semibold mb-2">
-               關鍵詞 "{mainQuery}" 的分群結果共 {sortedClusters.length} 個分群，包含 {totalKeywordsCount} 個關鍵詞
-            </h1>
-            {/* clutering name and clustering volume */}
-            <div className="flex flex-wrap gap-2">
+        <div className="mb-10 pb-5 border-b">
+            <div className="flex justify-between items-center mb-3"> {/* Wrap title and button */}
+                <h1 className="text-3xl font-semibold tracking-tight flex-1 mr-4"> {/* Allow title to shrink */}
+                   關鍵詞 "{mainQuery}" 的分群結果共 {sortedClusters.length} 個分群，包含 {totalKeywordsCount} 個關鍵詞
+                </h1>
+                {/* Recluster Button Added Here */} 
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        {/* Use LoadingButton if available or adapt Button */}
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={onRecluster} 
+                            disabled={isClustering}
+                        >
+                            {isClustering ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            重新分群
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                        {isClustering ? "正在重新分群..." : "重新觸發關鍵詞分群"}
+                    </TooltipContent>
+                </Tooltip>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-4">
                 {sortedClusters.map((cluster, index) => (
-                    <div key={index} className="flex-1">
-                        <p className="text-sm font-medium text-foreground/90 mb-1">{cluster.clusterName}</p>
-                        <p className="text-xs text-muted-foreground italic">{cluster.totalVolume.toLocaleString()}</p>
+                    <div key={index} className="flex-1 min-w-[150px]">
+                        <p className="text-base font-medium text-foreground mb-0.5 truncate" title={cluster.clusterName}>{cluster.clusterName}</p>
+                        <p className="text-sm text-muted-foreground"><TrendingUp className="inline-block h-3.5 w-3.5 mr-1" />{cluster.totalVolume.toLocaleString()}</p>
                     </div>
                 ))}
             </div>
-            {/* Combined Long-Tail Keyword List - Use pre-calculated variables */}
             {(() => {
                  if (!mainQuery) return null; // Cannot calculate without main query
 
@@ -205,9 +231,12 @@ export default function KeywordClustering({
                  const uniqueRemainders = [...remainderStrings].sort();
                  if (uniqueRemainders.length === 0) return null;
                  return (
-                     <div className="mt-4 pt-3 border-t border-dashed">
-                        <p className="text-sm font-medium text-foreground/90 mb-1">長尾字詞：</p>
-                        <p className="text-xs text-muted-foreground italic">
+                     <div className="mt-5 pt-4 border-t border-dashed">
+                        <p className="text-base font-medium text-foreground mb-1.5">
+                            <LayoutGrid className="inline-block h-4 w-4 mr-1.5 align-text-bottom" /> 
+                            長尾字詞：
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
                            {uniqueRemainders.join(', ')}
                         </p>
                      </div>
@@ -216,7 +245,7 @@ export default function KeywordClustering({
         </div>
 
         {/* Clusters Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {displayClusters.map((cluster, index) => {
             const colors = getClusterColors(index);
             const personaText = personasMap?.[cluster.clusterName];
@@ -239,33 +268,34 @@ export default function KeywordClustering({
             const isCurrentlySaving = isSavingPersona === cluster.clusterName; // Check if this cluster is saving
 
             return (
-              <div key={index} className={`rounded-lg border ${colors.border} ${colors.bg} overflow-hidden shadow-sm flex flex-col`}>
+              <div key={index} className={`rounded-xl border ${colors.border} ${colors.bg} overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col`}>
                 {/* Cluster Header */}
-                <div className="p-3 border-b ${colors.border} flex justify-between items-start gap-2">
-                   <div className="flex-1 space-y-1">
-                      <h3 className={`text-base font-semibold ${colors.text} break-words`}>{cluster.clusterName}</h3>
-                      <div className="text-xs text-muted-foreground">
-                          <span className={`font-bold text-sm ${colors.volume}`}>{cluster.totalVolume.toLocaleString()}</span>
+                <div className={`p-5 border-b ${colors.border} flex justify-between items-start gap-3`}>
+                   <div className="flex-1 space-y-2">
+                      <h3 className={`text-lg font-semibold ${colors.text} break-words`}>#{index + 1}. {cluster.clusterName}</h3>
+                      <div className="text-sm text-muted-foreground flex items-center">
+                          <TrendingUp className="h-4 w-4 mr-1.5 opacity-80" />
+                          總搜尋量: <span className={`font-semibold text-base ml-1 ${colors.volume}`}>{cluster.totalVolume.toLocaleString()}</span>
                       </div>
                    </div>
-                   <div className="flex flex-col items-end space-y-1 flex-shrink-0">
+                   <div className="flex flex-col items-end space-y-1.5 flex-shrink-0">
                        <Tooltip>
                            <TooltipTrigger asChild>
                              <Button 
                                variant="ghost" 
                                size="icon" 
-                               className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90 ${personaText ? 'cursor-default' : ''}`} 
+                               className={`h-7 w-7 rounded-full ${colors.text}/70 hover:${colors.text} ${personaText ? 'cursor-default' : ''}`} 
                                onClick={!personaText && !isCurrentlySaving ? () => onStartPersonaChat(cluster.clusterName, cluster.keywordList) : undefined} 
                                disabled={!!personaText || isCurrentlySaving} 
                                aria-label={personaText ? "用戶畫像已生成" : isCurrentlySaving ? "正在生成用戶畫像..." : "生成用戶畫像"}
                               >
-                                {isCurrentlySaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (personaText ? <User className="h-3.5 w-3.5 opacity-70" /> : <User className="h-3.5 w-3.5" />)}
+                                {isCurrentlySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (personaText ? <User className="h-4 w-4 opacity-70" /> : <User className="h-4 w-4" />)}
                              </Button>
                            </TooltipTrigger>
                            <TooltipContent side="top">{personaText ? "用戶畫像已生成" : isCurrentlySaving ? "正在生成..." : "生成用戶畫像"}</TooltipContent>
                        </Tooltip>
                        <Tooltip>
-                           <TooltipTrigger asChild><Button variant="ghost" size="icon" className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90`} onClick={() => copyKeywords(cluster.keywordList, index)} aria-label="複製關鍵詞">{copiedClusterIndex === index ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}</Button></TooltipTrigger>
+                           <TooltipTrigger asChild><Button variant="ghost" size="icon" className={`h-7 w-7 rounded-full ${colors.text}/70 hover:${colors.text}`} onClick={() => copyKeywords(cluster.keywordList, index)} aria-label="複製關鍵詞">{copiedClusterIndex === index ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button></TooltipTrigger>
                            <TooltipContent side="top">複製此分群的關鍵詞</TooltipContent>
                        </Tooltip>
                    </div>
@@ -273,37 +303,47 @@ export default function KeywordClustering({
 
                 {/* Persona Display */}
                 {personaText && (
-                  <div className="p-3 border-b ${colors.border} bg-background/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">用戶畫像:</p>
-                      <p className="text-sm italic text-foreground/80">{personaText}</p>
+                  <div className={`p-5 border-b ${colors.border} bg-background/40`}>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">用戶畫像:</p>
+                      <p className="text-base italic text-foreground/90 leading-relaxed">{personaText}</p>
                   </div>
                 )}
 
                 {/* Keyword List with added New Research button */}
-                <div className="p-3 max-h-60 overflow-y-auto flex-grow"> 
-                  <ul className="space-y-1">
+                <div className="p-5 max-h-80 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+                  <ul className="space-y-2.5">
                     {keywordsToShow.map((keyword, kwIndex) => (
-                      <li key={kwIndex} className="text-sm flex justify-between items-center gap-2 group">
+                      <li key={kwIndex} className="text-base flex justify-between items-center gap-2 group rounded-md p-1 -m-1 hover:bg-foreground/5 transition-colors duration-150">
                         <span className="flex-1 truncate" title={keyword}>{keyword}</span>
 
-                        <div className="flex items-center flex-shrink-0 space-x-1">
-                            <span className={`text-xs font-mono ${colors.volume}`}>{keywordVolumeMap[keyword.toLowerCase()]?.toLocaleString() ?? '-'}</span>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className={`h-5 w-5 rounded-full opacity-0 group-hover:opacity-60 hover:!opacity-100 ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleNewResearch(keyword)} aria-label={`以此關鍵詞開始新研究 "${keyword}"`}>
-                                        <FilePlus2 className="h-3 w-3" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">以此關鍵詞開始新研究</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className={`h-5 w-5 rounded-full opacity-0 group-hover:opacity-60 hover:!opacity-100 ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleGoogleSearch(keyword)} aria-label={`Google 查詢 "${keyword}"`}>
-                                        <ExternalLink className="h-3 w-3" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">Google 查詢</TooltipContent>
-                            </Tooltip>
+                        {/* Made volume and buttons always visible */}
+                        <div className="flex items-center flex-shrink-0 space-x-1.5 transition-opacity duration-150"> 
+                            {/* Add a subtle divider if volume exists */}
+                            {keywordVolumeMap[keyword.toLowerCase()] !== undefined && <span className="text-muted-foreground/40">|</span>}
+                            <span className={`text-sm font-mono ${colors.volume} ml-1`}>{keywordVolumeMap[keyword.toLowerCase()]?.toLocaleString() ?? '-'}</span>
+                            
+                            {/* Buttons section - still show on hover for less clutter? Or always visible? 
+                                Let's keep buttons on hover for now to avoid visual overload. 
+                                We can make them always visible too if preferred. 
+                            */}
+                             <div className="flex items-center flex-shrink-0 space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button variant="ghost" size="icon" className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleNewResearch(keyword)} aria-label={`以此關鍵詞開始新研究 "${keyword}"`}>
+                                            <FilePlus2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">以此關鍵詞開始新研究</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button variant="ghost" size="icon" className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleGoogleSearch(keyword)} aria-label={`Google 查詢 "${keyword}"`}>
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">Google 查詢</TooltipContent>
+                                </Tooltip>
+                             </div>
                         </div>
                       </li>
                     ))}
@@ -312,9 +352,12 @@ export default function KeywordClustering({
 
                 {/* Cluster-Specific Long-Tail Section */}
                 {clusterUniqueRemainders.length > 0 && (
-                  <div className="p-3 border-t ${colors.border} bg-foreground/[.02]">
-                    <p className={`text-sm font-medium ${colors.text}/90 mb-1`}>此分群長尾字詞：</p> 
-                    <p className={`text-xs ${colors.text}/80`}> 
+                  <div className={`p-5 border-t ${colors.border} bg-gradient-to-b from-transparent to-${colors.bg.split('-')[1]}-50/30 dark:to-${colors.bg.split('-')[1]}-900/10`}>
+                    <p className={`text-base font-medium ${colors.text} mb-1.5`}>
+                        <LayoutGrid className="inline-block h-4 w-4 mr-1.5 align-text-bottom opacity-80" /> 
+                        此分群長尾字詞：
+                    </p> 
+                    <p className={`text-sm ${colors.text}/90 leading-relaxed`}>
                       {clusterUniqueRemainders.join(', ')}
                     </p>
                   </div>

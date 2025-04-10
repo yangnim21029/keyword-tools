@@ -352,8 +352,30 @@ export async function triggerKeywordClustering(researchId: string): Promise<{ su
             return { success: true }; // Nothing to cluster
         }
 
-        // 2. Perform clustering (Now calls the integrated function)
-        const clusters = await performClustering(researchDetail.keywords);
+        // --- Deduplication Logic ---
+        const normalizedKeywordMap = new Map<string, Keyword>();
+        researchDetail.keywords.forEach(keyword => {
+            if (!keyword.text) return; // Skip if text is missing
+
+            const normalizedText = keyword.text.toLowerCase().replace(/\s+/g, '');
+            const existingKeyword = normalizedKeywordMap.get(normalizedText);
+
+            // If no keyword with this normalized text exists OR the current keyword has higher volume, add/replace it
+            if (!existingKeyword || (keyword.searchVolume ?? 0) > (existingKeyword.searchVolume ?? 0)) {
+                normalizedKeywordMap.set(normalizedText, keyword);
+            }
+        });
+
+        const deduplicatedKeywords = Array.from(normalizedKeywordMap.values());
+        console.log(`[Server Action] Deduplicated keywords for ${researchId}: ${researchDetail.keywords.length} -> ${deduplicatedKeywords.length}`);
+        // --- End Deduplication ---
+
+        // 2. Perform clustering (Uses deduplicated keywords)
+        if (deduplicatedKeywords.length < 5) { // Also check here before calling clustering
+            console.warn(`[Server Action] Not enough unique keywords (${deduplicatedKeywords.length}) after deduplication for ${researchId}. Minimum is 5. Skipping clustering.`);
+            return { success: true }; // Not an error, just nothing to cluster
+        }
+        const clusters = await performClustering(deduplicatedKeywords);
 
         // 3. Save the clusters
         if (Object.keys(clusters).length > 0) {
@@ -449,7 +471,45 @@ export async function processAndSaveKeywordQuery(
              console.log("[Server Action] No suggestions found to fetch volume for.");
         }
 
-        // 3. Save Keyword Research Record
+        // --- Apply Deduplication Logic Here ---
+        console.log("[Server Action] Starting keyword deduplication...");
+        const normalizedKeywordMap = new Map<string, Keyword>();
+
+        // Process keywords with volume first
+        volumeList.forEach(item => {
+            if (!item.text) return; // Skip if text is missing
+
+            const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
+            const existingKeyword = normalizedKeywordMap.get(normalizedText);
+            const currentVolume = item.searchVolume ?? 0;
+
+            // Add if new or has higher volume than existing entry for this normalized text
+            if (!existingKeyword || currentVolume > (existingKeyword.searchVolume ?? 0)) {
+                normalizedKeywordMap.set(normalizedText, {
+                    text: item.text, // Keep original text
+                    searchVolume: currentVolume,
+                });
+            }
+        });
+
+        // Add suggestions that didn't have volume data or were lower volume duplicates
+        suggestionsList.forEach(suggestionText => {
+            if (!suggestionText) return;
+            const normalizedText = suggestionText.toLowerCase().replace(/\s+/g, '');
+            // Only add if this normalized text wasn't already added from the volume list
+            if (!normalizedKeywordMap.has(normalizedText)) {
+                normalizedKeywordMap.set(normalizedText, {
+                    text: suggestionText, // Keep original text
+                    searchVolume: 0, // Default volume
+                });
+            }
+        });
+
+        const deduplicatedKeywordsToSave: Keyword[] = Array.from(normalizedKeywordMap.values());
+        console.log(`[Server Action] Deduplication complete. Keywords to save: ${deduplicatedKeywordsToSave.length}`);
+        // --- End Deduplication ---
+
+        // 3. Save Keyword Research Record (Create)
         console.log("[Server Action] Creating research record...");
         const researchInput: CreateKeywordResearchInput = {
             query: query,
@@ -466,32 +526,11 @@ export async function processAndSaveKeywordQuery(
         savedResearchId = saveResult.data.id;
         console.log(`[Server Action] Research record created: ${savedResearchId}`);
 
-        // 4. Update record with keywords and volume (if any keywords derived)
-        const keywordsToSaveMap = new Map<string, Keyword>();
-         // Prioritize volume data
-         volumeList.forEach(item => {
-             if (item.text) { // Ensure text exists
-                 keywordsToSaveMap.set(item.text, {
-                     text: item.text,
-                     searchVolume: item.searchVolume ?? 0,
-                 });
-             }
-         });
-         // Add suggestions not found in volume data
-         suggestionsList.forEach(suggestionText => {
-             if (!keywordsToSaveMap.has(suggestionText)) {
-                 keywordsToSaveMap.set(suggestionText, {
-                     text: suggestionText,
-                     searchVolume: 0, // Default volume
-                 });
-             }
-         });
-         const keywordsToSave: Keyword[] = Array.from(keywordsToSaveMap.values());
-
-        if (keywordsToSave.length > 0) {
-             console.log(`[Server Action] Updating record ${savedResearchId} with ${keywordsToSave.length} keywords...`);
+        // 4. Update record with *DEDUPLICATED* keywords (if any)
+        if (deduplicatedKeywordsToSave.length > 0) {
+             console.log(`[Server Action] Updating record ${savedResearchId} with ${deduplicatedKeywordsToSave.length} deduplicated keywords...`);
              // Call the specific update action which handles revalidation
-             const updateKeywordsResult = await updateKeywordResearchKeywords(savedResearchId, keywordsToSave);
+             const updateKeywordsResult = await updateKeywordResearchKeywords(savedResearchId, deduplicatedKeywordsToSave);
 
              if (!updateKeywordsResult.success) {
                  // Log error but don't fail the whole operation, record is created.
@@ -501,13 +540,12 @@ export async function processAndSaveKeywordQuery(
                   console.log(`[Server Action] Successfully updated keywords for ${savedResearchId}`);
              }
         } else {
-            console.log(`[Server Action] No keywords derived from suggestions/volume for record ${savedResearchId}. Skipping keyword update.`);
+            console.log(`[Server Action] No keywords derived after deduplication for record ${savedResearchId}. Skipping keyword update.`);
         }
 
-        // 5. Trigger Clustering (MODIFIED: Run without await)
+        // 5. Trigger Background Clustering (remains the same, uses the now deduplicated saved keywords)
         if (savedResearchId) {
             console.log(`[Server Action] Initiating background clustering task for ${savedResearchId}...`);
-            // Run clustering in the background, don't wait for it to finish
             triggerKeywordClustering(savedResearchId).then(result => {
                 if (!result.success) {
                     console.error(`[Server Action - Background] Clustering failed for ${savedResearchId}:`, result.error);
@@ -515,7 +553,6 @@ export async function processAndSaveKeywordQuery(
                     console.log(`[Server Action - Background] Clustering completed for ${savedResearchId}.`);
                 }
             }).catch(error => {
-                // Catch unexpected errors from the triggerKeywordClustering promise itself
                 console.error(`[Server Action - Background] Unexpected error during clustering trigger for ${savedResearchId}:`, error);
             });
         }
