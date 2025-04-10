@@ -1,11 +1,28 @@
 'use client';
 
-import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, FilePlus2, LayoutGrid, Loader2, Search, TrendingUp, User, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FilePlus2,
+  LayoutGrid,
+  Loader2,
+  PlusCircle,
+  Sparkles,
+  TrendingUp,
+  User
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 // Constants for display
 // const DEFAULT_VISIBLE_CLUSTERS = 3; // Keep all visible by default now
@@ -31,68 +48,96 @@ interface KeywordClusteringProps {
   selectedResearchDetail: {
     query: string;
   } | null;
-  researchId: string; // <<< Added researchId prop
-  onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>; // <<< Added callback prop for saving persona
-  isSavingPersona: string | null; // <<< Added prop to indicate saving state for a specific persona
-  onRecluster: () => void; // <<< Added prop for recluster action
-  isClustering: boolean; // <<< Added prop for loading state
+  researchId: string;
+  onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>;
+  isSavingPersona: string | null;
 }
 
-export default function KeywordClustering({ 
-  keywordVolumeMap, 
-  clusters, 
-  personasMap, 
-  researchLocation, 
+export default function KeywordClustering({
+  keywordVolumeMap,
+  clusters,
+  personasMap,
+  researchLocation,
   researchLanguage,
   currentKeywords,
   selectedResearchDetail,
-  researchId, // <<< Destructure new prop
-  onSavePersona, // <<< Destructure new prop
-  isSavingPersona, // <<< Destructure new prop
-  onRecluster, // <<< Destructure new prop
-  isClustering, // <<< Destructure new prop
+  researchId,
+  onSavePersona,
+  isSavingPersona
 }: KeywordClusteringProps) {
   const router = useRouter();
   // Remove setQuery from store
   // const setQuery = useQueryStore((state) => state.actions.setQuery);
-  
-  // Local UI state - Remove expandedClusters
+
+  // Local UI state
   const [uiState, setUiState] = useState({
-    copiedClusterIndex: null as number | null,
-    // expandedClusters: {} as Record<string, boolean> 
+    copiedClusterIndex: null as number | null
   });
-  const { copiedClusterIndex } = uiState; // Remove expandedClusters from destructuring
-  
+  const { copiedClusterIndex } = uiState;
+  const [expandedSupportingMap, setExpandedSupportingMap] = useState<
+    Record<number, boolean>
+  >({});
+
   // Global stores - Only needed for actions triggered from here
   // const requestSerpAnalysis = useResearchStore((state) => state.actions.requestSerpAnalysis);
   // const selectedResearchId = useResearchStore((state) => state.state.selectedResearchId);
   // const savePersonas = useResearchStore((state) => state.actions.savePersonas);
-  
+
+  // --- State for Persona Expansion ---
+  const [expandedPersonas, setExpandedPersonas] = useState<
+    Record<string, boolean>
+  >({});
+
   const updateUiState = useCallback((newState: Partial<typeof uiState>) => {
     setUiState(prev => ({ ...prev, ...newState }));
   }, []);
 
+  // --- Toggle Persona Expansion Function ---
+  const togglePersonaExpansion = useCallback((clusterName: string) => {
+    setExpandedPersonas(prev => ({
+      ...prev,
+      [clusterName]: !prev[clusterName]
+    }));
+  }, []);
+
   // Removed handleClustering and related useEffects - Logic moved to page.tsx
-  
+
   // Removed useEffect for loading keywords/clusters - Data is passed via props
 
   // Memoize sorted clusters with summaries including long-tail keyword list
   const sortedClusters = useMemo((): ProcessedCluster[] => {
-    if (!clusters) return [];
-    const clustersWithSummaries = Object.entries(clusters).map(([clusterName, keywordList]) => {
-      const sortedKeywords = [...keywordList].sort((a, b) => (keywordVolumeMap[b.toLowerCase()] || 0) - (keywordVolumeMap[a.toLowerCase()] || 0));
-      const totalVolume = sortedKeywords.reduce((sum, keyword) => sum + (keywordVolumeMap[keyword.toLowerCase()] || 0), 0);
-      const longTailKeywords = sortedKeywords.filter(keyword => keyword.trim().split('\s+').length > 2);
-      return {
-        clusterName,
-        keywordList: sortedKeywords,
-        totalVolume,
-        longTailKeywords,
-        highestVolumeKeyword: sortedKeywords[0] || null
-      };
-    });
+    if (!clusters || !keywordVolumeMap) return [];
+    const clustersWithSummaries = Object.entries(clusters).map(
+      ([clusterName, keywordList]) => {
+        const validKeywordList = Array.isArray(keywordList) ? keywordList : [];
+        const sortedKeywords = [...validKeywordList].sort(
+          (a, b) =>
+            (keywordVolumeMap[b.toLowerCase()] || 0) -
+            (keywordVolumeMap[a.toLowerCase()] || 0)
+        );
+        const totalVolume = sortedKeywords.reduce(
+          (sum, keyword) =>
+            sum +
+            (typeof keyword === 'string'
+              ? keywordVolumeMap[keyword.toLowerCase()] || 0
+              : 0),
+          0
+        );
+        const longTailKeywords = sortedKeywords.filter(
+          keyword =>
+            typeof keyword === 'string' && keyword.trim().split('s+').length > 2 // Fixed regex
+        );
+        return {
+          clusterName,
+          keywordList: sortedKeywords,
+          totalVolume,
+          longTailKeywords,
+          highestVolumeKeyword: sortedKeywords[0] || null
+        };
+      }
+    );
     return clustersWithSummaries.sort((a, b) => b.totalVolume - a.totalVolume);
-  }, [clusters, keywordVolumeMap]); 
+  }, [clusters, keywordVolumeMap]);
 
   // Copy keywords function remains
   const copyKeywords = (keywordsToCopy: string[], index: number) => {
@@ -103,58 +148,109 @@ export default function KeywordClustering({
       setTimeout(() => updateUiState({ copiedClusterIndex: null }), 2000);
       toast.success(`已複製 ${keywordsToCopy.length} 個關鍵詞`);
     } catch (err) {
-      toast.error("複製關鍵詞失敗");
+      toast.error('複製關鍵詞失敗');
     }
   };
 
   // Modified: Use the passed callback for starting persona generation/saving
-  const onStartPersonaChat = useCallback((clusterName: string, keywords: string[]) => {
-    if (!clusterName || !keywords || keywords.length === 0) {
-      toast.error("無法生成用戶畫像：缺少必要數據");
-      return;
-    }
-    if (!researchId) {
-      toast.error("無法生成用戶畫像：未找到研究項目ID"); // Use prop for ID check
-      return;
-    }
-    // Call the parent's handler
-    onSavePersona(clusterName, keywords);
-    // Note: Loading indication and toasts are now handled in the parent (KeywordResearchDetail)
-  }, [researchId, onSavePersona]); // Depend on props
+  const onStartPersonaChat = useCallback(
+    (clusterName: string, keywords: string[]) => {
+      if (!clusterName || !keywords || keywords.length === 0) {
+        toast.error('無法生成用戶畫像：缺少必要數據');
+        return;
+      }
+      if (!researchId) {
+        toast.error('無法生成用戶畫像：未找到研究項目ID'); // Use prop for ID check
+        return;
+      }
+      // Call the parent's handler
+      onSavePersona(clusterName, keywords);
+      // Note: Loading indication and toasts are now handled in the parent (KeywordResearchDetail)
+    },
+    [researchId, onSavePersona]
+  ); // Depend on props
 
   // Cluster color logic remains
   const getClusterColors = (index: number) => {
     const colors = [
-      { bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", text: "text-blue-700 dark:text-blue-300", badge: "bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100", volume: "text-blue-600 dark:text-blue-400" },
-      { bg: "bg-amber-50 dark:bg-amber-900/20", border: "border-amber-200 dark:border-amber-800", text: "text-amber-700 dark:text-amber-300", badge: "bg-amber-100 dark:bg-amber-800 text-amber-800 dark:text-amber-100", volume: "text-amber-600 dark:text-amber-400" },
-      { bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", text: "text-green-700 dark:text-green-300", badge: "bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100", volume: "text-green-600 dark:text-green-400" },
+      {
+        bg: 'bg-blue-50 dark:bg-blue-900/20',
+        border: 'border-blue-200 dark:border-blue-800',
+        text: 'text-blue-700 dark:text-blue-300',
+        badge: 'bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100',
+        volume: 'text-blue-600 dark:text-blue-400'
+      },
+      {
+        bg: 'bg-amber-50 dark:bg-amber-900/20',
+        border: 'border-amber-200 dark:border-amber-800',
+        text: 'text-amber-700 dark:text-amber-300',
+        badge:
+          'bg-amber-100 dark:bg-amber-800 text-amber-800 dark:text-amber-100',
+        volume: 'text-amber-600 dark:text-amber-400'
+      },
+      {
+        bg: 'bg-green-50 dark:bg-green-900/20',
+        border: 'border-green-200 dark:border-green-800',
+        text: 'text-green-700 dark:text-green-300',
+        badge:
+          'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100',
+        volume: 'text-green-600 dark:text-green-400'
+      },
       // Add more colors if needed
-       { bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", text: "text-purple-700 dark:text-purple-300", badge: "bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100", volume: "text-purple-600 dark:text-purple-400" },
-       { bg: "bg-pink-50 dark:bg-pink-900/20", border: "border-pink-200 dark:border-pink-800", text: "text-pink-700 dark:text-pink-300", badge: "bg-pink-100 dark:bg-pink-800 text-pink-800 dark:text-pink-100", volume: "text-pink-600 dark:text-pink-400" },
+      {
+        bg: 'bg-purple-50 dark:bg-purple-900/20',
+        border: 'border-purple-200 dark:border-purple-800',
+        text: 'text-purple-700 dark:text-purple-300',
+        badge:
+          'bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100',
+        volume: 'text-purple-600 dark:text-purple-400'
+      },
+      {
+        bg: 'bg-pink-50 dark:bg-pink-900/20',
+        border: 'border-pink-200 dark:border-pink-800',
+        text: 'text-pink-700 dark:text-pink-300',
+        badge: 'bg-pink-100 dark:bg-pink-800 text-pink-800 dark:text-pink-100',
+        volume: 'text-pink-600 dark:text-pink-400'
+      }
     ];
     return colors[index % colors.length];
   };
 
+  // Toggle function
+  const toggleSupportingKeywords = (index: number) => {
+    setExpandedSupportingMap(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+
   // Define main query variables here to be accessible in both scopes
   const mainQuery = selectedResearchDetail?.query || '';
-  const mainQueryChars = mainQuery ? new Set(mainQuery.split('')) : new Set<string>();
+  const mainQueryChars = mainQuery
+    ? new Set(mainQuery.split(''))
+    : new Set<string>();
 
   // Helper for Google Search
   const handleGoogleSearch = (keyword: string) => {
-      if (!keyword) return;
-      const url = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
+    if (!keyword) return;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(
+      keyword
+    )}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   // Handler for starting new research - Simplified to use URL params
-  const handleNewResearch = useCallback((keyword: string) => {
+  const handleNewResearch = useCallback(
+    (keyword: string) => {
       if (!keyword) return;
       // Remove setQuery call
       // setQuery(keyword);
       toast.info(`開始新研究: "${keyword}"`);
       const targetUrl = `/tools/keyword?q=${encodeURIComponent(keyword)}`;
       router.push(targetUrl);
-  }, [router]); // Remove setQuery from dependencies
+    },
+    [router]
+  ); // Remove setQuery from dependencies
 
   // --- Render Logic ---
 
@@ -165,7 +261,9 @@ export default function KeywordClustering({
         <LayoutGrid className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
         <h3 className="text-xl font-medium mb-2">未找到分群結果</h3>
         <p className="text-muted-foreground">
-          {clusters === null ? "正在等待分群數據..." : "未能從關鍵詞中生成有效分群。"}
+          {clusters === null
+            ? '正在等待分群數據...'
+            : '未能從關鍵詞中生成有效分群。'}
         </p>
       </div>
     );
@@ -173,203 +271,286 @@ export default function KeywordClustering({
 
   // Display all clusters now
   const displayClusters = sortedClusters;
-  const totalKeywordsCount = sortedClusters.reduce((sum, cluster) => sum + cluster.keywordList.length, 0);
+  const totalKeywordsCount = sortedClusters.reduce(
+    (sum, cluster) => sum + cluster.keywordList.length,
+    0
+  );
 
   return (
-    <TooltipProvider delayDuration={200}> 
+    <TooltipProvider delayDuration={200}>
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Main Title and Summary List */}
-        <div className="mb-10 pb-5 border-b">
-            <div className="flex justify-between items-center mb-3"> {/* Wrap title and button */}
-                <h1 className="text-3xl font-semibold tracking-tight flex-1 mr-4"> {/* Allow title to shrink */}
-                   關鍵詞 "{mainQuery}" 的分群結果共 {sortedClusters.length} 個分群，包含 {totalKeywordsCount} 個關鍵詞
-                </h1>
-                {/* Recluster Button Added Here */} 
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        {/* Use LoadingButton if available or adapt Button */}
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={onRecluster} 
-                            disabled={isClustering}
-                        >
-                            {isClustering ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            重新分群
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                        {isClustering ? "正在重新分群..." : "重新觸發關鍵詞分群"}
-                    </TooltipContent>
-                </Tooltip>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-4">
-                {sortedClusters.map((cluster, index) => (
-                    <div key={index} className="flex-1 min-w-[150px]">
-                        <p className="text-base font-medium text-foreground mb-0.5 truncate" title={cluster.clusterName}>{cluster.clusterName}</p>
-                        <p className="text-sm text-muted-foreground"><TrendingUp className="inline-block h-3.5 w-3.5 mr-1" />{cluster.totalVolume.toLocaleString()}</p>
-                    </div>
-                ))}
-            </div>
-            {(() => {
-                 if (!mainQuery) return null; // Cannot calculate without main query
-
-                 const allKeywords = sortedClusters.flatMap(cluster => cluster.keywordList);
-                 const remainderStrings = new Set<string>();
-
-                 allKeywords.forEach(keyword => {
-                     const keywordChars = keyword.split('');
-                     const remainder = keywordChars.filter(char => !mainQueryChars.has(char)).join('').trim();
-                     if (remainder) {
-                         remainderStrings.add(remainder);
-                     }
-                 });
-                 const uniqueRemainders = [...remainderStrings].sort();
-                 if (uniqueRemainders.length === 0) return null;
-                 return (
-                     <div className="mt-5 pt-4 border-t border-dashed">
-                        <p className="text-base font-medium text-foreground mb-1.5">
-                            <LayoutGrid className="inline-block h-4 w-4 mr-1.5 align-text-bottom" /> 
-                            長尾字詞：
-                        </p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                           {uniqueRemainders.join(', ')}
-                        </p>
-                     </div>
-                 );
-             })()}
+        <div className="mb-6 sm:mb-10 pb-5 border-b">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3 sm:gap-0">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex-1 mr-0 sm:mr-4 order-2 sm:order-1">
+              關鍵詞 "{mainQuery}" 的分群結果共 {sortedClusters.length}{' '}
+              個分群，包含 {totalKeywordsCount} 個關鍵詞
+            </h1>
+          </div>
         </div>
 
-        {/* Clusters Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* --- Table Layout Start --- */}
+        {/* Hide traditional header on mobile, show labels in cards instead */}
+        <div className="hidden md:flex bg-muted rounded-t-lg border-b border-border font-medium text-sm text-muted-foreground sticky top-0 z-10">
+          <div className="p-3 md:w-1/4 lg:w-[15%] flex-shrink-0">
+            主題 / 總量
+          </div>
+          <div className="p-3 md:w-1/4 lg:w-[15%] flex-shrink-0">
+            主軸關鍵字 / 量
+          </div>
+          <div className="p-3 md:w-1/2 lg:w-[30%] flex-grow">
+            輔助關鍵字 / 量
+          </div>
+          <div className="p-3 md:w-auto lg:w-[15%] flex-shrink-0">長尾字詞</div>
+          <div className="p-3 md:w-auto lg:w-[25%] flex-shrink-0">用戶畫像</div>
+        </div>
+
+        {/* Table Body / Mobile Cards */}
+        {/* Use space-y for mobile card spacing, border for desktop */}
+        <div className="md:border-x md:border-b md:border-border md:rounded-b-lg space-y-4 md:space-y-0">
           {displayClusters.map((cluster, index) => {
-            const colors = getClusterColors(index);
-            const personaText = personasMap?.[cluster.clusterName];
-            const keywordsToShow = cluster.keywordList; // Always show all keywords
-            
-            // Calculate cluster-specific remainders here
-            let clusterUniqueRemainders: string[] = [];
-            if (mainQuery) { // Only calculate if mainQuery exists
-                const remainderStrings = new Set<string>();
-                cluster.keywordList.forEach(keyword => {
-                    const keywordChars = keyword.split('');
-                    const remainder = keywordChars.filter(char => !mainQueryChars.has(char)).join('').trim();
-                    if (remainder) {
-                        remainderStrings.add(remainder);
-                    }
-                });
-                clusterUniqueRemainders = [...remainderStrings].sort();
+            const mainAxisKeyword = cluster.highestVolumeKeyword || '-';
+            const mainAxisVolume =
+              keywordVolumeMap[
+                mainAxisKeyword.toLowerCase()
+              ]?.toLocaleString() ?? '-';
+
+            const allSupportingKeywords = cluster.keywordList
+              .filter(kw => kw !== mainAxisKeyword)
+              .sort(
+                (a, b) =>
+                  (keywordVolumeMap[b.toLowerCase()] || 0) -
+                  (keywordVolumeMap[a.toLowerCase()] || 0)
+              );
+
+            const topSupportingKeywords = allSupportingKeywords.slice(0, 3);
+            const remainingCount =
+              allSupportingKeywords.length - topSupportingKeywords.length;
+            const isExpanded = !!expandedSupportingMap[index];
+
+            let clusterUniqueRemaindersString = '-';
+            if (mainQuery) {
+              const remainderStrings = new Set<string>();
+              cluster.keywordList.forEach(keyword => {
+                const keywordChars = keyword.split('');
+                const remainder = keywordChars
+                  .filter(char => !mainQueryChars.has(char))
+                  .join('')
+                  .trim();
+                if (remainder) {
+                  remainderStrings.add(remainder);
+                }
+              });
+              const sortedRemainders = [...remainderStrings].sort();
+              if (sortedRemainders.length > 0) {
+                clusterUniqueRemaindersString = sortedRemainders.join(', ');
+              }
             }
 
-            const isCurrentlySaving = isSavingPersona === cluster.clusterName; // Check if this cluster is saving
+            // Alternating background only for desktop rows
+            const rowBackground =
+              index % 2 === 0 ? 'md:bg-card' : 'md:bg-muted/40';
+
+            const isPersonaExpanded = !!expandedPersonas[cluster.clusterName];
+            const currentPersona = personasMap?.[cluster.clusterName] || null;
+            const isGeneratingThisPersona =
+              isSavingPersona === cluster.clusterName;
 
             return (
-              <div key={index} className={`rounded-xl border ${colors.border} ${colors.bg} overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col`}>
-                {/* Cluster Header */}
-                <div className={`p-5 border-b ${colors.border} flex justify-between items-start gap-3`}>
-                   <div className="flex-1 space-y-2">
-                      <h3 className={`text-lg font-semibold ${colors.text} break-words`}>#{index + 1}. {cluster.clusterName}</h3>
-                      <div className="text-sm text-muted-foreground flex items-center">
-                          <TrendingUp className="h-4 w-4 mr-1.5 opacity-80" />
-                          總搜尋量: <span className={`font-semibold text-base ml-1 ${colors.volume}`}>{cluster.totalVolume.toLocaleString()}</span>
-                      </div>
-                   </div>
-                   <div className="flex flex-col items-end space-y-1.5 flex-shrink-0">
-                       <Tooltip>
-                           <TooltipTrigger asChild>
-                             <Button 
-                               variant="ghost" 
-                               size="icon" 
-                               className={`h-7 w-7 rounded-full ${colors.text}/70 hover:${colors.text} ${personaText ? 'cursor-default' : ''}`} 
-                               onClick={!personaText && !isCurrentlySaving ? () => onStartPersonaChat(cluster.clusterName, cluster.keywordList) : undefined} 
-                               disabled={!!personaText || isCurrentlySaving} 
-                               aria-label={personaText ? "用戶畫像已生成" : isCurrentlySaving ? "正在生成用戶畫像..." : "生成用戶畫像"}
-                              >
-                                {isCurrentlySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (personaText ? <User className="h-4 w-4 opacity-70" /> : <User className="h-4 w-4" />)}
-                             </Button>
-                           </TooltipTrigger>
-                           <TooltipContent side="top">{personaText ? "用戶畫像已生成" : isCurrentlySaving ? "正在生成..." : "生成用戶畫像"}</TooltipContent>
-                       </Tooltip>
-                       <Tooltip>
-                           <TooltipTrigger asChild><Button variant="ghost" size="icon" className={`h-7 w-7 rounded-full ${colors.text}/70 hover:${colors.text}`} onClick={() => copyKeywords(cluster.keywordList, index)} aria-label="複製關鍵詞">{copiedClusterIndex === index ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button></TooltipTrigger>
-                           <TooltipContent side="top">複製此分群的關鍵詞</TooltipContent>
-                       </Tooltip>
-                   </div>
-                 </div>
-
-                {/* Persona Display */}
-                {personaText && (
-                  <div className={`p-5 border-b ${colors.border} bg-background/40`}>
-                      <p className="text-sm font-medium text-muted-foreground mb-2">用戶畫像:</p>
-                      <p className="text-base italic text-foreground/90 leading-relaxed">{personaText}</p>
+              // Mobile: card layout. Desktop: row layout.
+              <div
+                key={index}
+                className={`flex flex-col md:flex-row text-sm border border-border rounded-lg md:border-t md:border-x-0 md:border-b-0 md:rounded-none md:-mt-px ${rowBackground} bg-card md:bg-transparent`} // Base bg-card for mobile cards
+              >
+                {/* Cell 1: Theme / Total Volume */}
+                <div className="p-3 md:w-1/4 lg:w-[15%] flex-shrink-0 border-b md:border-b-0 md:border-r border-border">
+                  <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
+                    主題 / 總量
                   </div>
-                )}
-
-                {/* Keyword List with added New Research button */}
-                <div className="p-5 max-h-80 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-                  <ul className="space-y-2.5">
-                    {keywordsToShow.map((keyword, kwIndex) => (
-                      <li key={kwIndex} className="text-base flex justify-between items-center gap-2 group rounded-md p-1 -m-1 hover:bg-foreground/5 transition-colors duration-150">
-                        <span className="flex-1 truncate" title={keyword}>{keyword}</span>
-
-                        {/* Made volume and buttons always visible */}
-                        <div className="flex items-center flex-shrink-0 space-x-1.5 transition-opacity duration-150"> 
-                            {/* Add a subtle divider if volume exists */}
-                            {keywordVolumeMap[keyword.toLowerCase()] !== undefined && <span className="text-muted-foreground/40">|</span>}
-                            <span className={`text-sm font-mono ${colors.volume} ml-1`}>{keywordVolumeMap[keyword.toLowerCase()]?.toLocaleString() ?? '-'}</span>
-                            
-                            {/* Buttons section - still show on hover for less clutter? Or always visible? 
-                                Let's keep buttons on hover for now to avoid visual overload. 
-                                We can make them always visible too if preferred. 
-                            */}
-                             <div className="flex items-center flex-shrink-0 space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleNewResearch(keyword)} aria-label={`以此關鍵詞開始新研究 "${keyword}"`}>
-                                            <FilePlus2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">以此關鍵詞開始新研究</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className={`h-6 w-6 rounded-full ${colors.text}/60 hover:${colors.text}/90`} onClick={() => handleGoogleSearch(keyword)} aria-label={`Google 查詢 "${keyword}"`}>
-                                            <ExternalLink className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">Google 查詢</TooltipContent>
-                                </Tooltip>
-                             </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <div
+                    className="font-semibold truncate"
+                    title={cluster.clusterName}
+                  >
+                    {cluster.clusterName}
+                  </div>
+                  <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    <TrendingUp className="inline-block h-3 w-3 mr-0.5" />
+                    {cluster.totalVolume.toLocaleString()}
+                  </div>
                 </div>
 
-                {/* Cluster-Specific Long-Tail Section */}
-                {clusterUniqueRemainders.length > 0 && (
-                  <div className={`p-5 border-t ${colors.border} bg-gradient-to-b from-transparent to-${colors.bg.split('-')[1]}-50/30 dark:to-${colors.bg.split('-')[1]}-900/10`}>
-                    <p className={`text-base font-medium ${colors.text} mb-1.5`}>
-                        <LayoutGrid className="inline-block h-4 w-4 mr-1.5 align-text-bottom opacity-80" /> 
-                        此分群長尾字詞：
-                    </p> 
-                    <p className={`text-sm ${colors.text}/90 leading-relaxed`}>
-                      {clusterUniqueRemainders.join(', ')}
-                    </p>
+                {/* Cell 2: Main Keyword / Volume */}
+                <div className="p-3 md:w-1/4 lg:w-[15%] flex-shrink-0 border-b md:border-b-0 md:border-r border-border">
+                  <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
+                    主軸關鍵字 / 量
                   </div>
-                )}
+                  <div className="truncate" title={mainAxisKeyword}>
+                    {mainAxisKeyword}{' '}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <span className="text-xs font-mono text-indigo-600/80 dark:text-indigo-400/80 cursor-pointer hover:underline">
+                          ({mainAxisVolume})
+                        </span>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem
+                          onClick={() => handleNewResearch(mainAxisKeyword)}
+                          disabled={!mainAxisKeyword || mainAxisKeyword === '-'}
+                        >
+                          <FilePlus2 className="mr-2 h-4 w-4" />
+                          <span>以此關鍵詞開始新研究</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleGoogleSearch(mainAxisKeyword)}
+                          disabled={!mainAxisKeyword || mainAxisKeyword === '-'}
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          <span>Google 查詢</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                {/* Cell 3: Supporting Keywords / Volume */}
+                <div className="p-3 md:w-1/2 lg:w-[30%] flex-grow border-b md:border-b-0 md:border-r border-border">
+                  <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
+                    輔助關鍵字 / 量
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(isExpanded
+                      ? allSupportingKeywords
+                      : topSupportingKeywords
+                    ).map((kw, i, arr) => (
+                      <span key={kw} className="inline-flex items-baseline">
+                        <span>{kw}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <span className="text-xs font-mono text-indigo-600/80 dark:text-indigo-400/80 ml-0.5 cursor-pointer hover:underline">
+                              (
+                              {keywordVolumeMap[
+                                kw.toLowerCase()
+                              ]?.toLocaleString() ?? '-'}
+                              )
+                            </span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onClick={() => handleNewResearch(kw)}
+                            >
+                              <FilePlus2 className="mr-2 h-4 w-4" />
+                              <span>以此關鍵詞開始新研究</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleGoogleSearch(kw)}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              <span>Google 查詢</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {i < arr.length - 1 && (
+                          <span className="text-muted-foreground/60 mx-1">
+                            /
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                    {!isExpanded && remainingCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        className="text-xs h-auto px-1.5 py-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded ml-1"
+                        onClick={() => toggleSupportingKeywords(index)}
+                      >
+                        <PlusCircle className="h-3 w-3 mr-0.5" />+
+                        {remainingCount}
+                      </Button>
+                    )}
+                  </div>
+                  {isExpanded && remainingCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      className="text-xs h-auto px-1.5 py-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded mt-1"
+                      onClick={() => toggleSupportingKeywords(index)}
+                    >
+                      收合
+                    </Button>
+                  )}
+                </div>
+
+                {/* Cell 4: Long Tail Words */}
+                <div className="p-3 md:w-auto lg:w-[15%] flex-shrink-0 border-b md:border-b-0 md:border-r border-border whitespace-normal">
+                  <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
+                    長尾字詞
+                  </div>
+                  {clusterUniqueRemaindersString}
+                </div>
+
+                {/* === Cell 5: Persona === */}
+                <div className="p-3 md:w-auto lg:w-[25%] flex-shrink-0 space-y-2">
+                  <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
+                    用戶畫像
+                  </div>
+                  {currentPersona ? (
+                    // Display existing persona
+                    <div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start px-1 text-left h-auto mb-1 text-sm font-medium"
+                        onClick={() =>
+                          togglePersonaExpansion(cluster.clusterName)
+                        }
+                      >
+                        <User className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="flex-1 truncate">用戶畫像</span>
+                        {isPersonaExpanded ? (
+                          <ChevronUp className="h-4 w-4 ml-1 flex-shrink-0" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 ml-1 flex-shrink-0" />
+                        )}
+                      </Button>
+                      {isPersonaExpanded && (
+                        <div className="text-xs text-muted-foreground pl-3 pr-1 whitespace-pre-wrap break-words border-l-2 ml-2">
+                          {currentPersona}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Show button to generate persona
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() =>
+                        onStartPersonaChat(
+                          cluster.clusterName,
+                          cluster.keywordList
+                        )
+                      }
+                      disabled={isGeneratingThisPersona || !!isSavingPersona} // Disable if generating this OR any other persona
+                    >
+                      {isGeneratingThisPersona ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-2" />
+                      )}
+                      {isGeneratingThisPersona ? '正在生成...' : '生成用戶畫像'}
+                    </Button>
+                  )}
+                </div>
               </div>
             );
           })}
+          {displayClusters.length ===
+            0 /* Handle empty state inside table */ && (
+            <div className="p-4 text-center text-muted-foreground italic bg-card">
+              沒有找到分群數據。
+            </div>
+          )}
         </div>
-
-        {/* Remove Show More Button */}
-        {/* {sortedClusters.length > DEFAULT_VISIBLE_CLUSTERS && ( ... )} */} 
+        {/* --- Table Layout End --- */}
       </div>
     </TooltipProvider>
   );
-} 
+}

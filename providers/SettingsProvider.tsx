@@ -1,10 +1,18 @@
 'use client';
 
-import { type ReactNode, createContext, useContext, useEffect, useRef } from 'react';
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useRef
+} from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 export type Language = 'zh-TW' | 'en-US';
+// Define type for Persona Model
+export type PersonaModelType = 'gpt-4o-mini' | 'gpt-4o';
 
 export interface SettingsState {
   language: Language;
@@ -14,12 +22,14 @@ export interface SettingsState {
   isGoogleAdsConnected: boolean;
   isSerperConnected: boolean;
   googleTokenExpiry: Date | null;
-  
+
   // 搜索選項設置
   useAlphabet: boolean;
   useSymbols: boolean;
   filterZeroVolume: boolean;
   maxResults: number;
+  // Add persona model state
+  personaModel: PersonaModelType;
 }
 
 interface SettingsActions {
@@ -30,12 +40,14 @@ interface SettingsActions {
   setGoogleAdsConnected: (connected: boolean) => void;
   setSerperConnected: (connected: boolean) => void;
   setGoogleTokenExpiry: (expiry: Date | null) => void;
-  
+
   // 搜索選項設置
   setUseAlphabet: (use: boolean) => void;
   setUseSymbols: (use: boolean) => void;
   setFilterZeroVolume: (filter: boolean) => void;
   setMaxResults: (max: number) => void;
+  // Add persona model action
+  setPersonaModel: (model: PersonaModelType) => void;
 }
 
 export type SettingsStore = {
@@ -52,108 +64,119 @@ export const defaultSettings: SettingsState = {
   isGoogleAdsConnected: false,
   isSerperConnected: false,
   googleTokenExpiry: null,
-  
+
   // 搜索選項默認值
   useAlphabet: true,
   useSymbols: false,
   filterZeroVolume: false,
-  maxResults: 40
+  maxResults: 40,
+  // Add default persona model
+  personaModel: 'gpt-4o-mini'
 };
 
 // 創建store工廠函數
 const createSettingsStore = (initState: SettingsState = defaultSettings) => {
-  return createStore<SettingsStore>()((set) => ({
+  return createStore<SettingsStore>()(set => ({
     state: {
       ...initState
     },
-    
+
     actions: {
-      setLanguage: (language) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            language 
-          } 
+      setLanguage: language =>
+        set(store => ({
+          state: {
+            ...store.state,
+            language
+          }
         })),
-      
-      setRegion: (region) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            region 
-          } 
+
+      setRegion: region =>
+        set(store => ({
+          state: {
+            ...store.state,
+            region
+          }
         })),
-      
-      setLanguages: (languages) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            languages 
-          } 
+
+      setLanguages: languages =>
+        set(store => ({
+          state: {
+            ...store.state,
+            languages
+          }
         })),
-      
-      setRegions: (regions) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            regions 
-          } 
+
+      setRegions: regions =>
+        set(store => ({
+          state: {
+            ...store.state,
+            regions
+          }
         })),
-      
-      setGoogleAdsConnected: (isGoogleAdsConnected) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            isGoogleAdsConnected 
-          } 
+
+      setGoogleAdsConnected: isGoogleAdsConnected =>
+        set(store => ({
+          state: {
+            ...store.state,
+            isGoogleAdsConnected
+          }
         })),
-      
-      setSerperConnected: (isSerperConnected) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            isSerperConnected 
-          } 
+
+      setSerperConnected: isSerperConnected =>
+        set(store => ({
+          state: {
+            ...store.state,
+            isSerperConnected
+          }
         })),
-      
-      setGoogleTokenExpiry: (googleTokenExpiry) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            googleTokenExpiry 
-          } 
+
+      setGoogleTokenExpiry: googleTokenExpiry =>
+        set(store => ({
+          state: {
+            ...store.state,
+            googleTokenExpiry
+          }
         })),
-      
-      setUseAlphabet: (use) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            useAlphabet: use 
-          } 
+
+      setUseAlphabet: use =>
+        set(store => ({
+          state: {
+            ...store.state,
+            useAlphabet: use
+          }
         })),
-      
-      setUseSymbols: (use) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            useSymbols: use 
-          } 
+
+      setUseSymbols: use =>
+        set(store => ({
+          state: {
+            ...store.state,
+            useSymbols: use
+          }
         })),
-      
-      setFilterZeroVolume: (filter) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            filterZeroVolume: filter 
-          } 
+
+      setFilterZeroVolume: filter =>
+        set(store => ({
+          state: {
+            ...store.state,
+            filterZeroVolume: filter
+          }
         })),
-      
-      setMaxResults: (max) => 
-        set((store) => ({ 
-          state: { 
-            ...store.state, 
-            maxResults: max 
-          } 
+
+      setMaxResults: max =>
+        set(store => ({
+          state: {
+            ...store.state,
+            maxResults: max
+          }
+        })),
+
+      // Implement setPersonaModel action
+      setPersonaModel: model =>
+        set(store => ({
+          state: {
+            ...store.state,
+            personaModel: model
+          }
         }))
     }
   }));
@@ -170,51 +193,53 @@ export interface SettingsProviderProps {
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
   const storeRef = useRef<SettingsStoreApi | null>(null);
-  
+
   if (!storeRef.current) {
     // 初始化store，並從localStorage載入設置
     let initialSettings = defaultSettings;
-    
+
     if (typeof window !== 'undefined') {
       try {
         const savedSettings = localStorage.getItem('settings');
         if (savedSettings) {
           const parsedSettings = JSON.parse(savedSettings);
-          
+
           // 確保解析後的設置包含所有必要的字段
           initialSettings = {
             ...defaultSettings,
             ...parsedSettings
           };
-          
+
           // 處理日期字符串轉換
           if (parsedSettings.googleTokenExpiry) {
-            initialSettings.googleTokenExpiry = new Date(parsedSettings.googleTokenExpiry);
+            initialSettings.googleTokenExpiry = new Date(
+              parsedSettings.googleTokenExpiry
+            );
           }
         }
       } catch (error) {
         console.error('無法加載設置:', error);
       }
     }
-    
+
     storeRef.current = createSettingsStore(initialSettings);
   }
-  
+
   // 保存設置到localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && storeRef.current) {
-      const unsubscribe = storeRef.current.subscribe((state) => {
+      const unsubscribe = storeRef.current.subscribe(state => {
         try {
           localStorage.setItem('settings', JSON.stringify(state.state));
         } catch (error) {
           console.error('無法保存設置:', error);
         }
       });
-      
+
       return () => unsubscribe();
     }
   }, []);
-  
+
   return (
     <SettingsStoreContext.Provider value={storeRef.current}>
       {children}
@@ -225,10 +250,10 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 // 自定義hook以使用store
 export function useSettingsStore<T>(selector: (store: SettingsStore) => T): T {
   const settingsStore = useContext(SettingsStoreContext);
-  
+
   if (!settingsStore) {
     throw new Error('useSettingsStore必須在SettingsProvider內部使用');
   }
-  
+
   return useStore(settingsStore, selector);
-} 
+}
