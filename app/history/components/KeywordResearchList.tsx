@@ -12,6 +12,7 @@ import { zhTW } from "date-fns/locale"
 import { Clock, FileText, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import type { KeywordResearchListItem } from "@/app/types";
 
 // 定義常量以提高可維護性
 const COMPONENT_LOG_PREFIX = "[KeywordResearchList]"
@@ -23,19 +24,23 @@ const UI_STRINGS = {
 
 interface KeywordResearchListProps {
   hideRefreshButton?: boolean;
+  initialResearches?: KeywordResearchListItem[];
 }
 
-export default function KeywordResearchList({ hideRefreshButton = false }: KeywordResearchListProps) {
+export default function KeywordResearchList({ 
+  hideRefreshButton = false,
+  initialResearches = []
+}: KeywordResearchListProps) {
   const router = useRouter();
 
   // --- 從 Zustand Store 讀取狀態 ---
   const researches = useResearchStore((store: ResearchStore) => store.state.researches)
   const loading = useResearchStore((store: ResearchStore) => store.state.loading)
-  const selectedResearchId = useResearchStore((store: ResearchStore) => store.state.selectedResearchId) // Keep this to highlight the selected item
+  const selectedResearchId = useResearchStore((store: ResearchStore) => store.state.selectedResearchId)
   const {
-    // setSelectedResearchId, // Will be removed later
     deleteResearch,
     fetchResearches,
+    _handleResearchSavedOrUpdated,
   } = useResearchStore((store: ResearchStore) => store.actions)
 
   // --- 本地狀態只保留刪除中的 ID ---
@@ -46,13 +51,19 @@ export default function KeywordResearchList({ hideRefreshButton = false }: Keywo
     console.log(`${COMPONENT_LOG_PREFIX} useEffect hook fired.`);
     // Check if researches are already loaded to avoid unnecessary fetches
     if (!researches || researches.length === 0) {
-        console.log(`${COMPONENT_LOG_PREFIX} Researches not loaded, calling fetchResearches().`);
-        fetchResearches(); // Call without forceRefresh initially
+        console.log(`${COMPONENT_LOG_PREFIX} Researches not loaded, using initialResearches or fetching...`);
+        if (initialResearches.length > 0) {
+          // Initialize store with server-fetched data
+          initialResearches.forEach(research => {
+            _handleResearchSavedOrUpdated(research);
+          });
+        } else {
+          fetchResearches(); // Call without forceRefresh initially
+        }
     } else {
         console.log(`${COMPONENT_LOG_PREFIX} Researches already loaded (${researches.length} items), skipping initial fetch.`);
     }
-    // Dependency array only includes fetchResearches, which should be stable from Zustand
-  }, [fetchResearches]); // Removed researches from dependencies to prevent re-fetching on list update
+  }, [fetchResearches, initialResearches, _handleResearchSavedOrUpdated]);
 
   // Demand: Automatically refresh list when new research is saved (via 'researchSaved' event).
   useEffect(() => {
