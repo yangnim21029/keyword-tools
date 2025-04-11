@@ -4,7 +4,7 @@ import {
 } from '@/app/actions';
 import type { KeywordVolumeItem } from '@/lib/schema'; // Import Keyword type
 import { notFound } from 'next/navigation';
-import KeywordResearchDetail from './components/KeywordResearchDetail';
+import KeywordResearchDetail from '../components/keyword-research-detail';
 
 // Define the params type as a Promise
 type Params = Promise<{ researchId: string }>;

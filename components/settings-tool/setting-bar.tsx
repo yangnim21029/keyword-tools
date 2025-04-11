@@ -1,7 +1,7 @@
 'use client';
 
-import { useSettingsStore } from "@/store/settingsStore";
-import { useEffect, useState } from "react";
+import { useSettingsStore } from '@/store/settings-store';
+import { useEffect, useState } from 'react';
 
 export default function SettingBar() {
   // State to track client-side mounting
@@ -24,7 +24,7 @@ export default function SettingBar() {
 
   // Don't render until mounted on the client to avoid hydration mismatch
   if (!isMounted) {
-    return null; 
+    return null;
   }
 
   return (

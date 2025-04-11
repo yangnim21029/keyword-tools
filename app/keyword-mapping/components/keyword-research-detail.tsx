@@ -1,6 +1,6 @@
 'use client';
 
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore } from '@/store/settings-store';
 import { ArrowLeft, FileText, Loader2, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,14 +13,14 @@ import {
   revalidateKeywordData,
   updateKeywordResearch
 } from '@/app/actions';
-import { generateUserPersonaFromClusters } from '@/app/actions/generatePersona';
+import { generateUserPersonaFromClusters } from '@/app/actions/generate-persona';
 
 // Internal Components
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/LoadingButton';
-import { EmptyState } from '../../EmptyState';
-import KeywordClustering from '../../KeywordClustering';
-import KeywordDistribute from './KeywordDistribute';
+import { EmptyState } from './empty-state';
+import KeywordClustering from './keyword-clustering';
+import KeywordDistribute from './keyword-distribute';
 
 import {
   UpdateKeywordResearchInput,

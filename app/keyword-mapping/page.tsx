@@ -1,6 +1,6 @@
 import { fetchKeywordResearchList } from '@/app/actions';
 import React from 'react';
-import KeywordResearchList from '../../history/components/KeywordResearchList';
+import KeywordResearchList from './components/keyword-research-list';
 import KeywordSearchForm from './components/keyword-search-form';
 
 // Define a simple loading fallback component

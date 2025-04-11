@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation';
 import type React from 'react';
 
+import type { KeywordResearchListItemWithTotalVolume } from '@/app/actions';
 import { deleteKeywordResearch } from '@/app/actions';
-import type { KeywordResearchListItemWithTotalVolume } from '@/app/actions/keywordResearch';
 import { Button } from '@/components/ui/button';
 import { formatVolume } from '@/lib/utils';
 import { Clock, RefreshCw, Sigma, Trash2 } from 'lucide-react';
@@ -117,11 +117,19 @@ export default function KeywordResearchList({
                 className={`group py-2 px-2 cursor-pointer flex items-center max-w-full border-b border-border/50 last:border-b-0 rounded-sm hover:bg-accent/50`}
                 onClick={() => handleResearchClick(research.id)}
               >
-                {/* Query Text */}
-                <div className="min-w-0 flex-1 overflow-hidden mr-1.5 ml-1">
-                  <h3 className={`text-sm leading-tight truncate font-medium`}>
+                {/* Query Text and Region */}
+                <div className="min-w-0 flex-1 overflow-hidden mr-1.5 ml-1 flex items-baseline">
+                  <h3
+                    className={`text-sm leading-tight truncate font-medium mr-1.5`}
+                  >
                     {research.query}
                   </h3>
+                  {/* Display Region Code */}
+                  {research.region && (
+                    <span className="text-xs text-muted-foreground truncate flex-shrink-0">
+                      ({research.region})
+                    </span>
+                  )}
                 </div>
 
                 {/* Total Volume (Right Aligned) */}

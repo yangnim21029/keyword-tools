@@ -2,7 +2,7 @@
 
 import { getKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
 import { COLLECTIONS, db } from '@/app/services/firebase/config';
-import { getSearchVolume } from '@/app/services/KeywordDataService';
+import { getSearchVolume } from '@/app/services/keyword-data.service';
 // Import types primarily from schemas
 import {
   type ClusteringStatus,
@@ -16,10 +16,10 @@ import {
   type UserPersona // <-- Import UserPersona type
 } from '@/lib/schema'; // Adjusted import path
 // Import the extended list item and potentially Keyword from our specific types file
-import { updateKeywordResearchResults } from '@/app/services/firebase/keyword_research';
+import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
-import { performSemanticClustering as performSemanticClusteringService } from './SemanticClustering';
+import { performSemanticClustering as performSemanticClusteringService } from './semantic-clustering';
 
 const KEYWORD_RESEARCH_TAG = 'KeywordResearch';
 // const TOOLS_PATH = '/tools'; // Not currently used

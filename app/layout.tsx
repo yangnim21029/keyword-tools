@@ -1,9 +1,9 @@
-import GlobalLoadingOverlay from '@/components/common/GlobalLoadingOverlay';
-import { ModeToggle } from '@/components/common/ModeToggle';
-import SettingBar from '@/components/settings-tool/SettingBar';
-import { SettingsDialog } from '@/components/settings-tool/SettingsDialog';
-import { SettingsProvider } from '@/providers/SettingsProvider';
-import { ThemeProvider } from '@/providers/ThemeProvider';
+import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
+import { ModeToggle } from '@/components/common/mode-toggle';
+import SettingBar from '@/components/settings-tool/setting-bar';
+import { SettingsDialog } from '@/components/settings-tool/settings-dialog';
+import { SettingsProvider } from '@/providers/settings-provider';
+import { ThemeProvider } from '@/providers/theme-provider';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Roboto } from 'next/font/google';
 import Link from 'next/link';

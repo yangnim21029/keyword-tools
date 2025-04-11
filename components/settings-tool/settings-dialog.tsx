@@ -21,8 +21,8 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { PersonaModelType } from '@/providers/SettingsProvider';
-import { useSettingsStore } from '@/store/settingsStore';
+import type { PersonaModelType } from '@/providers/settings-provider';
+import { useSettingsStore } from '@/store/settings-store';
 import { BarChart2, Check, Globe, Search, Settings } from 'lucide-react';
 import { useState } from 'react';
 
@@ -114,7 +114,7 @@ export function SettingsDialog() {
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="loading-region-placeholder" disabled>
                         加載中...
                       </SelectItem>
                     )}
@@ -144,7 +144,7 @@ export function SettingsDialog() {
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="loading-language-placeholder" disabled>
                         加載中...
                       </SelectItem>
                     )}

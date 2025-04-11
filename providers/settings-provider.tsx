@@ -7,10 +7,16 @@ import {
   useEffect,
   useRef
 } from 'react';
-import { useStore } from 'zustand';
+import { StoreApi, useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
-export type Language = 'zh-TW' | 'en-US';
+// Corrected import path and names for constants
+import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Use correct path and names
+
+// Assume constants are defined elsewhere, e.g., in @/lib/constants/geo-data
+// Placeholder import - replace with your actual constant path
+
+export type Language = 'en' | 'zh-TW' | 'ja' | 'ko';
 // Define type for Persona Model
 export type PersonaModelType = 'gpt-4o-mini' | 'gpt-4o';
 
@@ -66,7 +72,7 @@ export const defaultSettings: SettingsState = {
   googleTokenExpiry: null,
 
   // 搜索選項默認值
-  useAlphabet: true,
+  useAlphabet: false,
   useSymbols: false,
   filterZeroVolume: false,
   maxResults: 40,
@@ -183,8 +189,8 @@ const createSettingsStore = (initState: SettingsState = defaultSettings) => {
 };
 
 // 建立Context
-export type SettingsStoreApi = ReturnType<typeof createSettingsStore>;
-const SettingsStoreContext = createContext<SettingsStoreApi | null>(null);
+export const SettingsStoreContext =
+  createContext<StoreApi<SettingsStore> | null>(null);
 
 // 提供Provider組件
 export interface SettingsProviderProps {
@@ -192,53 +198,37 @@ export interface SettingsProviderProps {
 }
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
-  const storeRef = useRef<SettingsStoreApi | null>(null);
+  const storeRef = useRef<ReturnType<typeof createSettingsStore> | null>(null);
 
   if (!storeRef.current) {
-    // 初始化store，並從localStorage載入設置
-    let initialSettings = defaultSettings;
-
-    if (typeof window !== 'undefined') {
-      try {
-        const savedSettings = localStorage.getItem('settings');
-        if (savedSettings) {
-          const parsedSettings = JSON.parse(savedSettings);
-
-          // 確保解析後的設置包含所有必要的字段
-          initialSettings = {
-            ...defaultSettings,
-            ...parsedSettings
-          };
-
-          // 處理日期字符串轉換
-          if (parsedSettings.googleTokenExpiry) {
-            initialSettings.googleTokenExpiry = new Date(
-              parsedSettings.googleTokenExpiry
-            );
-          }
-        }
-      } catch (error) {
-        console.error('無法加載設置:', error);
-      }
-    }
-
-    storeRef.current = createSettingsStore(initialSettings);
+    storeRef.current = createSettingsStore(); // Initialize the store
   }
 
-  // 保存設置到localStorage
+  // Use useEffect to set initial languages and regions
   useEffect(() => {
-    if (typeof window !== 'undefined' && storeRef.current) {
-      const unsubscribe = storeRef.current.subscribe(state => {
-        try {
-          localStorage.setItem('settings', JSON.stringify(state.state));
-        } catch (error) {
-          console.error('無法保存設置:', error);
-        }
-      });
-
-      return () => unsubscribe();
+    if (storeRef.current) {
+      const { setLanguages, setRegions } = storeRef.current.getState().actions;
+      // Check if data is already loaded to prevent unnecessary updates
+      if (
+        Object.keys(storeRef.current.getState().state.languages).length === 0
+      ) {
+        console.log('[SettingsProvider] Setting initial languages...');
+        setLanguages(LANGUAGES); // Use correct constant name
+      }
+      if (Object.keys(storeRef.current.getState().state.regions).length === 0) {
+        console.log('[SettingsProvider] Setting initial regions...');
+        // Need to flip REGIONS map for the UI { code: name }
+        const regionsForUI = Object.entries(REGIONS).reduce(
+          (acc, [name, code]) => {
+            acc[code] = name;
+            return acc;
+          },
+          {} as Record<string, string>
+        );
+        setRegions(regionsForUI); // Use correct constant name (after flipping)
+      }
     }
-  }, []);
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   return (
     <SettingsStoreContext.Provider value={storeRef.current}>
@@ -248,12 +238,10 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 }
 
 // 自定義hook以使用store
-export function useSettingsStore<T>(selector: (store: SettingsStore) => T): T {
+export function useSettingsStore<T>(selector: (state: SettingsStore) => T): T {
   const settingsStore = useContext(SettingsStoreContext);
-
   if (!settingsStore) {
     throw new Error('useSettingsStore必須在SettingsProvider內部使用');
   }
-
   return useStore(settingsStore, selector);
 }

@@ -4,6 +4,8 @@ import { ArrowLeft, FileText, Loader2, RefreshCw } from 'lucide-react';
 import React, { useMemo } from 'react'; // Import useMemo
 
 // Internal Components
+import { EmptyState } from '@/app/keyword-mapping/components/empty-state';
+import KeywordClustering from '@/app/keyword-mapping/components/keyword-clustering'; // Adjusted path
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import {
@@ -12,8 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
-import { EmptyState } from '../../EmptyState';
-import KeywordClustering from '../../KeywordClustering'; // Adjusted path
 
 // Types from schema
 import {

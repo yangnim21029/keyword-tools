@@ -6,8 +6,9 @@ export {
   getKeywordResearchDetail,
   getKeywordResearchList,
   saveKeywordResearch,
-  updateKeywordResearchClusters
-} from './keyword_research';
+  updateKeywordResearchClusters,
+  updateKeywordResearchResults
+} from './keyword-research';
 
 // 導出統計相關功能
 export { getDatabaseStats } from './stats';
