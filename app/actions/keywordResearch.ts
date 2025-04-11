@@ -134,12 +134,36 @@ export async function fetchKeywordResearchList(
   }
 }
 
-// Cached function to fetch details
-const getCachedKeywordResearchDetail = unstable_cache(
-  async (researchId: string) => {
-    console.log(`[Cache Miss] Fetching detail for researchId: ${researchId}`);
+// REMOVED unstable_cache wrapper for detail fetching
+// const getCachedKeywordResearchDetail = unstable_cache(
+//   async (researchId: string) => {
+//     console.log(`[Cache Miss] Fetching detail for researchId: ${researchId}`);
+//     if (!db) throw new Error('Database not initialized');
+//     if (!researchId) return null; // Or throw error
+
+//     const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
+//     const docSnap = await docRef.get();
+
+//     if (!docSnap.exists) {
+//       console.warn(`找不到記錄: ${researchId}`);
+//       return null;
+//     }
+//     const data = docSnap.data();
+//     if (!data) return null;
+
+//     return convertTimestamps({ ...data, id: docSnap.id }) as KeywordResearchItem;
+//   },
+//   ['keywordResearchDetail'],
+//   { tags: [KEYWORD_RESEARCH_TAG] } 
+// );
+
+// 获取特定 Keyword Research 详情 (NOW FETCHES DIRECTLY)
+export async function fetchKeywordResearchDetail(researchId: string): Promise<KeywordResearchItem | null> {
+  try {
+    // Direct fetch logic moved here from the removed cached function
+    console.log(`[Server Action] Fetching detail directly for researchId: ${researchId}`);
     if (!db) throw new Error('Database not initialized');
-    if (!researchId) return null; // Or throw error
+    if (!researchId) return null; 
 
     const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
     const docSnap = await docRef.get();
@@ -151,19 +175,7 @@ const getCachedKeywordResearchDetail = unstable_cache(
     const data = docSnap.data();
     if (!data) return null;
 
-    return convertTimestamps({ ...data, id: docSnap.id }) as KeywordResearchItem;
-  },
-  // Base key part. researchId differentiates cache entries.
-  ['keywordResearchDetail'],
-   // Static options object. Only include the base tag.
-   // Specific invalidation will be handled by revalidateTag(`${KEYWORD_RESEARCH_TAG}_${researchId}`)
-  { tags: [KEYWORD_RESEARCH_TAG] }
-);
-
-// 获取特定 Keyword Research 详情 (使用 cached function)
-export async function fetchKeywordResearchDetail(researchId: string): Promise<KeywordResearchItem | null> {
-  try {
-    const detail = await getCachedKeywordResearchDetail(researchId);
+    const detail = convertTimestamps({ ...data, id: docSnap.id }) as KeywordResearchItem;
     return detail;
   } catch (error) {
     console.error(`獲取詳情 (${researchId}) 失敗:`, error);
@@ -212,6 +224,7 @@ export async function createKeywordResearch(input: CreateKeywordResearchInput): 
         keywords: [], // Default empty array
         clusters: {}, // Default empty object
         personas: {}, // Default empty object
+        clustering_status: 'pending' as ClusteringStatus, // <--- Add initial status
         // ---------------------------------------------------------------
         createdAt: now,
         updatedAt: now,
@@ -420,8 +433,8 @@ export async function triggerKeywordClustering(researchId: string): Promise<{ su
         });
         console.log(`[Server Action] Status updated to 'completed' for ${researchId}`);
 
-        // Revalidate cache now that the operation is fully complete
-        await revalidateResearch(researchId);
+        // REMOVED Revalidation - Rely on router.refresh() in client
+        // await revalidateResearch(researchId);
 
         return { success: true };
 
@@ -588,27 +601,27 @@ export async function processAndSaveKeywordQuery(
             console.log(`[Server Action] No keywords derived after deduplication for record ${savedResearchId}. Skipping keyword update.`);
         }
 
-        // 5. Trigger Background Clustering (remains the same)
-        if (savedResearchId) {
-            console.log(`[Server Action] Initiating background clustering task for ${savedResearchId}...`);
-            triggerKeywordClustering(savedResearchId).then(result => {
-                if (!result.success) {
-                    console.error(`[Server Action - Background] Clustering failed for ${savedResearchId}:`, result.error);
-                } else {
-                    console.log(`[Server Action - Background] Clustering completed for ${savedResearchId}.`);
-                }
-            }).catch(error => {
-                console.error(`[Server Action - Background] Unexpected error during clustering trigger for ${savedResearchId}:`, error);
-            });
-        }
+        // 5. Trigger Background Clustering (REMOVED - User must trigger manually)
+        // if (savedResearchId) {
+        //     console.log(`[Server Action] Initiating background clustering task for ${savedResearchId}...`);
+        //     triggerKeywordClustering(savedResearchId).then(result => {
+        //         if (!result.success) {
+        //             console.error(`[Server Action - Background] Clustering failed for ${savedResearchId}:`, result.error);
+        //         } else {
+        //             console.log(`[Server Action - Background] Clustering completed for ${savedResearchId}.`);
+        //         }
+        //     }).catch(error => {
+        //         console.error(`[Server Action - Background] Unexpected error during clustering trigger for ${savedResearchId}:`, error);
+        //     });
+        // }
 
-        // Remove revalidation from here - will be triggered by client polling later
+        // Revalidation is now handled by the manual trigger or polling completion
         // if (savedResearchId) {
         //    await revalidateResearch(savedResearchId);
         // }
 
-        // Success! Return immediately after initiating clustering
-        console.log(`[Server Action] Returning success early for ${savedResearchId}. Clustering runs in background.`);
+        // Success! Return immediately after saving keywords. Clustering is pending.
+        console.log(`[Server Action] Returning success for ${savedResearchId}. Clustering is pending.`);
         return {
             success: true,
             researchId: savedResearchId,

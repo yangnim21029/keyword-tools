@@ -64,14 +64,12 @@ interface KeywordResearchDetailProps {
   initialResearchDetail: KeywordResearchItem;
   researchId: string;
   volumeDistribution: VolumeDistributionData; // Use the updated interface
-  initialClusteringStatus: ClusteringStatus; // Add the new prop
 }
 
 export default function KeywordResearchDetail({
   initialResearchDetail,
   researchId,
-  volumeDistribution, // Destructure the new prop
-  initialClusteringStatus // Destructure the new prop
+  volumeDistribution // Destructure the new prop
 }: KeywordResearchDetailProps) {
   const router = useRouter();
   const settingsState = useSettingsStore(store => store.state);
@@ -83,8 +81,48 @@ export default function KeywordResearchDetail({
   const [localError, setLocalError] = useState<string | null>(null);
   const [view, setView] = useState<'volume' | 'cluster'>('volume');
 
-  // State for current clustering status, initialized from prop
-  const [currentClusteringStatus, setCurrentClusteringStatus] = useState<ClusteringStatus>(initialClusteringStatus);
+  // State for current clustering status, initialize to null (or 'pending' if preferred)
+  const [currentClusteringStatus, setCurrentClusteringStatus] = useState<ClusteringStatus>(null);
+
+  // --- NEW Effect: Fetch initial status on mount --- 
+  useEffect(() => {
+    let isMounted = true; // Flag to prevent state updates on unmounted component
+
+    const fetchInitialStatus = async () => {
+      if (!researchId) return; // Guard against missing ID
+      try {
+        console.log(`[KeywordResearchDetail] Fetching initial clustering status for ${researchId}...`);
+        const status = await fetchClusteringStatus(researchId);
+        if (isMounted) {
+          console.log(`[KeywordResearchDetail] Initial status received: ${status}`);
+
+          // --- Status Correction Logic (moved here) ---
+          let finalStatus = status ?? null;
+          // If clusters exist in the initially loaded detail, but the status isn't 'completed',
+          // override the status to 'completed' for UI consistency.
+          if (initialResearchDetail?.clusters && Object.keys(initialResearchDetail.clusters).length > 0 && finalStatus !== 'completed') {
+            console.log(`[KeywordResearchDetail] Initial clusters found but status was ${finalStatus}. Correcting status to 'completed'.`);
+            finalStatus = 'completed';
+          }
+          // --- End Status Correction ---
+
+          setCurrentClusteringStatus(finalStatus);
+        }
+      } catch (error) {
+        console.error('[KeywordResearchDetail] Error fetching initial status:', error);
+        if (isMounted) {
+          // Optionally set an error state or default status
+           setCurrentClusteringStatus(null); // Or 'failed'?
+        }
+      }
+    };
+
+    fetchInitialStatus();
+
+    return () => {
+      isMounted = false; // Cleanup: Set flag to false when unmounting
+    };
+  }, [researchId, initialResearchDetail?.clusters]); // Depend on researchId and initial clusters data
 
   // --- Polling Effect --- 
   useEffect(() => {
@@ -288,15 +326,6 @@ export default function KeywordResearchDetail({
 
         if (updateResult.success) {
           toast.success(`Persona for "${clusterName}" saved successfully!`);
-          // Revalidate cache before refreshing
-          try {
-             console.log(`[KeywordResearchDetail] Revalidating data after persona save for ${researchId}...`);
-             await revalidateKeywordData(researchId);
-             console.log(`[KeywordResearchDetail] Revalidation requested for ${researchId}. Refreshing router...`);
-          } catch (revalError) {
-             console.error(`[KeywordResearchDetail] Failed to request revalidation after persona save for ${researchId}:`, revalError);
-             // Decide if you still want to refresh even if revalidation fails
-          }
           router.refresh();
         } else {
           throw new Error(
@@ -545,7 +574,7 @@ export default function KeywordResearchDetail({
                  title="Cluster Keywords"
                  description="Group these keywords by similarity to uncover user intent."
                  // Adjust label based on whether it was initially pending or failed
-                 actionLabel={initialClusteringStatus === 'pending' || initialClusteringStatus === null ? "Start Clustering" : "Retry Clustering"} 
+                 actionLabel={currentClusteringStatus === 'failed' ? "Retry Clustering" : "Start Clustering"} 
                  onAction={handleRequestClustering}
              />
           )}
