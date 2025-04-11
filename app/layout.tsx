@@ -1,6 +1,5 @@
 import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
 import { ModeToggle } from '@/components/common/mode-toggle';
-import SettingBar from '@/components/settings-tool/setting-bar';
 import { SettingsDialog } from '@/components/settings-tool/settings-dialog';
 import { SettingsProvider } from '@/providers/settings-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
@@ -78,7 +77,6 @@ export default function RootLayout({
                   </nav>
                 </div>
                 <div className="flex items-center gap-2 ml-auto">
-                  <SettingBar />
                   <div className="flex items-center gap-1">
                     <SettingsDialog />
                     <ModeToggle />

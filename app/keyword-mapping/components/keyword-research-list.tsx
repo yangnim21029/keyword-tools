@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type React from 'react';
 
@@ -33,14 +34,14 @@ export default function KeywordResearchList({
   // --- 本地狀態只保留刪除中的 ID ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // 處理研究記錄點擊 - Updated to use router
-  const handleResearchClick = (researchId: string) => {
-    console.log(
-      `${COMPONENT_LOG_PREFIX} Navigating to results page for ID:`,
-      researchId
-    );
-    router.push(`/keyword-mapping/${researchId}`);
-  };
+  // 處理研究記錄點擊 - Removed, will use Link instead
+  // const handleResearchClick = (researchId: string) => {
+  //   console.log(
+  //     `${COMPONENT_LOG_PREFIX} Navigating to results page for ID:`,
+  //     researchId
+  //   );
+  //   router.push(`/keyword-mapping/${researchId}`);
+  // };
 
   // 處理刪除研究記錄 - Call Server Action directly and refresh
   const handleDelete = async (
@@ -112,10 +113,12 @@ export default function KeywordResearchList({
         <div className="space-y-0 px-0">
           {initialResearches.map(research => {
             return (
-              <div
+              // Wrap the clickable area with Link
+              <Link
                 key={research.id}
+                href={`/keyword-mapping/${research.id}`}
                 className={`group py-2 px-2 cursor-pointer flex items-center max-w-full border-b border-border/50 last:border-b-0 rounded-sm hover:bg-accent/50`}
-                onClick={() => handleResearchClick(research.id)}
+                // Remove onClick for navigation
               >
                 {/* Query Text and Region */}
                 <div className="min-w-0 flex-1 overflow-hidden mr-1.5 ml-1 flex items-baseline">
@@ -140,12 +143,16 @@ export default function KeywordResearchList({
                   </div>
                 )}
 
-                {/* Delete Button */}
+                {/* Delete Button - Stop propagation to prevent Link navigation */}
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                  onClick={e => handleDelete(e, research.id)}
+                  onClick={e => {
+                    e.preventDefault(); // Prevent Link navigation
+                    e.stopPropagation(); // Stop propagation
+                    handleDelete(e, research.id);
+                  }}
                   disabled={deletingId === research.id}
                   aria-label={`刪除研究記錄: ${research.query}`}
                 >
@@ -155,7 +162,7 @@ export default function KeywordResearchList({
                     <Trash2 className="h-3.5 w-3.5" />
                   )}
                 </Button>
-              </div>
+              </Link>
             );
           })}
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { processAndSaveKeywordQuery } from '@/app/actions';
+import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Import constants
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import {
@@ -28,14 +29,23 @@ export default function KeywordSearchForm({
   // --- Hooks ---
   const router = useRouter();
   const searchParams = useSearchParams();
-  const settingsState = useSettingsStore(store => store.state);
-  const { setRegion, setLanguage } = useSettingsStore(store => store.actions);
+  // Only get settings that are still global
+  const { useAlphabet, useSymbols } = useSettingsStore(store => store.state);
+  // Remove setRegion and setLanguage actions
+  // const { setRegion, setLanguage } = useSettingsStore(store => store.actions);
 
   // --- Local State ---
   const [queryInput, setQueryInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Add local state for region and language selection
+  const [selectedRegion, setSelectedRegion] = useState<string>(
+    Object.values(REGIONS)[0] || ''
+  ); // Default to first region value
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(
+    Object.keys(LANGUAGES)[0] || ''
+  ); // Default to first language code
 
   // --- Logic ---
 
@@ -61,10 +71,10 @@ export default function KeywordSearchForm({
     try {
       const result = await processAndSaveKeywordQuery({
         query: queryInput,
-        region: settingsState.region,
-        language: settingsState.language,
-        useAlphabet: settingsState.useAlphabet,
-        useSymbols: settingsState.useSymbols,
+        region: selectedRegion, // Pass local state
+        language: selectedLanguage, // Pass local state
+        useAlphabet: useAlphabet, // Still from global store
+        useSymbols: useSymbols, // Still from global store
         maxKeywords,
         minSearchVolume
       });
@@ -94,7 +104,11 @@ export default function KeywordSearchForm({
     }
   }, [
     queryInput,
-    settingsState,
+    // settingsState, // Remove settingsState dependency for region/lang
+    useAlphabet, // Keep dependency on global settings
+    useSymbols,
+    selectedRegion, // Add local state dependency
+    selectedLanguage, // Add local state dependency
     router,
     isLoading,
     maxKeywords,
@@ -144,29 +158,33 @@ export default function KeywordSearchForm({
           </LoadingButton>
         </div>
 
-        {/* Region and Language Selection */}
+        {/* Region and Language Selection - Updated */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-          <Select value={settingsState.region} onValueChange={setRegion}>
+          {/* Region Select */}
+          <Select value={selectedRegion} onValueChange={setSelectedRegion}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="選擇地區" />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(settingsState.regions).map(([code, name]) => (
+              {/* Use REGIONS constant */}
+              {Object.entries(REGIONS).map(([name, code]) => (
                 <SelectItem key={code} value={code}>
-                  {name}
+                  {name} ({code})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <Select value={settingsState.language} onValueChange={setLanguage}>
+          {/* Language Select */}
+          <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="選擇語言" />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(settingsState.languages).map(([code, name]) => (
+              {/* Use LANGUAGES constant */}
+              {Object.entries(LANGUAGES).map(([code, name]) => (
                 <SelectItem key={code} value={code}>
-                  {name}
+                  {name} ({code})
                 </SelectItem>
               ))}
             </SelectContent>

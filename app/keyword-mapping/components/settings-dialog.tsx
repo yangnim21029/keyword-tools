@@ -1,6 +1,5 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -23,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { PersonaModelType } from '@/providers/settings-provider';
 import { useSettingsStore } from '@/store/settings-store';
-import { BarChart2, Check, Globe, Search, Settings } from 'lucide-react';
+import { BarChart2, Check, Search, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 export function SettingsDialog() {
@@ -37,10 +36,6 @@ export function SettingsDialog() {
   const {
     filterZeroVolume,
     maxResults,
-    region,
-    language,
-    regions,
-    languages,
     useAlphabet,
     useSymbols,
     personaModel
@@ -50,8 +45,6 @@ export function SettingsDialog() {
   const {
     setFilterZeroVolume,
     setMaxResults,
-    setRegion,
-    setLanguage,
     setUseAlphabet,
     setUseSymbols,
     setPersonaModel
@@ -79,87 +72,12 @@ export function SettingsDialog() {
           onValueChange={setActiveTab}
           className="mt-2"
         >
-          <TabsList className="grid grid-cols-2 mb-4">
-            <TabsTrigger value="general" className="flex items-center gap-1.5">
-              <Globe className="h-3.5 w-3.5" />
-              <span>地區和語言</span>
-            </TabsTrigger>
+          <TabsList className="grid grid-cols-1 mb-4">
             <TabsTrigger value="search" className="flex items-center gap-1.5">
               <Search className="h-3.5 w-3.5" />
               <span>搜索選項</span>
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="general" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="settings-region"
-                  className="text-sm font-medium flex items-center"
-                >
-                  地區
-                  <Badge variant="outline" className="ml-2 text-xs">
-                    {region}
-                  </Badge>
-                </Label>
-                <Select value={region} onValueChange={setRegion}>
-                  <SelectTrigger id="settings-region" className="w-full">
-                    <SelectValue placeholder="選擇地區" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px]">
-                    {Object.keys(regions).length > 0 ? (
-                      Object.entries(regions).map(([code, name]) => (
-                        <SelectItem key={code} value={code}>
-                          {name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="loading-region-placeholder" disabled>
-                        加載中...
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="settings-language"
-                  className="text-sm font-medium flex items-center"
-                >
-                  語言
-                  <Badge variant="outline" className="ml-2 text-xs">
-                    {language}
-                  </Badge>
-                </Label>
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger id="settings-language" className="w-full">
-                    <SelectValue placeholder="選擇語言" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px]">
-                    {Object.keys(languages).length > 0 ? (
-                      Object.entries(languages).map(([code, name]) => (
-                        <SelectItem key={code} value={code}>
-                          {name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="loading-language-placeholder" disabled>
-                        加載中...
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md text-sm text-blue-800 dark:text-blue-300 border border-blue-100 dark:border-blue-800/50">
-              <p className="flex items-start">
-                <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-                地區和語言設置會影響關鍵詞建議和搜索量數據的結果。請選擇與您的目標市場相符的設置。
-              </p>
-            </div>
-          </TabsContent>
 
           <TabsContent value="search" className="space-y-4">
             <div className="space-y-4">

@@ -4,6 +4,7 @@ import {
 } from '@/app/actions';
 import type { KeywordVolumeItem } from '@/lib/schema'; // Import Keyword type
 import { notFound } from 'next/navigation';
+import React from 'react'; // Import React
 import KeywordResearchDetail from '../components/keyword-research-detail';
 
 // Define the params type as a Promise
@@ -111,6 +112,32 @@ export default async function KeywordResultPage({ params }: Props) {
   const { researchId } = await params;
 
   // Fetch initial data on the server
+  // Note: Data fetching is now inside the component, but the initial fetch
+  // happens on the server because the parent component is a Server Component.
+  // We still need to pass the researchId down.
+
+  // Define a simple loading fallback component for the detail view
+  const DetailLoadingFallback = () => {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-muted-foreground">正在加載研究詳情...</p>
+      </div>
+    );
+  };
+
+  return (
+    <React.Suspense fallback={<DetailLoadingFallback />}>
+      <KeywordResearchDetailLoader researchId={researchId} />
+    </React.Suspense>
+  );
+}
+
+// Create an async component to handle data fetching for KeywordResearchDetail
+async function KeywordResearchDetailLoader({
+  researchId
+}: {
+  researchId: string;
+}) {
   const researchDetail = await fetchKeywordResearchDetail(researchId);
 
   // If no research detail is found, show 404

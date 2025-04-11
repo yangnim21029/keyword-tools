@@ -39,12 +39,6 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 
-// Define the expected prop type (matching the one calculated in page.tsx)
-// Use the extended type defined in keyword-research.types.ts
-
-// Type for clustering status (Import from schemas)
-
-// Define the expected prop type (matching the one calculated in page.tsx)
 // Updated for Fixed Volume Ranges
 interface VolumeDistributionStats {
   min: number; // Overall min volume (>= 0)
@@ -193,10 +187,6 @@ export default function KeywordResearchDetail({
             '[KeywordResearchDetail] Error during status polling:',
             error
           );
-          // Optional: Decide if polling should stop on error
-          // setCurrentClusteringStatus('failed'); // Example: Set to failed
-          // if (intervalId) clearInterval(intervalId);
-          // intervalId = null;
         }
       }, 5000); // Poll every 5 seconds (adjust as needed)
     }
@@ -595,18 +585,6 @@ export default function KeywordResearchDetail({
     );
   }
 
-  // Determine if clusters exist for enabling the view switch
-  const hasClusters = !!(
-    currentClusters && Object.keys(currentClusters).length > 0
-  );
-
-  // Helper function for formatting volume numbers (kept here)
-  const formatVolume = (volume: number): string => {
-    if (volume >= 10000) return `${(volume / 1000).toFixed(0)}k`;
-    if (volume >= 1000) return `${(volume / 1000).toFixed(1)}k`;
-    return volume.toLocaleString();
-  };
-
   return (
     <div className="flex h-full flex-col">
       <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -718,12 +696,8 @@ export default function KeywordResearchDetail({
                   isSavingPersona={isSavingPersona}
                   researchId={researchId}
                   clusteringStatus={currentClusteringStatus}
-                  researchRegion={
-                    initialResearchDetail.region || settingsState.region
-                  }
-                  researchLanguage={
-                    initialResearchDetail.language || settingsState.language
-                  }
+                  researchRegion={initialResearchDetail.region || ''}
+                  researchLanguage={initialResearchDetail.language || ''}
                   currentKeywords={sortedUniqueKeywords
                     .map(k => k.text || '')
                     .filter(Boolean)}
