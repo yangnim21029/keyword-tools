@@ -43,7 +43,7 @@ interface KeywordClusteringProps {
   keywordVolumeMap: Record<string, number>; // Map keyword text (lowercase) to search volume
   clusters: Record<string, string[]> | null; // Cluster data passed from parent
   personasMap?: Record<string, string> | null; // Persona data passed from parent
-  researchLocation: string; // Needed for SERP analysis
+  researchRegion: string; // Needed for SERP analysis
   researchLanguage: string; // Needed for SERP analysis
   currentKeywords: string[];
   selectedResearchDetail: {
@@ -59,7 +59,7 @@ export default function KeywordClustering({
   keywordVolumeMap,
   clusters,
   personasMap,
-  researchLocation,
+  researchRegion,
   researchLanguage,
   currentKeywords,
   selectedResearchDetail,

@@ -552,7 +552,7 @@ export default function KeywordResearchDetail({
                 isSavingPersona={isSavingPersona}
                 researchId={researchId}
                 clusteringStatus={currentClusteringStatus}
-                researchLocation={initialResearchDetail.location || settingsState.region}
+                researchRegion={initialResearchDetail.region || settingsState.region}
                 researchLanguage={initialResearchDetail.language || settingsState.language}
                 currentKeywords={sortedUniqueKeywords.map(k => k.text || '').filter(Boolean)}
                 selectedResearchDetail={{ query: initialResearchDetail.query }}

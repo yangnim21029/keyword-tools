@@ -202,7 +202,7 @@ export async function createKeywordResearch(input: CreateKeywordResearchInput): 
       // Pull available fields from input, provide defaults for the rest.
       const dataToSave = {
         query: input.query, // Mandatory from CreateKeywordResearchInput
-        location: input.location ?? '', // Optional from input
+        region: input.region ?? '', // Optional from input
         language: input.language ?? '', // Optional from input
         searchEngine: input.searchEngine ?? 'google', // Optional from input
         device: input.device ?? 'desktop', // Optional from input
