@@ -39,7 +39,7 @@ export default function KeywordResearchList({
       `${COMPONENT_LOG_PREFIX} Navigating to results page for ID:`,
       researchId
     );
-    router.push(`/tools/keyword/${researchId}`);
+    router.push(`/keyword-mapping/${researchId}`);
   };
 
   // 處理刪除研究記錄 - Call Server Action directly and refresh
