@@ -3,7 +3,7 @@
 import { useSettingsStore } from '@/store/settingsStore';
 import { FileText, Loader2, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { ToolHeader } from '../../ToolHeader';
 
@@ -12,8 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Actions
 import {
-  triggerKeywordClustering,
-  updateKeywordResearchPersonas
+  requestClustering,
+  updateKeywordResearchPersonas,
+  fetchClusteringStatus,
+  revalidateKeywordData
 } from '@/app/actions';
 import { generateUserPersonaFromClusters } from '@/app/actions/generatePersona';
 
@@ -55,26 +57,85 @@ interface VolumeDistributionData {
   countRange5: number; // Count in >= 100001
 }
 
+// Type for clustering status (can be extended)
+type ClusteringStatus = 'pending' | 'processing' | 'completed' | 'failed' | null;
+
 interface KeywordResearchDetailProps {
   initialResearchDetail: KeywordResearchItem;
   researchId: string;
   volumeDistribution: VolumeDistributionData; // Use the updated interface
+  initialClusteringStatus: ClusteringStatus; // Add the new prop
 }
 
 export default function KeywordResearchDetail({
   initialResearchDetail,
   researchId,
-  volumeDistribution // Destructure the new prop
+  volumeDistribution, // Destructure the new prop
+  initialClusteringStatus // Destructure the new prop
 }: KeywordResearchDetailProps) {
   const router = useRouter();
   const settingsState = useSettingsStore(store => store.state);
 
   // Local State
-  const [isClustering, setIsClustering] = useState(false);
+  const [isRequestingClustering, setIsRequestingClustering] = useState(false);
   const [isGeneratingPersonas, setIsGeneratingPersonas] = useState(false);
   const [isSavingPersona, setIsSavingPersona] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [view, setView] = useState<'volume' | 'cluster'>('volume');
+
+  // State for current clustering status, initialized from prop
+  const [currentClusteringStatus, setCurrentClusteringStatus] = useState<ClusteringStatus>(initialClusteringStatus);
+
+  // --- Polling Effect --- 
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    // Only poll if the current status is 'processing' and we have an ID
+    if (currentClusteringStatus === 'processing' && researchId) {
+      console.log('[KeywordResearchDetail] Starting status polling interval.');
+      intervalId = setInterval(async () => {
+        try {
+          console.log('[KeywordResearchDetail] Polling for clustering status...');
+          const status = await fetchClusteringStatus(researchId); 
+          console.log('[KeywordResearchDetail] Polling status received:', status);
+          
+          // If status changed from processing, update state and clear interval
+          if (status !== 'processing') {
+            console.log('[KeywordResearchDetail] Clustering status changed. Stopping polling.');
+            setCurrentClusteringStatus(status ?? null);
+            if (intervalId) clearInterval(intervalId); 
+            intervalId = null; // Ensure intervalId is nullified
+
+            if (status === 'completed') {
+                toast.success('分群處理完成 (Clustering completed)!');
+                // Server action now handles revalidation on completion.
+                // Simply refresh the router to get the updated data.
+                console.log('[KeywordResearchDetail] Server completed clustering, refreshing client...');
+                router.refresh(); 
+            } else if (status === 'failed') {
+                toast.error('分群處理失敗 (Clustering failed).');
+                // Optionally refresh on failure too?
+                // router.refresh();
+            }
+          }
+        } catch (error) {
+          console.error('[KeywordResearchDetail] Error during status polling:', error);
+          // Optional: Decide if polling should stop on error
+          // setCurrentClusteringStatus('failed'); // Example: Set to failed
+          // if (intervalId) clearInterval(intervalId);
+          // intervalId = null;
+        }
+      }, 5000); // Poll every 5 seconds (adjust as needed)
+    }
+
+    // Cleanup function: Clear interval on component unmount or if status changes away from 'processing'
+    return () => {
+      if (intervalId) {
+        console.log('[KeywordResearchDetail] Clearing polling interval on cleanup.');
+        clearInterval(intervalId);
+      }
+    };
+  }, [currentClusteringStatus, researchId, router]); // Dependencies for the effect
 
   // --- Data Processing Memos ---
 
@@ -121,72 +182,73 @@ export default function KeywordResearchDetail({
   }, [sortedUniqueKeywords]);
 
   // --- Clustering Logic (SIMPLIFIED: Calls Server Action) ---
-  const triggerClustering = useCallback(async () => {
+  const handleRequestClustering = useCallback(async () => {
     console.log(
-      '[KeywordResearchDetail] triggerClustering (calling server action) called.'
+      '[KeywordResearchDetail] handleRequestClustering called.'
     );
 
-    // Add check: If clusters already exist, don't re-trigger immediately
-    if (currentClusters && Object.keys(currentClusters).length > 0) {
-      console.log(
-        '[KeywordResearchDetail] triggerClustering aborted: Clusters already exist.'
-      );
-      toast.info('關鍵詞已經分群，無需重新觸發。'); // Inform the user
-      return; // Exit the function
-    }
-
-    // Keep basic guard
+    // Basic guards
     if (!researchId) {
       console.warn(
-        '[KeywordResearchDetail] triggerClustering aborted: Missing researchId.'
+        '[KeywordResearchDetail] handleRequestClustering aborted: Missing researchId.'
       );
       setLocalError('Cannot start clustering: Missing research ID.');
       return;
     }
-    // Remove keyword count check, server action will handle it
+    if (currentClusteringStatus === 'processing') {
+        console.warn(
+            '[KeywordResearchDetail] handleRequestClustering aborted: Already processing.'
+          );
+        toast.info('分群已在處理中 (Clustering is already processing).')
+        return;
+    }
 
-    console.log('[KeywordResearchDetail] Setting isClustering = true');
-    setIsClustering(true);
+    console.log('[KeywordResearchDetail] Setting isRequestingClustering = true');
+    setIsRequestingClustering(true);
     setLocalError(null);
-    toast.info('開始重新分群...'); // Give user feedback
+    toast.info('請求開始分群... (Requesting clustering start...)');
 
     try {
       console.log(
-        `[KeywordResearchDetail] Calling triggerKeywordClustering server action for ${researchId}...`
+        `[KeywordResearchDetail] Calling requestClustering server action for ${researchId}...`
       );
-      const result = await triggerKeywordClustering(researchId);
+      // Call the new server action
+      const result = await requestClustering(researchId);
 
       if (result.success) {
         console.log(
-          '[KeywordResearchDetail] Server action triggerKeywordClustering successful. Refreshing router...'
+          '[KeywordResearchDetail] Server action requestClustering successful. Refreshing router...'
         );
-        toast.success('關鍵詞重新分群完成!');
-        router.refresh(); // Refresh to get updated clusters
+        // Show success, the page refresh will show the 'processing' state
+        toast.success('已請求後端開始分群! 將開始檢查狀態。(Backend clustering requested! Will start checking status.)');
+        // **CRITICAL**: Update local status immediately to 'processing' to trigger polling
+        setCurrentClusteringStatus('processing'); 
       } else {
         console.error(
-          '[KeywordResearchDetail] Server action triggerKeywordClustering failed:',
+          '[KeywordResearchDetail] Server action requestClustering failed:',
           result.error
         );
-        throw new Error(result.error || 'Failed to trigger clustering.');
+        // Show specific error from action or generic one
+        toast.error(result.error || '請求分群失敗 (Failed to request clustering).');
+        setLocalError(result.error || '請求分群失敗.');
       }
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unknown clustering trigger error';
+          : 'Unknown clustering request error';
       console.error(
-        '[KeywordResearchDetail] Error calling triggerKeywordClustering server action:',
+        '[KeywordResearchDetail] Error calling requestClustering server action:',
         message,
         error
       );
-      toast.error(`重新分群失敗: ${message}`);
-      setLocalError(`重新分群失敗: ${message}`);
+      toast.error(`請求分群時發生錯誤: ${message}`);
+      setLocalError(`請求分群時發生錯誤: ${message}`);
     } finally {
-      console.log('[KeywordResearchDetail] Setting isClustering = false');
-      setIsClustering(false);
+      console.log('[KeywordResearchDetail] Setting isRequestingClustering = false');
+      setIsRequestingClustering(false);
     }
-    // Remove dependencies on sortedUniqueKeywords and selectedModel
-  }, []);
+  }, [researchId, router, currentClusteringStatus]); // Added currentClusteringStatus dependency
 
   // --- Persona Generation Logic (remains largely the same) ---
   const handleSavePersona = useCallback(
@@ -226,6 +288,15 @@ export default function KeywordResearchDetail({
 
         if (updateResult.success) {
           toast.success(`Persona for "${clusterName}" saved successfully!`);
+          // Revalidate cache before refreshing
+          try {
+             console.log(`[KeywordResearchDetail] Revalidating data after persona save for ${researchId}...`);
+             await revalidateKeywordData(researchId);
+             console.log(`[KeywordResearchDetail] Revalidation requested for ${researchId}. Refreshing router...`);
+          } catch (revalError) {
+             console.error(`[KeywordResearchDetail] Failed to request revalidation after persona save for ${researchId}:`, revalError);
+             // Decide if you still want to refresh even if revalidation fails
+          }
           router.refresh();
         } else {
           throw new Error(
@@ -389,141 +460,99 @@ export default function KeywordResearchDetail({
   };
 
   return (
-    <div className="space-y-6">
-      <Tabs
-        value={view}
-        onValueChange={value => setView(value as 'volume' | 'cluster')}
-        className="w-full"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-2 mb-4">
-          <TabsList>
-            <TabsTrigger value="volume">分布視圖</TabsTrigger>
-            <TabsTrigger
-              value="cluster"
-              disabled={!hasClusters && !isClustering}
-            >
-              {isClustering ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  分群中...
-                </>
-              ) : (
-                '分群視圖'
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </div>
+    <div className="flex h-full flex-col">
+      <ToolHeader
+        title={`Keyword Analysis: "${initialResearchDetail.query || 'N/A'}"`}
+        description={"Analysis results showing keyword volume distribution and clusters."}
+      />
 
-        <TabsContent value="volume">
-          {/* Render the new KeywordDistribute component here */}
-          {volumeDistribution.count > 0 ? (
-            <KeywordDistribute
-              volumeDistribution={volumeDistribution}
-              keywords={sortedUniqueKeywords}
-            />
-          ) : (
-            // Show empty state if no volume data for distribution
-            <div className="border rounded-lg p-6 text-center">
-              <p className="text-muted-foreground italic py-4">
-                沒有足夠的搜索量數據來計算分布。
-              </p>
-            </div>
-          )}
+      <Tabs defaultValue={view} onValueChange={(value) => setView(value as 'volume' | 'cluster')} className="flex-grow p-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="volume">Volume Distribution</TabsTrigger>
+          <TabsTrigger value="cluster">Keyword Clustering</TabsTrigger>
+        </TabsList>
+
+        {/* Volume Tab Content */}
+        <TabsContent value="volume" className="mt-4">
+          <KeywordDistribute
+            keywords={sortedUniqueKeywords}
+            volumeDistribution={volumeDistribution}
+          />
         </TabsContent>
 
-        <TabsContent value="cluster">
-          {/* --- Cluster View Rendering (props passed correctly) --- */}
-          {hasClusters ? (
-            <div className="space-y-4">
-              {/* --- Persona Generation Controls --- */}
-              <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
-                {/* Recluster Button - Added */}
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={triggerClustering}
-                        disabled={isClustering}
-                        className="h-9"
-                      >
-                        {isClustering ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                        )}
-                        重新分群
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      {isClustering ? '正在重新分群...' : '重新觸發關鍵詞分群'}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <LoadingButton
-                  onClick={handleGenerateAllPersonas}
-                  isLoading={isGeneratingPersonas}
-                  disabled={isGeneratingPersonas || isClustering}
-                  loadingText="生成中..."
-                  className="whitespace-nowrap h-9"
-                >
-                  {currentPersonas && Object.keys(currentPersonas).length > 0
-                    ? '更新所有用戶畫像'
-                    : '生成所有用戶畫像'}
-                </LoadingButton>
-              </div>
-              {/* --- Keyword Clustering Component --- */}
-              <KeywordClustering
-                keywordVolumeMap={keywordVolumeMap}
-                clusters={currentClusters}
-                personasMap={currentPersonas}
-                researchLocation={
-                  initialResearchDetail.location || settingsState.region
-                }
-                researchLanguage={
-                  initialResearchDetail.language || settingsState.language
-                }
-                currentKeywords={sortedUniqueKeywords
-                  .map(k => k.text || '')
-                  .filter(Boolean)}
-                selectedResearchDetail={initialResearchDetail}
-                researchId={researchId}
-                onSavePersona={handleSavePersona}
-                isSavingPersona={isSavingPersona}
-              />
-            </div>
-          ) : isClustering ? (
-            <div className="flex flex-col items-center justify-center h-[40vh] space-y-3">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-              <p className="text-md text-muted-foreground">
-                正在進行語義分群...
-              </p>
-            </div>
-          ) : (
-            // Updated empty state message
-            <div className="flex flex-col items-center justify-center h-[40vh] text-center">
-              <EmptyState
-                title="無分群數據"
-                description="系統在處理關鍵詞時未自動生成分群，或尚未觸發分群。"
-              />
-              {/* Optionally add the button here too if you want a trigger in this state */}
-              {sortedUniqueKeywords.length >= 5 && (
-                <LoadingButton
-                  variant="outline"
-                  className="mt-4"
-                  onClick={triggerClustering}
-                  disabled={isClustering}
-                >
-                  {isClustering ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  立即嘗試分群
-                </LoadingButton>
-              )}
+        {/* Cluster Tab Content */}
+        <TabsContent value="cluster" className="mt-4">
+           {/* --- Status Display --- */}
+          {currentClusteringStatus === 'processing' && (
+            <div className="mb-4 flex items-center justify-center rounded-md border border-dashed border-yellow-500 bg-yellow-50 p-4 text-sm text-yellow-700">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <span>後端正在處理分群，請稍後... (Backend clustering in progress...)</span>
             </div>
           )}
+          {currentClusteringStatus === 'failed' && (
+             <div className="mb-4 flex items-center justify-center rounded-md border border-dashed border-red-500 bg-red-50 p-4 text-sm text-red-700">
+              {/* Optional: Add appropriate icon */}
+              <span>先前分群處理失敗，請重試或聯繫支援。(Previous clustering attempt failed.)</span>
+            </div>
+          )}
+          {/* --- End Status Display --- */}
+
+          {/* Check if clusters exist OR if clustering is currently processing (Use currentClusteringStatus) */} 
+          {(currentClusters && Object.keys(currentClusters).length > 0) || currentClusteringStatus === 'processing' ? (
+             <>
+               <KeywordClustering
+                clusters={currentClusters}
+                personasMap={currentPersonas}
+                keywordVolumeMap={keywordVolumeMap}
+                onSavePersona={handleSavePersona}
+                isSavingPersona={isSavingPersona}
+                researchId={researchId}
+                clusteringStatus={currentClusteringStatus}
+                researchLocation={initialResearchDetail.location || settingsState.region}
+                researchLanguage={initialResearchDetail.language || settingsState.language}
+                currentKeywords={sortedUniqueKeywords.map(k => k.text || '').filter(Boolean)}
+                selectedResearchDetail={{ query: initialResearchDetail.query }}
+              />
+              {/* Show re-trigger button only if clustering is NOT currently processing (Use currentClusteringStatus) */} 
+              {currentClusteringStatus !== 'processing' && (
+                  <div className="mt-4 flex justify-end">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <LoadingButton
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRequestClustering}
+                            isLoading={isRequestingClustering}
+                            disabled={isRequestingClustering}
+                            aria-label="Request Clustering"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </LoadingButton>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Request Re-clustering</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+             </>
+          ) : (
+             // Show Empty state if no clusters and not currently processing.
+             // The label inside EmptyState handles 'Start' vs 'Retry'.
+             <EmptyState
+                 title="Cluster Keywords"
+                 description="Group these keywords by similarity to uncover user intent."
+                 // Adjust label based on whether it was initially pending or failed
+                 actionLabel={initialClusteringStatus === 'pending' || initialClusteringStatus === null ? "Start Clustering" : "Retry Clustering"} 
+                 onAction={handleRequestClustering}
+             />
+          )}
+           {/* Display local errors if any */}
+           {localError && (
+             <p className="mt-4 text-center text-sm text-red-500">{localError}</p>
+           )}
         </TabsContent>
       </Tabs>
     </div>

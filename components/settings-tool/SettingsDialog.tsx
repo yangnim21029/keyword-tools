@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -290,10 +291,12 @@ export function SettingsDialog() {
         </Tabs>
 
         <div className="flex justify-end mt-4">
-          <Button variant="outline" className="gap-1.5">
-            <Check className="h-4 w-4" />
-            完成
-          </Button>
+          <DialogClose asChild>
+            <Button variant="outline" className="gap-1.5">
+              <Check className="h-4 w-4" />
+              完成
+            </Button>
+          </DialogClose>
         </div>
       </DialogContent>
     </Dialog>

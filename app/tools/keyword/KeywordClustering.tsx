@@ -23,6 +23,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { type ClusteringStatus } from '@/app/types';
 
 // Constants for display
 // const DEFAULT_VISIBLE_CLUSTERS = 3; // Keep all visible by default now
@@ -51,6 +52,7 @@ interface KeywordClusteringProps {
   researchId: string;
   onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>;
   isSavingPersona: string | null;
+  clusteringStatus: ClusteringStatus;
 }
 
 export default function KeywordClustering({
@@ -63,7 +65,8 @@ export default function KeywordClustering({
   selectedResearchDetail,
   researchId,
   onSavePersona,
-  isSavingPersona
+  isSavingPersona,
+  clusteringStatus
 }: KeywordClusteringProps) {
   const router = useRouter();
   // Remove setQuery from store
@@ -492,29 +495,20 @@ export default function KeywordClustering({
                     用戶畫像
                   </div>
                   {currentPersona ? (
-                    // Display existing persona
+                    // Display existing persona directly
                     <div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start px-1 text-left h-auto mb-1 text-sm font-medium"
-                        onClick={() =>
-                          togglePersonaExpansion(cluster.clusterName)
-                        }
-                      >
-                        <User className="h-4 w-4 mr-2 flex-shrink-0" />
-                        <span className="flex-1 truncate">用戶畫像</span>
-                        {isPersonaExpanded ? (
-                          <ChevronUp className="h-4 w-4 ml-1 flex-shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 ml-1 flex-shrink-0" />
-                        )}
-                      </Button>
-                      {isPersonaExpanded && (
-                        <div className="text-xs text-muted-foreground pl-3 pr-1 whitespace-pre-wrap break-words border-l-2 ml-2">
-                          {currentPersona}
-                        </div>
-                      )}
+                      {/* Remove the toggle Button */}
+                      {/* <Button ... /> */}
+                      
+                      {/* Add a simple label */}
+                      <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center">
+                        <User className="h-3.5 w-3.5 mr-1.5" />
+                        用戶畫像
+                      </div>
+                      {/* Display persona text directly */}
+                      <div className="whitespace-pre-wrap break-words text-sm"> {/* Retain text styling */}
+                        {currentPersona}
+                      </div>
                     </div>
                   ) : (
                     // Show button to generate persona

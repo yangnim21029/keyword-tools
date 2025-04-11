@@ -62,7 +62,7 @@ export default function RootLayout({
                     <FileText className="h-5 w-5 text-primary" />
                     <span className="font-medium">關鍵詞研究</span>
                   </Link>
-                  <nav className="hidden md:flex items-center gap-4">
+                  <nav className="md:flex items-center gap-4">
                     <Link 
                       href="/tools/keyword" 
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -93,7 +93,7 @@ export default function RootLayout({
           </SettingsProvider>
           <SonnerToaster
             position="bottom-right"
-            expand={false}
+            expand={true}
             visibleToasts={6}
             toastOptions={{
               duration: 5000,
@@ -104,7 +104,7 @@ export default function RootLayout({
               },
               className: "sm:max-w-[356px] max-w-[90vw]",
             }}
-            closeButton
+            closeButton={false}
             theme="system"
           />
         </ThemeProvider>

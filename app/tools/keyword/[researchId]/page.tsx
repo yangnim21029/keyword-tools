@@ -1,8 +1,10 @@
 import {
   fetchKeywordResearchDetail,
-  fetchKeywordResearchList
+  fetchKeywordResearchList,
+  fetchClusteringStatus
 } from '@/app/actions';
 import type { Keyword } from '@/app/types'; // Import Keyword type
+import { type ClusteringStatus } from '@/app/types'; // Import ClusteringStatus type
 import { notFound } from 'next/navigation';
 import KeywordResearchDetail from './components/KeywordResearchDetail';
 
@@ -118,6 +120,23 @@ export default async function KeywordResultPage({ params }: Props) {
     notFound();
   }
 
+  // --- Fetch clustering status (safe for render) ---
+  // We call this action here. It will check the status in the DB.
+  // If status is 'pending', it updates to 'processing' and triggers the background job.
+  // It returns the current/updated status.
+  // We don't block rendering on the clustering completing, just on triggering it.
+  const clusteringStatusResult = await fetchClusteringStatus(researchId);
+
+  // --- Status Correction Logic ---
+  let finalClusteringStatus: ClusteringStatus = clusteringStatusResult ?? null;
+  // If clusters exist in the fetched detail, but the status isn't 'completed',
+  // override the status to 'completed' for consistency in the UI.
+  if (researchDetail?.clusters && Object.keys(researchDetail.clusters).length > 0 && finalClusteringStatus !== 'completed') {
+    console.log(`[Page SSR] Clusters found but status was ${finalClusteringStatus}. Correcting status to 'completed'.`);
+    finalClusteringStatus = 'completed';
+  }
+  // --- End Status Correction ---
+
   // --- Calculate volume distribution on the server ---
   const volumeDistribution = calculateVolumeDistribution(
     researchDetail.keywords
@@ -129,6 +148,8 @@ export default async function KeywordResultPage({ params }: Props) {
       researchId={researchId}
       // Pass calculated distribution data as prop
       volumeDistribution={volumeDistribution}
+      // Pass the corrected clustering status to the client component
+      initialClusteringStatus={finalClusteringStatus}
     />
   );
 }

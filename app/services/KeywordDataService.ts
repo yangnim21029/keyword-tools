@@ -357,9 +357,55 @@ export async function getSearchVolume(
       
       console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(keywordsToQuery.length/batchSize)}, ${batchKeywords.length} keywords.`);
 
-      // Call the underlying function to fetch keyword ideas/volumes from Google Ads API
-      // This function needs the correct locationId and languageId
-      const response = await fetchKeywordIdeas(batchKeywords, locationId, languageId);
+      // --- Add Retry Logic for API Call ---
+      const MAX_RETRIES = 3;
+      let retries = 0;
+      let response: any; // Define response variable outside the loop
+      let success = false;
+
+      while (retries < MAX_RETRIES && !success) {
+        try {
+          // Call the underlying function to fetch keyword ideas/volumes from Google Ads API
+          response = await fetchKeywordIdeas(batchKeywords, locationId, languageId);
+          success = true; // Mark as success if no error is thrown
+          console.log(`Batch ${Math.floor(i/batchSize) + 1}: API call successful.`);
+
+        } catch (error: unknown) {
+          retries++;
+          console.error(`Batch ${Math.floor(i/batchSize) + 1} attempt ${retries} failed:`, error);
+
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          // Check for 429 error and retry suggestion
+          if (errorMessage.includes('429') && retries < MAX_RETRIES) {
+            let retryDelayMs = 5000; // Default delay 5 seconds
+            const retryMatch = errorMessage.match(/Retry in (\d+) seconds?/i);
+            if (retryMatch && retryMatch[1]) {
+              retryDelayMs = parseInt(retryMatch[1], 10) * 1000;
+              // Add a small buffer just in case
+              retryDelayMs = Math.max(retryDelayMs + 500, 1000); // Ensure at least 1 second delay
+            }
+
+            console.log(`Batch ${Math.floor(i/batchSize) + 1}: Received 429. Retrying attempt ${retries + 1}/${MAX_RETRIES} after ${retryDelayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            continue; // Continue to the next iteration of the while loop (retry)
+          }
+
+          // If not a 429 error, or max retries reached, re-throw to be caught by the outer try/catch
+          console.error(`Batch ${Math.floor(i/batchSize) + 1}: Non-retryable error or max retries reached. Propagating error.`);
+          throw error;
+        }
+      }
+      // --- End Retry Logic --- 
+
+      // If loop finished without success (e.g., max retries reached and final attempt failed)
+      if (!success) {
+         console.error(`Batch ${Math.floor(i/batchSize) + 1}: Failed after ${MAX_RETRIES} attempts. Skipping batch.`);
+         // Depending on desired behavior, you could continue to the next batch or throw an error.
+         // For now, let's continue to potentially process other batches.
+         continue; // Skip processing results for this failed batch
+      }
+
       const keywordIdeas = response.results || []; // Ensure results is an array
 
       // --- Process Batch Results ---

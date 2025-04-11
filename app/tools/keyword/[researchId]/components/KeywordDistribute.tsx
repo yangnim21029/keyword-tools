@@ -149,7 +149,7 @@ export default function KeywordDistribute({
       <div className="p-6 space-y-6">
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <BarChartHorizontal className="h-5 w-5 text-indigo-500" />
-          關鍵詞搜索量範圍分布
+          搜索量分布
           <span className="text-sm font-normal text-muted-foreground">
             (總共{' '}
             {formatCount(
@@ -213,9 +213,7 @@ export default function KeywordDistribute({
           {' '}
           {/* Removed max-h-[500px] overflow-y-auto */}
           <h4 className="text-md font-semibold p-4 border-b flex items-center gap-2">
-            {' '}
-            {/* Removed sticky top-0 bg-background z-10 */}
-            範圍 "{selectedRangeLabel}" 中的關鍵詞
+            關鍵詞列表
             <Badge variant="secondary">
               {formatCount(filteredKeywords.length)} 個
             </Badge>
@@ -229,9 +227,11 @@ export default function KeywordDistribute({
           {filteredKeywords.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[70%]">關鍵詞</TableHead>
-                  <TableHead className="text-right">搜索量</TableHead>
+                {/* Add background to header row for distinction */}
+                <TableRow className="bg-muted/50 hover:bg-muted/50"> 
+                  {/* Adjust header text style */}
+                  <TableHead className="w-[70%] font-medium text-muted-foreground">關鍵詞</TableHead>
+                  <TableHead className="text-right font-medium text-muted-foreground">搜索量</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

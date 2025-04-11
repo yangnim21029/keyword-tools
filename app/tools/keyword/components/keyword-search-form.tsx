@@ -108,10 +108,10 @@ export default function KeywordSearchForm() {
         {/* Icon and Title */}
         <FileText className="h-12 w-12 mx-auto mb-4 text-blue-500" />
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          關鍵詞研究工具
+          關鍵詞研究
         </h1>
         <p className="text-muted-foreground mb-8">
-          輸入關鍵詞或網址開始分析，獲取建議、搜索量、分群和用戶畫像。
+          輸入關鍵詞或網址以開始分析。
         </p>
 
         {/* Search Input Group */}

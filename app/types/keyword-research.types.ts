@@ -1,6 +1,7 @@
 import { keywordVolumeItemSchema } from '@/lib/schemas/keyword.schema';
 import {
   type Cluster,
+  type ClusteringStatus,
   type CreateKeywordResearchInput,
   type KeywordResearchBase,
   type KeywordResearchFilter,
@@ -12,18 +13,27 @@ import {
   type UpdateKeywordResearchInput,
   type UpdatePersonasInput,
   type UpdateUserPersonaInput,
-} from '@/lib/schemas/keywordResearch.schema';
+  type KeywordVolumeItem
+} from '@/lib/schemas';
 import { z } from 'zod';
 
 // Re-export inferred types from schema for clarity, maybe adjust specific interfaces if needed
 export type {
-  Cluster, CreateKeywordResearchInput, KeywordResearchBase,
+  Cluster,
+  ClusteringStatus,
+  CreateKeywordResearchInput,
+  KeywordResearchBase,
   KeywordResearchFilter,
-  KeywordResearchStats, Persona, UpdateClustersInput, UpdateKeywordResearchInput, UpdatePersonasInput, UpdateUserPersonaInput
+  KeywordResearchStats,
+  Persona,
+  UpdateClustersInput,
+  UpdateKeywordResearchInput,
+  UpdatePersonasInput,
+  UpdateUserPersonaInput
 };
 
-// Infer Keyword type from the keyword schema
-export type Keyword = z.infer<typeof keywordVolumeItemSchema>;
+// Use the correct imported type for the alias
+export type Keyword = KeywordVolumeItem;
 
 /**
  * Complete keyword research item interface.
@@ -37,6 +47,8 @@ export type KeywordResearchItem = KeywordResearchItemSchemaType;
  */
 export type KeywordResearchListItem = KeywordResearchListItemSchemaType;
 
+// Define the possible states for the clustering process
+// export type ClusteringStatus = 'pending' | 'processing' | 'completed' | 'failed' | null;
 
 // --- Store Types (Adjusted for consistency) ---
 

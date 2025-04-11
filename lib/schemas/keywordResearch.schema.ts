@@ -8,6 +8,15 @@ export const ClusterSchema = z.record(z.string(), z.array(z.string()))
 export const PersonaSchema = z.record(z.string(), z.string())
   .describe('用戶畫像映射: 畫像名稱映射到描述');
 
+// Define the possible clustering statuses
+export const clusteringStatusSchema = z
+  .enum(['pending', 'processing', 'completed', 'failed'])
+  .nullable()
+  .optional();
+
+// Export the inferred type
+export type ClusteringStatus = z.infer<typeof clusteringStatusSchema>;
+
 // Base schema for keyword research data
 export const KeywordResearchBaseSchema = z.object({
   query: z.string().min(1, '主關鍵詞不能為空').describe('主關鍵詞'),
@@ -21,8 +30,9 @@ export const KeywordResearchBaseSchema = z.object({
   location: z.string().optional().describe('地區代碼 (例如 TW)'),
   language: z.string().optional().describe('語言代碼 (例如 zh-TW)'),
   device: z.enum(['desktop', 'mobile']).optional().describe('設備類型'),
-  isFavorite: z.boolean().default(false).describe('是否收藏'),
-  tags: z.array(z.string()).optional().describe('用戶自定義標籤'),
+  isFavorite: z.boolean().optional().default(false),
+  tags: z.array(z.string()).optional().default([]),
+  clustering_status: clusteringStatusSchema,
 });
 
 // Schema including the ID
