@@ -24,8 +24,8 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: "Keyword Killer - 專業關鍵詞研究工具",
-  description: "強大的SEO關鍵詞研究工具，分析搜索量、競爭度，獲取語義分群見解。",
+  title: "PressLogic 編輯專用找關鍵詞的工具",
+  description: "輸入關鍵詞或網址以開始分析。",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -59,15 +59,14 @@ export default function RootLayout({
               <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 bg-background border-b px-4">
                 <div className="flex items-center gap-6">
                   <Link href="/tools/keyword" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <span className="font-medium">關鍵詞研究</span>
+                    <span className="font-medium">關鍵字工具</span>
                   </Link>
                   <nav className="md:flex items-center gap-4">
                     <Link 
                       href="/tools/keyword" 
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      新研究
+                      新的
                     </Link>
                     <Link 
                       href="/history" 

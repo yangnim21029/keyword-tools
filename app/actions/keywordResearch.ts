@@ -134,34 +134,11 @@ export async function fetchKeywordResearchList(
   }
 }
 
-// REMOVED unstable_cache wrapper for detail fetching
-// const getCachedKeywordResearchDetail = unstable_cache(
-//   async (researchId: string) => {
-//     console.log(`[Cache Miss] Fetching detail for researchId: ${researchId}`);
-//     if (!db) throw new Error('Database not initialized');
-//     if (!researchId) return null; // Or throw error
-
-//     const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
-//     const docSnap = await docRef.get();
-
-//     if (!docSnap.exists) {
-//       console.warn(`找不到記錄: ${researchId}`);
-//       return null;
-//     }
-//     const data = docSnap.data();
-//     if (!data) return null;
-
-//     return convertTimestamps({ ...data, id: docSnap.id }) as KeywordResearchItem;
-//   },
-//   ['keywordResearchDetail'],
-//   { tags: [KEYWORD_RESEARCH_TAG] } 
-// );
-
-// 获取特定 Keyword Research 详情 (NOW FETCHES DIRECTLY)
-export async function fetchKeywordResearchDetail(researchId: string): Promise<KeywordResearchItem | null> {
-  try {
-    // Direct fetch logic moved here from the removed cached function
-    console.log(`[Server Action] Fetching detail directly for researchId: ${researchId}`);
+// Re-introduce unstable_cache wrapper for detail fetching
+const getCachedKeywordResearchDetail = unstable_cache(
+  async (researchId: string) => {
+    // Direct fetch logic moved here
+    console.log(`[Cache Miss] Fetching detail for researchId: ${researchId}`);
     if (!db) throw new Error('Database not initialized');
     if (!researchId) return null; 
 
@@ -176,6 +153,19 @@ export async function fetchKeywordResearchDetail(researchId: string): Promise<Ke
     if (!data) return null;
 
     const detail = convertTimestamps({ ...data, id: docSnap.id }) as KeywordResearchItem;
+    return detail;
+  },
+  // Key Parts: Base + researchId makes the cache key unique per item
+  ['keywordResearchDetail'], // researchId argument is automatically part of the key
+  // Use a static tag for general revalidation
+  { tags: [KEYWORD_RESEARCH_TAG] } 
+);
+
+// 获取特定 Keyword Research 详情 (Uses cached function again)
+export async function fetchKeywordResearchDetail(researchId: string): Promise<KeywordResearchItem | null> {
+  try {
+    console.log(`[Server Action] Attempting to fetch detail via cache for: ${researchId}`);
+    const detail = await getCachedKeywordResearchDetail(researchId);
     return detail;
   } catch (error) {
     console.error(`獲取詳情 (${researchId}) 失敗:`, error);

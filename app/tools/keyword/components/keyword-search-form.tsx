@@ -88,30 +88,16 @@ export default function KeywordSearchForm() {
     }
   };
 
-  // Optional: Global shortcut (Cmd/Ctrl+Enter)
-  // useEffect(() => {
-  //   const handleGlobalKeyDown = (e: KeyboardEvent) => {
-  //     if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !isLoading) {
-  //       if (!(document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) {
-  //         triggerQuery();
-  //       }
-  //     }
-  //   }
-  //   window.addEventListener("keydown", handleGlobalKeyDown)
-  //   return () => window.removeEventListener("keydown", handleGlobalKeyDown)
-  // }, [triggerQuery, isLoading])
-
   // --- Render --- 
   return (
     <div className="flex flex-col items-center justify-center h-full pt-10 md:pt-20 px-4">
       <div className="w-full max-w-2xl text-center">
         {/* Icon and Title */}
-        <FileText className="h-12 w-12 mx-auto mb-4 text-blue-500" />
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          關鍵詞研究
+          你的主題是...
         </h1>
         <p className="text-muted-foreground mb-8">
-          輸入關鍵詞或網址以開始分析。
+          輸入文字 / 網址，就會開始分析。
         </p>
 
         {/* Search Input Group */}
@@ -120,7 +106,7 @@ export default function KeywordSearchForm() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="輸入關鍵詞或網址..."
+              placeholder="輸入關鍵字或網址..."
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               onKeyDown={handleKeyDown}

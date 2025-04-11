@@ -146,10 +146,16 @@ export default function KeywordResearchDetail({
 
             if (status === 'completed') {
                 toast.success('分群處理完成 (Clustering completed)!');
-                // Server action now handles revalidation on completion.
-                // Simply refresh the router to get the updated data.
-                console.log('[KeywordResearchDetail] Server completed clustering, refreshing client...');
-                router.refresh(); 
+                // Revalidate cache BEFORE refreshing
+                try {
+                   console.log(`[KeywordResearchDetail] Revalidating data after polling completion for ${researchId}...`);
+                   await revalidateKeywordData(researchId); // Call the server action
+                   console.log(`[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`);
+                } catch (revalError) {
+                   console.error(`[KeywordResearchDetail] Failed to request revalidation via action:`, revalError);
+                   // Decide if you still want to refresh even if revalidation fails
+                }
+                router.refresh(); // Refresh after revalidation attempt
             } else if (status === 'failed') {
                 toast.error('分群處理失敗 (Clustering failed).');
                 // Optionally refresh on failure too?
@@ -326,7 +332,16 @@ export default function KeywordResearchDetail({
 
         if (updateResult.success) {
           toast.success(`Persona for "${clusterName}" saved successfully!`);
-          router.refresh();
+          // Revalidate cache BEFORE refreshing
+          try {
+             console.log(`[KeywordResearchDetail] Revalidating data after persona save for ${researchId}...`);
+             await revalidateKeywordData(researchId); // Call the server action
+             console.log(`[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`);
+          } catch (revalError) {
+             console.error(`[KeywordResearchDetail] Failed to request revalidation via action:`, revalError);
+             // Decide if you still want to refresh even if revalidation fails
+          }
+          router.refresh(); // Refresh after revalidation attempt
         } else {
           throw new Error(
             updateResult.error || 'Failed to save the generated persona.'
@@ -437,7 +452,7 @@ export default function KeywordResearchDetail({
     return (
       <div className="space-y-4">
         <ToolHeader
-          title="關鍵詞研究結果"
+          title="關鍵詞分析結果"
           description={
             initialResearchDetail?.query
               ? `關鍵詞 "${initialResearchDetail.query}" 分析過程中發生錯誤`
