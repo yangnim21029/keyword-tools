@@ -1,10 +1,8 @@
 import {
   fetchKeywordResearchDetail,
-  fetchKeywordResearchList,
-  fetchClusteringStatus
+  fetchKeywordResearchList
 } from '@/app/actions';
-import type { Keyword } from '@/app/types'; // Import Keyword type
-import { type ClusteringStatus } from '@/app/types'; // Import ClusteringStatus type
+import type { KeywordVolumeItem } from '@/lib/schema'; // Import Keyword type
 import { notFound } from 'next/navigation';
 import KeywordResearchDetail from './components/KeywordResearchDetail';
 
@@ -34,7 +32,7 @@ interface VolumeDistributionData {
 
 // Helper function to calculate distribution (can be moved to a utils file)
 function calculateVolumeDistribution(
-  keywords: Keyword[] | null | undefined
+  keywords: KeywordVolumeItem[] | null | undefined
 ): VolumeDistributionData {
   // Get all volumes, including 0
   const allVolumes = (keywords || []).map(kw => kw.searchVolume ?? 0);

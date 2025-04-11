@@ -9,8 +9,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
   FilePlus2,
   LayoutGrid,
@@ -23,7 +21,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { type ClusteringStatus } from '@/app/types';
+// Import ClusteringStatus from schemas
+import type { ClusteringStatus } from '@/lib/schema';
 
 // Constants for display
 // const DEFAULT_VISIBLE_CLUSTERS = 3; // Keep all visible by default now
@@ -499,14 +498,16 @@ export default function KeywordClustering({
                     <div>
                       {/* Remove the toggle Button */}
                       {/* <Button ... /> */}
-                      
+
                       {/* Add a simple label */}
                       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center">
                         <User className="h-3.5 w-3.5 mr-1.5" />
                         用戶畫像
                       </div>
                       {/* Display persona text directly */}
-                      <div className="whitespace-pre-wrap break-words text-sm"> {/* Retain text styling */}
+                      <div className="whitespace-pre-wrap break-words text-sm">
+                        {' '}
+                        {/* Retain text styling */}
                         {currentPersona}
                       </div>
                     </div>

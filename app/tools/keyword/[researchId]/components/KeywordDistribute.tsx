@@ -1,7 +1,13 @@
 'use client';
 
-import type { Keyword } from '@/app/types'; // Import Keyword type
 import { Badge } from '@/components/ui/badge'; // Import Badge for visual indication
+import { Button } from '@/components/ui/button'; // Import Button for trigger
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'; // Import Dropdown components
 import {
   Table,
   TableBody,
@@ -10,34 +16,14 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'; // Import Table components
-import { BarChartHorizontal, Sigma } from 'lucide-react';
-import { useMemo, useState } from 'react'; // Import hooks
-
-// Define the expected prop type (matching the one calculated in page.tsx)
-// Updated for Fixed Volume Ranges
-interface VolumeDistributionData {
-  min: number; // Overall min volume (>= 0)
-  max: number; // Overall max volume
-  count: number; // Total count of keywords with volume >= 1
-  countZero: number; // Count of keywords with volume 0
-  countRange1: number; // Count in [1, 10]
-  countRange2: number; // Count in [11, 1000]
-  countRange3: number; // Count in [1001, 10000]
-  countRange4: number; // Count in [10001, 100000]
-  countRange5: number; // Count in >= 100001
-}
+import { KeywordVolumeItem, VolumeDistributionData } from '@/lib/schema';
+import { formatVolume } from '@/lib/utils'; // Import formatVolume from utils
+import { BarChartHorizontal, MoreHorizontal, Sigma } from 'lucide-react'; // Add MoreHorizontal icon
+import React, { useMemo } from 'react';
 
 interface KeywordDistributeProps {
-  volumeDistribution: VolumeDistributionData; // Use the updated interface
-  keywords: Keyword[]; // Add keywords prop
+  keywords: KeywordVolumeItem[]; // Use KeywordVolumeItem[]
 }
-
-// Helper function for formatting volume numbers (copied from KeywordResearchDetail)
-const formatVolume = (volume: number): string => {
-  if (volume >= 10000) return `${(volume / 1000).toFixed(0)}k`;
-  if (volume >= 1000) return `${(volume / 1000).toFixed(1)}k`;
-  return volume.toLocaleString();
-};
 
 // Helper function for formatting count numbers
 const formatCount = (count: number): string => {
@@ -54,57 +40,114 @@ const RANGES = {
   R5: { min: 100001, max: Infinity, label: '> 100k' }
 };
 
-export default function KeywordDistribute({
-  volumeDistribution,
-  keywords // Destructure keywords prop
-}: KeywordDistributeProps) {
-  const [selectedRangeLabel, setSelectedRangeLabel] = useState<string | null>(
-    RANGES.R2.label // Set default selected range to '11 - 1k'
+const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
+  const volumeDistribution: VolumeDistributionData = useMemo(() => {
+    const counts = {
+      countZero: 0,
+      countRange1: 0,
+      countRange2: 0,
+      countRange3: 0,
+      countRange4: 0,
+      countRange5: 0
+    };
+
+    let minVolume = Infinity;
+    let maxVolume = 0;
+    let totalCount = 0;
+
+    keywords.forEach(kw => {
+      const volume = kw.searchVolume ?? 0;
+      totalCount++;
+      if (volume < minVolume) minVolume = volume;
+      if (volume > maxVolume) maxVolume = volume;
+
+      if (volume === 0) counts.countZero++;
+      else if (volume >= RANGES.R1.min && volume <= RANGES.R1.max)
+        counts.countRange1++;
+      else if (volume >= RANGES.R2.min && volume <= RANGES.R2.max)
+        counts.countRange2++;
+      else if (volume >= RANGES.R3.min && volume <= RANGES.R3.max)
+        counts.countRange3++;
+      else if (volume >= RANGES.R4.min && volume <= RANGES.R4.max)
+        counts.countRange4++;
+      else if (volume >= RANGES.R5.min) counts.countRange5++;
+    });
+
+    // Map counts to the VolumeDistributionData array structure
+    const distributionData: VolumeDistributionData = [
+      { range: RANGES.ZERO.label, count: counts.countZero },
+      { range: RANGES.R1.label, count: counts.countRange1 },
+      { range: RANGES.R2.label, count: counts.countRange2 },
+      { range: RANGES.R3.label, count: counts.countRange3 },
+      { range: RANGES.R4.label, count: counts.countRange4 },
+      { range: RANGES.R5.label, count: counts.countRange5 }
+    ].filter(item => item.count > 0); // Optionally filter out ranges with zero count
+
+    // Add min/max/totalCount as extra properties if needed elsewhere, but they are not part of VolumeDistributionData
+    // return { ...counts, min: minVolume === Infinity ? 0 : minVolume, max: maxVolume, count: totalCount }; // Old return structure
+    return distributionData; // Return the array conforming to the type
+  }, [keywords]);
+
+  const [selectedRangeLabel, setSelectedRangeLabel] = React.useState<
+    string | null
+  >(
+    RANGES.R2.label // Default selected range remains '11 - 1k'
   );
 
-  // Prepare data for the range cards
-  const rangeCardData = [
-    {
-      label: RANGES.R1.label,
-      count: volumeDistribution.countRange1,
-      color: 'bg-sky-100 dark:bg-sky-900/50',
-      textColor: 'text-sky-700 dark:text-sky-300'
-    },
-    {
-      label: RANGES.R2.label,
-      count: volumeDistribution.countRange2,
-      color: 'bg-blue-100 dark:bg-blue-900/50',
-      textColor: 'text-blue-700 dark:text-blue-300'
-    },
-    {
-      label: RANGES.R3.label,
-      count: volumeDistribution.countRange3,
-      color: 'bg-indigo-100 dark:bg-indigo-900/50',
-      textColor: 'text-indigo-700 dark:text-indigo-300'
-    },
-    {
-      label: RANGES.R4.label,
-      count: volumeDistribution.countRange4,
-      color: 'bg-purple-100 dark:bg-purple-900/50',
-      textColor: 'text-purple-700 dark:text-purple-300'
-    },
-    {
-      label: RANGES.R5.label,
-      count: volumeDistribution.countRange5,
-      color: 'bg-fuchsia-100 dark:bg-fuchsia-900/50',
-      textColor: 'text-fuchsia-700 dark:text-fuchsia-300'
-    }
-  ];
-
-  // Add the 'Volume 0' card if needed
-  if (volumeDistribution.countZero > 0) {
-    rangeCardData.unshift({
-      label: RANGES.ZERO.label,
-      count: volumeDistribution.countZero,
-      color: 'bg-gray-100 dark:bg-gray-800/50',
-      textColor: 'text-gray-600 dark:text-gray-400'
+  // Prepare data for the range cards and dropdown, now using the array
+  const rangeCardData = useMemo(() => {
+    const data = volumeDistribution.map(item => {
+      let color = 'bg-gray-100 dark:bg-gray-800/50';
+      let textColor = 'text-gray-600 dark:text-gray-400';
+      if (item.range === RANGES.R1.label) {
+        color = 'bg-sky-100 dark:bg-sky-900/50';
+        textColor = 'text-sky-700 dark:text-sky-300';
+      } else if (item.range === RANGES.R2.label) {
+        color = 'bg-blue-100 dark:bg-blue-900/50';
+        textColor = 'text-blue-700 dark:text-blue-300';
+      } else if (item.range === RANGES.R3.label) {
+        color = 'bg-indigo-100 dark:bg-indigo-900/50';
+        textColor = 'text-indigo-700 dark:text-indigo-300';
+      } else if (item.range === RANGES.R4.label) {
+        color = 'bg-purple-100 dark:bg-purple-900/50';
+        textColor = 'text-purple-700 dark:text-purple-300';
+      } else if (item.range === RANGES.R5.label) {
+        color = 'bg-fuchsia-100 dark:bg-fuchsia-900/50';
+        textColor = 'text-fuchsia-700 dark:text-fuchsia-300';
+      }
+      return {
+        label: item.range,
+        count: item.count,
+        color,
+        textColor
+      };
     });
-  }
+    return data;
+  }, [volumeDistribution]);
+
+  // Calculate overall min/max/count separately if needed
+  const overallStats = useMemo(() => {
+    let minVolume = Infinity;
+    let maxVolume = 0;
+    let totalNonZeroCount = 0;
+    let zeroCount = 0;
+    keywords.forEach(kw => {
+      const volume = kw.searchVolume ?? 0;
+      if (volume === 0) {
+        zeroCount++;
+      } else {
+        totalNonZeroCount++;
+        if (volume < minVolume) minVolume = volume;
+        if (volume > maxVolume) maxVolume = volume;
+      }
+    });
+    return {
+      min: minVolume === Infinity ? 0 : minVolume,
+      max: maxVolume,
+      count: totalNonZeroCount, // Count of keywords with volume > 0
+      countZero: zeroCount // Count of keywords with volume == 0
+    };
+  }, [keywords]);
 
   // Function to check if a keyword volume falls within the selected range
   const isVolumeInRange = (
@@ -133,71 +176,104 @@ export default function KeywordDistribute({
     if (!selectedRangeLabel) {
       return []; // Return empty if no range is selected
     }
-    return keywords.filter(kw =>
+    return keywords.filter((kw: KeywordVolumeItem) =>
       isVolumeInRange(kw.searchVolume ?? 0, selectedRangeLabel)
     );
   }, [keywords, selectedRangeLabel]);
 
-  // Handle card click
-  const handleCardClick = (label: string) => {
-    setSelectedRangeLabel(prevLabel => (prevLabel === label ? null : label));
-  };
+  // Find the data for the currently selected range
+  const selectedRangeData = useMemo(() => {
+    return rangeCardData.find(r => r.label === selectedRangeLabel);
+  }, [selectedRangeLabel, rangeCardData]);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Distribution Cards Section - Remove border and rounded-lg */}
+      {/* Distribution Section */}
       <div className="p-6 space-y-6">
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <BarChartHorizontal className="h-5 w-5 text-indigo-500" />
           搜索量分布
           <span className="text-sm font-normal text-muted-foreground">
-            (總共{' '}
-            {formatCount(
-              volumeDistribution.count + volumeDistribution.countZero
-            )}{' '}
+            (總共 {formatCount(overallStats.count + overallStats.countZero)}{' '}
             個關鍵詞)
           </span>
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-center">
-          {/* Min/Max Block - Remove rounded-md */}
-          <div className="p-3 bg-muted/50 col-span-1 sm:col-span-2 md:col-span-1 flex flex-col justify-center">
+        {/* Grid for Stats and Selection */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Overall Range Block */}
+          <div className="p-3 bg-muted/50 col-span-1 flex flex-col justify-center text-center rounded-md">
             <p className="text-xs text-muted-foreground">整體範圍</p>
             <p className="text-lg font-semibold">
-              {formatVolume(volumeDistribution.min)} -{' '}
-              {formatVolume(volumeDistribution.max)}
+              {formatVolume(overallStats.min)} -{' '}
+              {formatVolume(overallStats.max)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1"> (Min - Max)</p>
+            <p className="text-xs text-muted-foreground mt-1">(Min - Max)</p>
           </div>
 
-          {/* Clickable Range Blocks - Remove rounded-md */}
-          {rangeCardData.map(range => (
-            <div
-              key={range.label}
-              className={`p-3 flex flex-col justify-center cursor-pointer transition-all duration-200 ease-in-out ${
-                range.color
-              } ${
-                selectedRangeLabel === range.label
-                  ? 'ring-2 ring-offset-2 ring-indigo-500 dark:ring-indigo-400'
-                  : 'hover:opacity-80'
-              }`}
-              onClick={() => handleCardClick(range.label)}
-            >
-              <p className={`text-xs font-medium ${range.textColor}`}>
-                範圍 {range.label}
-              </p>
-              <p className={`text-lg font-semibold ${range.textColor}`}>
-                {formatCount(range.count)} 個詞
-              </p>
-            </div>
-          ))}
+          {/* Selected Range Stats Block with Dropdown Trigger */}
+          <div
+            className={`relative col-span-1 flex flex-col justify-center text-center p-3 transition-colors duration-200 rounded-md ${
+              selectedRangeData ? selectedRangeData.color : 'bg-muted/50'
+            }`}
+          >
+            {/* Dropdown Menu Trigger */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild className="absolute top-1 right-1">
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">選擇範圍</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {rangeCardData.map(range => (
+                  <DropdownMenuItem
+                    key={range.label}
+                    onSelect={() => setSelectedRangeLabel(range.label)}
+                    className={
+                      selectedRangeLabel === range.label ? 'bg-accent' : ''
+                    }
+                  >
+                    範圍 {range.label} ({formatCount(range.count)} 個詞)
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem
+                  onSelect={() => setSelectedRangeLabel(null)}
+                  className="text-muted-foreground"
+                >
+                  清除選擇
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* Total Count Block - Remove rounded-md */}
-          <div className="p-3 bg-green-50 dark:bg-green-900/30 col-span-1 sm:col-span-2 md:col-span-1 flex flex-col justify-center">
+            {/* Display selected range info */}
+            {selectedRangeData ? (
+              <>
+                <p
+                  className={`text-xs font-medium ${selectedRangeData.textColor}`}
+                >
+                  範圍 {selectedRangeData.label}
+                </p>
+                <p
+                  className={`text-lg font-semibold ${selectedRangeData.textColor}`}
+                >
+                  {formatCount(selectedRangeData.count)} 個詞
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">未選擇範圍</p>
+                <p className="text-lg font-semibold text-muted-foreground">-</p>
+              </>
+            )}
+          </div>
+
+          {/* Total Count Block */}
+          <div className="p-3 bg-green-50 dark:bg-green-900/30 col-span-1 flex flex-col justify-center text-center rounded-md">
             <p className="text-xs text-green-700 dark:text-green-300 flex items-center justify-center gap-1">
               <Sigma size={14} /> 有效詞總數
             </p>
             <p className="text-lg font-semibold text-green-800 dark:text-green-200">
-              {formatCount(volumeDistribution.count)}
+              {formatCount(overallStats.count)}
             </p>
             <p className="text-xs text-green-700 dark:text-green-300 mt-1">
               (Volume ≥ 1)
@@ -208,45 +284,48 @@ export default function KeywordDistribute({
 
       {/* Filtered Keywords List Section */}
       {selectedRangeLabel && (
-        // Remove max-h and overflow from the list container, remove sticky from header
-        <div className="bg-card">
-          {' '}
-          {/* Removed max-h-[500px] overflow-y-auto */}
+        <div className="bg-card border rounded-lg">
           <h4 className="text-md font-semibold p-4 border-b flex items-center gap-2">
             關鍵詞列表
             <Badge variant="secondary">
               {formatCount(filteredKeywords.length)} 個
             </Badge>
             <button
-              onClick={() => setSelectedRangeLabel(null)} // Clear selection button
+              onClick={() => setSelectedRangeLabel(null)}
               className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               (清除選擇)
             </button>
           </h4>
           {filteredKeywords.length > 0 ? (
-            <Table>
-              <TableHeader>
-                {/* Add background to header row for distinction */}
-                <TableRow className="bg-muted/50 hover:bg-muted/50"> 
-                  {/* Adjust header text style */}
-                  <TableHead className="w-[70%] font-medium text-muted-foreground">關鍵詞</TableHead>
-                  <TableHead className="text-right font-medium text-muted-foreground">搜索量</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredKeywords.map((keyword, index) => (
-                  <TableRow key={`${keyword.text}-${index}`}>
-                    <TableCell className="font-medium">
-                      {keyword.text}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatVolume(keyword.searchVolume ?? 0)}
-                    </TableCell>
+            <div className="max-h-[500px] overflow-y-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="w-[70%] font-medium text-muted-foreground">
+                      關鍵詞
+                    </TableHead>
+                    <TableHead className="text-right font-medium text-muted-foreground">
+                      搜索量
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredKeywords.map(
+                    (keyword: KeywordVolumeItem, index: number) => (
+                      <TableRow key={`${keyword.text}-${index}`}>
+                        <TableCell className="font-medium">
+                          {keyword.text}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatVolume(keyword.searchVolume ?? 0)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <p className="p-4 text-center text-muted-foreground italic">
               此範圍內沒有關鍵詞。
@@ -256,4 +335,6 @@ export default function KeywordDistribute({
       )}
     </div>
   );
-}
+};
+
+export default KeywordDistribute;
