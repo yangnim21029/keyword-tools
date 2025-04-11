@@ -561,7 +561,7 @@ export async function processAndSaveKeywordQuery(
         console.log("[Server Action] Creating research record...");
         const researchInput: CreateKeywordResearchInput = {
             query: query,
-            location: region,
+            region: region,
             language: language,
             // Default other fields inside createKeywordResearch
         };

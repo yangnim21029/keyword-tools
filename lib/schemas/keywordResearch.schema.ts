@@ -27,7 +27,7 @@ export const KeywordResearchBaseSchema = z.object({
   personas: PersonaSchema.optional().describe('用戶畫像映射'),
   userPersona: z.string().optional().describe('基於分群生成的單一用戶畫像總結 (可選, 可能與 personas 重疊)'),
   searchEngine: z.string().optional().describe('使用的搜尋引擎 (例如 google)'),
-  location: z.string().optional().describe('地區代碼 (例如 TW)'),
+  region: z.string().optional().describe('地區代碼 (例如 TW)'),
   language: z.string().optional().describe('語言代碼 (例如 zh-TW)'),
   device: z.enum(['desktop', 'mobile']).optional().describe('設備類型'),
   isFavorite: z.boolean().optional().default(false),
@@ -47,7 +47,7 @@ export const CreateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
     // userId: true, // Removed - Handled by Firebase Admin
     // Pick optional fields that can be provided at creation
     searchEngine: true,
-    location: true,
+    region: true,
     language: true,
     device: true,
     isFavorite: true,
@@ -55,7 +55,7 @@ export const CreateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
 }).partial({
     // Make the optional fields truly optional
     searchEngine: true,
-    location: true,
+    region: true,
     language: true,
     device: true,
     isFavorite: true,
@@ -70,7 +70,7 @@ export const UpdateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
   personas: true,
   userPersona: true,
   searchEngine: true,
-  location: true,
+  region: true,
   language: true,
   device: true,
   isFavorite: true,
@@ -117,7 +117,7 @@ export const keywordResearchListItemSchema = keywordResearchItemSchema.omit({
  */
 export const keywordResearchFilterSchema = z.object({
   query: z.string().optional(),
-  location: z.string().optional(),
+  region: z.string().optional(),
   language: z.string().optional(),
   isFavorite: z.boolean().optional(),
   tags: z.array(z.string()).optional(),

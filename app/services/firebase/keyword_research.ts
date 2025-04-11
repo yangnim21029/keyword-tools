@@ -13,7 +13,7 @@ import { COLLECTIONS, db } from './config';
 export async function saveKeywordResearch(
     userId: string, // Added userId parameter
     query: string, // Renamed mainKeyword to query
-    location: string | undefined, // Renamed region to location, made optional
+    region: string | undefined, // Renamed from location, made optional
     language: string | undefined, // Made optional
     // suggestions: string[], // Suggestions might be part of keywords now or not saved directly
     keywords: Keyword[] = [], // Renamed searchResults to keywords, use Keyword type
@@ -29,7 +29,7 @@ export async function saveKeywordResearch(
         const researchData = {
             query,
             userId,
-            location: location || null,
+            region: region || null,
             language: language || null,
             searchEngine: searchEngine || null,
             device: device || null,
@@ -89,7 +89,7 @@ export async function getKeywordResearchList(limit: number = 50, userId?: string
                 userId: data.userId || '', // Assuming userId is stored
                 createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
                 updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
-                location: data.location,
+                region: data.region,
                 language: data.language,
                 device: data.device,
                 isFavorite: data.isFavorite || false,
@@ -132,7 +132,7 @@ export async function getKeywordResearchDetail(researchId: string): Promise<Keyw
             clusters: data.clusters || null,
             personas: data.personas || null,
             searchEngine: data.searchEngine,
-            location: data.location,
+            region: data.region,
             language: data.language,
             device: data.device,
             isFavorite: data.isFavorite || false,

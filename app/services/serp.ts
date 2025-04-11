@@ -350,7 +350,7 @@ export async function getSerpAnalysis(
                 const dataToSave = {
                     type: 'serp' as const,
                     query: keyword,
-                    location: region,
+                    region: region,
                     language: language,
                     device: deviceType,
                     serpResults: processedResult.results || [],

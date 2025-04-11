@@ -90,11 +90,22 @@ export default function KeywordSearchForm() {
 
   // --- Render --- 
   return (
-    <div className="flex flex-col items-center justify-center h-full pt-10 md:pt-20 px-4">
-      <div className="w-full max-w-2xl text-center">
+    <div 
+      className="flex flex-col items-center justify-center min-h-screen pt-10 md:pt-20 px-4"
+      style={{
+        backgroundImage: `url('https://lh3.googleusercontent.com/gg/AN12HXSWVuOhyEr0v9mkwxnfa4iwEbrxSsiRCuEGMk24xnTRgR9jAQC78ihNkbcD8YseqmudcC67zw_Vsotccll_qSVjWm9UrRe-Dfg_TfxmTgndMo4i1vyZcg40QIzQN4UqgoV84C3mDbYtt-rWjLCfWSuIhs9w4rOfY_0CDxDhEs-_-mQLyd7vkS0LPrO7vsZpVbRzu6Jw1av057-80u237ND1CkP76F1RSkm27wv-1cTrXBWvtCsIEsj1aGRTzGdgpXqOYH_mY5acnM9ncGAg1Q7BsTTSA2wnGYFqH5iXTDjIwuiX-zfjERinHz47141559KiV7jAjHi_B-AVEPdxAdEg=s1024')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center center',
+        backgroundRepeat: 'no-repeat'
+        // Note: background-attachment: fixed; doesn't work well with inline styles
+        // on elements that might scroll with the page. 
+        // If parallax is needed, consider a different approach.
+      }}
+    >
+      <div className="w-full max-w-2xl text-center bg-background/80 backdrop-blur-sm p-6 sm:p-8 rounded-lg shadow-lg"> 
         {/* Icon and Title */}
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          你的主題是...
+          你的 SEO 主題是...
         </h1>
         <p className="text-muted-foreground mb-8">
           輸入文字 / 網址，就會開始分析。

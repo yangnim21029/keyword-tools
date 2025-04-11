@@ -285,6 +285,25 @@ const cjkRegex = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/;
 // Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
 const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
 
+// Add location name to code mapping
+const LOCATION_NAME_TO_CODE: Record<string, string> = {
+  "台灣": "TW",
+  "臺灣": "TW",
+  "香港": "HK",
+  "中國": "CN",
+  "美國": "US",
+  "日本": "JP",
+  "英國": "UK",
+  "澳洲": "AU",
+  "加拿大": "CA",
+  "新加坡": "SG",
+  "馬來西亞": "MY",
+  "德國": "DE",
+  "法國": "FR",
+  "韓國": "KR",
+  "印度": "IN"
+};
+
 /**
  * Gets keyword search volume data.
  */
@@ -304,8 +323,17 @@ export async function getSearchVolume(
   const apiLanguageCode = language.replace('-', '_'); // e.g., 'zh-TW' -> 'zh_TW'
   const languageId = LANGUAGE_CODES[apiLanguageCode] || LANGUAGE_CODES['en'] || 1000; // Default to English (ID 1000) if specific language not found
 
+  // Convert region name to code if needed
+  let regionCode = region.toUpperCase();
+  if (LOCATION_NAME_TO_CODE[region]) {
+    regionCode = LOCATION_NAME_TO_CODE[region];
+  }
+
   // Map region to Google Ads API location ID. Default to Taiwan (2158) if not found.
-  const locationId = LOCATION_CODES[region.toUpperCase()] || 2158; // Default to Taiwan
+  const locationId = LOCATION_CODES[regionCode];
+  if (!locationId) {
+    throw new Error(`Invalid region code: ${region}. Please use a valid region code from LOCATION_CODES.`);
+  }
 
   console.log(`Fetching search volume data for Region: ${region} (Loc ID: ${locationId}), Language: ${language} (Lang ID: ${languageId})`);
   // Log if URL was provided, even if not used in this specific function's core logic
