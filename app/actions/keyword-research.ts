@@ -89,7 +89,7 @@ async function revalidateResearch(researchId?: string) {
 
   // Only revalidate the specific item tag AND path if an ID is provided
   if (researchId) {
-    const itemPath = `/tools/keyword/${researchId}`;
+    const itemPath = `/keyword-mapping/${researchId}`;
     // Adding the specific tag for detail view cache
     revalidateTag(`${KEYWORD_RESEARCH_TAG}_${researchId}`);
     revalidatePath(itemPath); // Add path revalidation for the specific item

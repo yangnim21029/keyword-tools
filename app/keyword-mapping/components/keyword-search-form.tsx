@@ -71,7 +71,7 @@ export default function KeywordSearchForm({
 
       if (result.success && result.researchId) {
         toast.success(`研究記錄已創建 (ID: ${result.researchId})`);
-        router.push(`/tools/keyword/${result.researchId}`);
+        router.push(`/keyword-mapping/${result.researchId}`);
       } else {
         const errorMsg = result.error || '創建研究記錄失敗，請稍後再試。';
         setError(errorMsg);

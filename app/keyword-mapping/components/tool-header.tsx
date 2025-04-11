@@ -26,7 +26,7 @@ export function ToolHeader({
       <CardContent className="pt-4 sm:pt-6">
         <div className="flex items-start gap-4 mb-4">
           {showBackButton && (
-            <Link href="/tools/keyword" className="mt-1">
+            <Link href="/keyword-mapping" className="mt-1">
               <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0" />
             </Link>
           )}

@@ -60,14 +60,14 @@ export default function RootLayout({
               <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 bg-background border-b px-4">
                 <div className="flex items-center gap-6">
                   <Link
-                    href="/tools/keyword"
+                    href="/keyword-mapping"
                     className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                   >
                     <span className="font-medium">關鍵字工具</span>
                   </Link>
                   <nav className="md:flex items-center gap-4">
                     <Link
-                      href="/tools/keyword"
+                      href="/keyword-mapping"
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       新的

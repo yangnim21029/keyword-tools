@@ -248,7 +248,7 @@ export default function KeywordClustering({
       // Remove setQuery call
       // setQuery(keyword);
       toast.info(`開始新研究: "${keyword}"`);
-      const targetUrl = `/tools/keyword?q=${encodeURIComponent(keyword)}`;
+      const targetUrl = `/keyword-mapping?q=${encodeURIComponent(keyword)}`;
       router.push(targetUrl);
     },
     [router]
