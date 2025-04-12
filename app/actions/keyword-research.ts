@@ -1,8 +1,9 @@
 'use server';
 
 import { getKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
+import { generateRelatedKeywordsAI } from '@/app/services/ai-keyword-patch';
 import { COLLECTIONS, db } from '@/app/services/firebase/config';
-import { getSearchVolume } from '@/app/services/keyword-data.service';
+import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
 // Import types primarily from schemas
 import {
   type ClusteringStatus,
@@ -16,6 +17,9 @@ import {
   type UserPersona // <-- Import UserPersona type
 } from '@/lib/schema'; // Adjusted import path
 // Import the extended list item and potentially Keyword from our specific types file
+import {
+  identifyParentKeywordsFromAI // Hypothetical AI function import
+} from '@/app/services/ai-keyword-patch'; // Removed .ts extension
 import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
@@ -82,9 +86,8 @@ function convertTimestamps<
 async function revalidateResearch(researchId?: string) {
   // Always revalidate the list tag and history page path
   revalidateTag(KEYWORD_RESEARCH_TAG);
-  revalidatePath('/history');
   console.log(
-    `[Internal Helper][Revalidate] Revalidated tag: ${KEYWORD_RESEARCH_TAG} and path: /history.`
+    `[Internal Helper][Revalidate] Revalidated tag: ${KEYWORD_RESEARCH_TAG} and `
   );
 
   // Only revalidate the specific item tag AND path if an ID is provided
@@ -644,40 +647,103 @@ interface ProcessQueryInput {
   language: string;
   useAlphabet: boolean;
   useSymbols: boolean;
-  maxKeywords?: number;
+  maxKeywords?: number; // OBSOLETE - Now using fixed limit below
   minSearchVolume?: number;
 }
 
 interface ProcessQueryResult {
   success: boolean;
   researchId: string | null;
-  // Remove suggestions/volumeData as they are intermediate steps now
-  // suggestions?: string[];
-  // volumeData?: KeywordVolumeItem[];
   error?: string | null;
 }
+
+// Define the fixed limit for keywords sent to Ads API
+const MAX_VOLUME_CHECK_KEYWORDS = 60;
 
 export async function processAndSaveKeywordQuery(
   input: ProcessQueryInput
 ): Promise<ProcessQueryResult> {
+  // --- Keyword Generation & Processing Flow ---
+  // 1. Query: Start with the user's input query.
+  // 2. Generate Space Variations: Create keywords by inserting spaces.
+  // 3. Get AI Suggestions: Generate supplementary keywords using AI.
+  // 4. Get Google Suggestions: Fetch suggestions from Google Autocomplete (base, alphabet, symbols).
+  // 5. Combine All & Deduplicate: Merge all sources and get a unique master list (`initialUniqueKeywords`).
+  // 6. Prioritize for Volume Check: Select up to MAX_VOLUME_CHECK_KEYWORDS (60) keywords from the master list, prioritizing: Space Variations > AI Suggestions > Google Suggestions.
+  // 7. Get Search Volume: Fetch search volume data from Google Ads API for the prioritized list.
+  // 8. Filter & Finalize: Filter keywords based on minSearchVolume, merge keywords (from volume check AND the full master list) ensuring final uniqueness and including zero-volume ones.
+  // 9. Save: Save the final list of KeywordVolumeItems to Firestore.
+  // -------------------------------------------
+
   const {
     query,
     region,
     language,
-    useAlphabet,
-    useSymbols,
-    maxKeywords,
+    useAlphabet, // Still needed for getKeywordSuggestions
+    useSymbols, // Still needed for getKeywordSuggestions
+    // maxKeywords, // No longer used directly for slicing here
     minSearchVolume
   } = input;
-  let suggestionsList: string[] = [];
-  let volumeList: KeywordVolumeItem[] = [];
+
+  let spaceVariations: string[] = [];
+  let aiSuggestList: string[] = [];
+  let googleSuggestList: string[] = []; // Will contain base, alphabet, symbols etc.
+  let volumeDataList: KeywordVolumeItem[] = [];
   let savedResearchId: string | null = null;
   const isUrl = query.startsWith('http');
   const currentInputType = isUrl ? 'url' : 'keyword';
 
   try {
-    // 1. Fetch Suggestions
-    console.log(`[Server Action] Fetching suggestions for: ${query}`);
+    // --- Step 2: Generate Space Variations ---
+    console.log('[Server Action] Starting Step 2: Generate Space Variations');
+    const queryWithoutEnglish = query.replace(/[a-zA-Z0-9]/g, '');
+    if (queryWithoutEnglish.length > 1) {
+      for (let i = 1; i < queryWithoutEnglish.length; i++) {
+        // Start from 1 to avoid leading space
+        const spacedKeyword =
+          queryWithoutEnglish.slice(0, i) + ' ' + queryWithoutEnglish.slice(i);
+        spaceVariations.push(spacedKeyword);
+      }
+    }
+    // Add the original query without modification as well, if it's primarily CJK
+    if (
+      /^[\u4e00-\u9fa5\s]+$/.test(query) &&
+      !spaceVariations.includes(query)
+    ) {
+      spaceVariations.push(query); // Ensure original CJK query is included if relevant
+    }
+    spaceVariations = [...new Set(spaceVariations)]; // Deduplicate just in case
+    console.log(
+      `[Server Action] Generated ${spaceVariations.length} space variations.`
+    );
+    // console.log("[Server Action] Space Variations:", spaceVariations);
+
+    // --- Step 3: Get AI Suggestions ---
+    console.log(
+      `[Server Action] Starting Step 3: Get AI Suggestions for: ${query}`
+    );
+    try {
+      aiSuggestList = await generateRelatedKeywordsAI(
+        query,
+        region,
+        language,
+        10
+      );
+      console.log(
+        `[Server Action] Got ${aiSuggestList.length} suggestions from AI.`
+      );
+      console.log('[Server Action] AI Suggestions List:', aiSuggestList);
+    } catch (aiError) {
+      console.error(`[Server Action] Failed to get AI suggestions:`, aiError);
+      aiSuggestList = [];
+    }
+
+    // --- Step 4: Get Google Suggestions ---
+    // Note: getKeywordSuggestions internally combines base, alphabet, symbols, and *its own* space variations.
+    // We will use its output but prioritize our own generated space variations above.
+    console.log(
+      `[Server Action] Starting Step 4: Get Google Suggestions for: ${query}`
+    );
     let suggestionsResult;
     if (currentInputType === 'keyword') {
       suggestionsResult = await getKeywordSuggestions(
@@ -694,116 +760,202 @@ export async function processAndSaveKeywordQuery(
         language
       });
     }
-
-    if (
-      suggestionsResult.error ||
-      !suggestionsResult.suggestions ||
-      suggestionsResult.suggestions.length === 0
-    ) {
-      const errorMsg =
-        suggestionsResult.error ||
-        (currentInputType === 'keyword'
-          ? '未找到關鍵詞建議'
-          : '無法從 URL 獲取建議');
-      console.warn(`[Server Action] Suggestion Warning: ${errorMsg}`);
-      suggestionsList = []; // Ensure list is empty for subsequent steps
+    if (suggestionsResult.error || !suggestionsResult.suggestions) {
+      console.warn(
+        `[Server Action] Google Suggestion Warning: ${
+          suggestionsResult.error || 'No suggestions found'
+        }`
+      );
+      googleSuggestList = [];
     } else {
-      suggestionsList = suggestionsResult.suggestions;
-      console.log(`[Server Action] Got ${suggestionsList.length} suggestions.`);
-    }
-
-    // 2. Fetch Volume Data (if suggestions exist)
-    const suggestionsToProcess = suggestionsList.slice(0, maxKeywords || 200); // Limit volume processing
-    if (suggestionsToProcess.length > 0) {
+      // Exclude space variations already generated in Step 2 from the google list to avoid double prioritization later
+      const spaceVariationSet = new Set(spaceVariations);
+      googleSuggestList = suggestionsResult.suggestions.filter(
+        s => !spaceVariationSet.has(s)
+      );
       console.log(
-        `[Server Action] Fetching volume for ${suggestionsToProcess.length} keywords.`
+        `[Server Action] Got ${googleSuggestList.length} suggestions from Google (excluding duplicates from Step 2).`
       );
-      const volumeResult = await getSearchVolume(
-        suggestionsToProcess,
-        region,
-        isUrl ? query : undefined,
-        language
-      );
-
-      if (volumeResult.error || !volumeResult.results) {
-        console.warn(
-          '[Server Action] Error fetching volume:',
-          volumeResult.error || 'Unknown volume error'
-        );
-        volumeList = []; // Proceed without volume if it fails
-      } else {
-        // Filter keywords based on search volume
-        volumeList = volumeResult.results.filter(
-          (
-            item: KeywordVolumeItem
-          ): item is KeywordVolumeItem => // Add type annotation
-            !!item.text && (item.searchVolume ?? 0) >= (minSearchVolume || 0) // Ensure text exists and check volume
-        );
-        console.log(
-          `[Server Action] Got volume data for ${volumeList.length} keywords after filtering.`
-        );
-      }
-    } else {
-      console.log('[Server Action] No suggestions found to fetch volume for.');
+      // console.log("[Server Action] Google Suggestions List (filtered):", googleSuggestList);
     }
 
-    // --- Apply Deduplication Logic Here --- Use KeywordVolumeItem ---
-    console.log('[Server Action] Starting keyword deduplication...');
-    const normalizedKeywordMap = new Map<string, KeywordVolumeItem>();
+    // --- Step 5: Combine All & Deduplicate ---
+    console.log('[Server Action] Starting Step 5: Combine All & Deduplicate');
+    // Combine in a neutral order first just to get the full unique set
+    const allCombinedSources = [
+      ...spaceVariations,
+      ...aiSuggestList,
+      ...googleSuggestList
+    ];
+    const initialUniqueKeywords = [...new Set(allCombinedSources)].filter(
+      kw => kw && kw.trim()
+    ); // Ensure not empty/whitespace
+    console.log(
+      `[Server Action] Total unique keywords from all sources: ${initialUniqueKeywords.length}`
+    );
+    // console.log("[Server Action] Master Unique Keywords List:", initialUniqueKeywords);
 
-    // Process keywords with volume first
-    volumeList.forEach((item: KeywordVolumeItem) => {
-      // Add type
-      if (!item.text) return; // Skip if text is missing
+    if (initialUniqueKeywords.length === 0) {
+      console.warn(
+        '[Server Action] No unique keywords found after combining sources. Aborting further processing.'
+      );
+      const createResult = await createKeywordResearch({
+        query,
+        region,
+        language
+      });
+      if (createResult.error || !createResult.data?.id)
+        throw new Error(createResult.error || 'Failed to create empty record');
+      return {
+        success: true,
+        researchId: createResult.data.id,
+        error: 'No keywords found to process.'
+      };
+    }
 
-      const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
-      const existingKeyword = normalizedKeywordMap.get(normalizedText);
-      const currentVolume = item.searchVolume ?? 0;
+    // --- Step 6: Prioritize for Volume Check ---
+    console.log(
+      `[Server Action] Starting Step 6: Prioritize up to ${MAX_VOLUME_CHECK_KEYWORDS} keywords for Volume Check`
+    );
+    const keywordsForVolumeCheck: string[] = [];
+    const addedKeywords = new Set<string>();
 
-      // Add if new or has higher volume than existing entry for this normalized text
+    const addPrioritized = (keyword: string) => {
+      const trimmedKeyword = keyword.trim();
       if (
-        !existingKeyword ||
-        currentVolume > (existingKeyword.searchVolume ?? 0)
+        trimmedKeyword &&
+        !addedKeywords.has(trimmedKeyword) &&
+        keywordsForVolumeCheck.length < MAX_VOLUME_CHECK_KEYWORDS
       ) {
-        normalizedKeywordMap.set(normalizedText, item); // Store the KeywordVolumeItem
+        keywordsForVolumeCheck.push(trimmedKeyword);
+        addedKeywords.add(trimmedKeyword);
+        return true;
+      }
+      return false;
+    };
+
+    console.log('[Server Action] Prioritizing Space Variations...');
+    spaceVariations.forEach(addPrioritized);
+    console.log(
+      `[Server Action] Added ${keywordsForVolumeCheck.length} keywords after space variations.`
+    );
+
+    console.log('[Server Action] Prioritizing AI Suggestions...');
+    aiSuggestList.forEach(addPrioritized);
+    console.log(
+      `[Server Action] Added ${keywordsForVolumeCheck.length} keywords after AI suggestions.`
+    );
+
+    console.log('[Server Action] Prioritizing Google Suggestions...');
+    googleSuggestList.forEach(addPrioritized); // Add remaining Google suggestions
+    console.log(
+      `[Server Action] Added ${keywordsForVolumeCheck.length} keywords after Google suggestions.`
+    );
+
+    // If still under limit, fill with remaining unique keywords (less likely with combined sources)
+    if (keywordsForVolumeCheck.length < MAX_VOLUME_CHECK_KEYWORDS) {
+      console.log(
+        '[Server Action] Filling remaining slots with other unique keywords...'
+      );
+      initialUniqueKeywords.forEach(addPrioritized);
+    }
+
+    console.log(
+      `[Server Action] Final list for volume check (${keywordsForVolumeCheck.length} keywords):`
+    );
+    console.log(keywordsForVolumeCheck);
+
+    // --- Step 7: Get Search Volume ---
+    console.log('[Server Action] Starting Step 7: Get Search Volume');
+    const volumeResult = await getSearchVolume(
+      keywordsForVolumeCheck, // Pass the prioritized list
+      region,
+      isUrl ? query : undefined,
+      language
+    );
+
+    // Process volume results (volumeDataList will be populated or remain [])
+    if (volumeResult.error || !volumeResult.results) {
+      console.warn(
+        '[Server Action] Error fetching volume:',
+        volumeResult.error ||
+          'Unknown volume error. Proceeding without volume data.'
+      );
+      volumeDataList = [];
+    } else {
+      volumeDataList = volumeResult.results;
+      console.log(
+        `[Server Action] Received volume data for ${volumeDataList.length} keywords from Google Ads API.`
+      );
+      // console.log("[Server Action] Volume Data Received:", volumeDataList);
+    }
+
+    // --- Step 8: Filter & Finalize ---
+    console.log(
+      '[Server Action] Starting Step 8: Filter & Finalize Keyword List'
+    );
+    const finalKeywordMap = new Map<string, KeywordVolumeItem>();
+
+    // Process keywords that HAVE volume data first (from volumeDataList)
+    const processedVolumeKeywords = new Set<string>(); // Track normalized text from volume results
+    volumeDataList.forEach((item: KeywordVolumeItem) => {
+      if (!item.text) return;
+      const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
+      processedVolumeKeywords.add(normalizedText); // Mark as processed
+
+      if ((item.searchVolume ?? 0) >= (minSearchVolume || 0)) {
+        const existing = finalKeywordMap.get(normalizedText);
+        if (
+          !existing ||
+          (item.searchVolume ?? 0) > (existing.searchVolume ?? 0)
+        ) {
+          finalKeywordMap.set(normalizedText, item); // Add/update with higher volume
+        }
+      } else {
+        // Filtered out due to low volume
       }
     });
+    console.log(
+      `[Server Action] ${
+        finalKeywordMap.size
+      } keywords kept after volume filtering (min vol: ${
+        minSearchVolume || 0
+      }).`
+    );
 
-    // Add suggestions that didn't have volume data or were lower volume duplicates
-    suggestionsList.forEach(suggestionText => {
-      if (!suggestionText) return;
-      const normalizedText = suggestionText.toLowerCase().replace(/\s+/g, '');
-      // Only add if this normalized text wasn't already added from the volume list
-      if (!normalizedKeywordMap.has(normalizedText)) {
-        // Create a minimal KeywordVolumeItem
-        normalizedKeywordMap.set(normalizedText, {
-          text: suggestionText, // Keep original text
-          searchVolume: 0 // Default volume
-          // Other fields default to undefined
+    // Add back keywords from the *full master list* (`initialUniqueKeywords`) that were *not* processed
+    // (either not sent for volume check, or API didn't return data for them),
+    // or were filtered out by minSearchVolume, marking them as zero volume.
+    initialUniqueKeywords.forEach(keywordText => {
+      if (!keywordText) return;
+      const normalizedText = keywordText.toLowerCase().replace(/\s+/g, '');
+      // Add IF it's not already in the final map (meaning it passed volume filter)
+      if (!finalKeywordMap.has(normalizedText)) {
+        finalKeywordMap.set(normalizedText, {
+          text: keywordText, // Keep original text from the master list
+          searchVolume: 0
         });
       }
     });
 
-    const deduplicatedKeywordsToSave: KeywordVolumeItem[] = Array.from(
-      normalizedKeywordMap.values()
+    const finalKeywordsToSave: KeywordVolumeItem[] = Array.from(
+      finalKeywordMap.values()
     );
     console.log(
-      `[Server Action] Deduplication complete. Keywords to save: ${deduplicatedKeywordsToSave.length}`
+      `[Server Action] Final unique list size (including zero volume): ${finalKeywordsToSave.length}`
     );
-    // --- End Deduplication ---
+    // console.log("[Server Action] Final list to save:", finalKeywordsToSave);
 
-    // 3. Save Keyword Research Record (Create)
-    console.log('[Server Action] Creating research record...');
+    // --- Step 9: Save ---
+    console.log('[Server Action] Starting Step 9: Save Results');
     const researchInput: CreateKeywordResearchInput = {
-      query: query,
-      region: region,
-      language: language
-      // Default other fields inside createKeywordResearch
+      query,
+      region,
+      language
     };
-    const saveResult = await createKeywordResearch(researchInput); // Uses revalidate internally
+    const saveResult = await createKeywordResearch(researchInput);
 
     if (saveResult.error || !saveResult.data?.id) {
-      // This is critical, throw the error
       throw new Error(
         `Failed to create research record: ${
           saveResult.error || 'Missing ID after creation'
@@ -813,24 +965,20 @@ export async function processAndSaveKeywordQuery(
     savedResearchId = saveResult.data.id;
     console.log(`[Server Action] Research record created: ${savedResearchId}`);
 
-    // 4. Update record with *DEDUPLICATED* keywords (if any)
-    if (deduplicatedKeywordsToSave.length > 0) {
+    // Update record with the final keyword list
+    if (finalKeywordsToSave.length > 0) {
       console.log(
-        `[Server Action] Updating record ${savedResearchId} with ${deduplicatedKeywordsToSave.length} deduplicated keywords...`
+        `[Server Action] Updating record ${savedResearchId} with ${finalKeywordsToSave.length} final keywords...`
       );
-      // Call the specific update action which handles revalidation
       const updateKeywordsResult = await updateKeywordResearchKeywords(
         savedResearchId,
-        deduplicatedKeywordsToSave // Pass KeywordVolumeItem[]
+        finalKeywordsToSave
       );
-
       if (!updateKeywordsResult.success) {
-        // Log error but don't fail the whole operation, record is created.
         console.error(
           `[Server Action] Failed to update keywords for ${savedResearchId}:`,
           updateKeywordsResult.error
         );
-        // Consider if this partial failure should be reflected in the final response
       } else {
         console.log(
           `[Server Action] Successfully updated keywords for ${savedResearchId}`
@@ -838,18 +986,14 @@ export async function processAndSaveKeywordQuery(
       }
     } else {
       console.log(
-        `[Server Action] No keywords derived after deduplication for record ${savedResearchId}. Skipping keyword update.`
+        `[Server Action] No keywords to save for record ${savedResearchId}.`
       );
     }
 
     console.log(
-      `[Server Action] Returning success for ${savedResearchId}. Clustering is pending.`
+      `[Server Action] Process completed successfully for ${savedResearchId}.`
     );
-    return {
-      success: true,
-      researchId: savedResearchId,
-      error: null
-    };
+    return { success: true, researchId: savedResearchId, error: null };
   } catch (error: unknown) {
     console.error(
       '[Server Action] Critical error in processAndSaveKeywordQuery:',
@@ -859,12 +1003,7 @@ export async function processAndSaveKeywordQuery(
       error instanceof Error
         ? error.message
         : 'An unexpected error occurred during processing.';
-    // Return error state
-    return {
-      success: false,
-      researchId: savedResearchId, // Return ID if created before the error
-      error: message
-    };
+    return { success: false, researchId: savedResearchId, error: message };
   }
 }
 
@@ -1051,6 +1190,252 @@ export async function requestClustering(
       success: false,
       error:
         error instanceof Error ? error.message : 'Failed to request clustering.'
+    };
+  }
+}
+
+// --- Action to Refine Zero Volume Keywords using AI ---
+
+interface RefineZeroVolumeResult {
+  success: boolean;
+  addedKeywordsCount?: number;
+  error?: string;
+}
+
+/**
+ * Identifies zero-volume keywords in a research item, uses AI to find their parent keywords,
+ * searches for suggestions based on parent keywords, and merges the results back.
+ *
+ * @param researchId The ID of the Keyword Research item.
+ * @returns Object indicating success, count of added keywords, or failure.
+ */
+export async function refineZeroVolumeKeywords(
+  researchId: string
+): Promise<RefineZeroVolumeResult> {
+  console.log(
+    `[Server Action] Starting refinement for zero-volume keywords in researchId: ${researchId}`
+  );
+  if (!db) {
+    const errorMsg =
+      '[Server Action][refineZeroVolumeKeywords] Database not initialized';
+    console.error(errorMsg);
+    return { success: false, error: errorMsg };
+  }
+  if (!researchId) {
+    const errorMsg =
+      '[Server Action][refineZeroVolumeKeywords] Research ID is required';
+    console.warn(errorMsg);
+    return { success: false, error: errorMsg };
+  }
+
+  try {
+    // 1. Fetch existing research data
+    const researchDetail = await fetchKeywordResearchDetail(researchId); // Uses cache initially
+    if (!researchDetail) {
+      return { success: false, error: 'Research item not found.' };
+    }
+
+    const originalKeywords = (researchDetail.keywords ||
+      []) as KeywordVolumeItem[];
+    const region = researchDetail.region || 'TW'; // Default region if not set
+    const language = researchDetail.language || 'zh-TW'; // Default language if not set
+
+    // 2. Identify zero-volume keywords
+    const zeroVolumeKeywords = originalKeywords
+      .filter(
+        kw => !kw.searchVolume || kw.searchVolume === 0 // Includes null, undefined, 0
+      )
+      .map(kw => kw.text)
+      .filter((text): text is string => !!text); // Ensure text is not null/undefined
+
+    if (zeroVolumeKeywords.length === 0) {
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] No zero-volume keywords found for ${researchId}. Nothing to refine.`
+      );
+      return { success: true, addedKeywordsCount: 0 };
+    }
+
+    console.log(
+      `[Server Action][refineZeroVolumeKeywords] Found ${zeroVolumeKeywords.length} zero-volume keywords to process.`
+    );
+
+    // 3. Call AI to identify parent keywords (Hypothetical)
+    // This function needs to be implemented elsewhere, using your AI provider/library
+    // It should handle API calls, errors, and return a mapping.
+    // Example: { "零量關鍵字 A": "父關鍵字 X", "零量關鍵字 B": "父關鍵字 Y", ... }
+    let parentKeywordMap: Record<string, string> = {};
+    try {
+      parentKeywordMap = await identifyParentKeywordsFromAI(zeroVolumeKeywords);
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] AI identified ${
+          Object.keys(parentKeywordMap).length
+        } parent keywords.`
+      );
+    } catch (aiError) {
+      console.error(
+        `[Server Action][refineZeroVolumeKeywords] AI parent keyword identification failed for ${researchId}:`,
+        aiError
+      );
+      // Decide if we should stop or continue without AI results
+      return {
+        success: false,
+        error: `AI identification failed: ${
+          aiError instanceof Error ? aiError.message : String(aiError)
+        }`
+      };
+    }
+
+    const uniqueParentKeywords = [
+      ...new Set(Object.values(parentKeywordMap))
+    ].filter(kw => kw.trim() !== ''); // Get unique, non-empty parent keywords
+
+    if (uniqueParentKeywords.length === 0) {
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] No valid parent keywords identified by AI for ${researchId}.`
+      );
+      return { success: true, addedKeywordsCount: 0 };
+    }
+
+    console.log(
+      `[Server Action][refineZeroVolumeKeywords] Processing ${
+        uniqueParentKeywords.length
+      } unique parent keywords: ${uniqueParentKeywords.join(', ')}`
+    );
+
+    // 4. Fetch suggestions and volume for parent keywords
+    let newKeywordsFromParents: KeywordVolumeItem[] = [];
+    for (const parentKeyword of uniqueParentKeywords) {
+      try {
+        // Fetch suggestions (limit?)
+        // Assuming default useAlphabet=false, useSymbols=false for refinement
+        const suggestionsResult = await getKeywordSuggestions(
+          parentKeyword,
+          region,
+          language,
+          false,
+          false
+        );
+        const suggestions = suggestionsResult.suggestions || [];
+        if (suggestions.length > 0) {
+          // Fetch volume (limit?)
+          const volumeResult = await getSearchVolume(
+            suggestions,
+            region,
+            undefined, // Not URL-based
+            language
+          );
+          if (volumeResult.results && volumeResult.results.length > 0) {
+            newKeywordsFromParents = newKeywordsFromParents.concat(
+              volumeResult.results as KeywordVolumeItem[] // Type assertion
+            );
+          } else if (volumeResult.error) {
+            console.warn(
+              `[Server Action][refineZeroVolumeKeywords] Volume fetch failed for suggestions of '${parentKeyword}': ${volumeResult.error}`
+            );
+          }
+        } else if (suggestionsResult.error) {
+          console.warn(
+            `[Server Action][refineZeroVolumeKeywords] Suggestion fetch failed for '${parentKeyword}': ${suggestionsResult.error}`
+          );
+        }
+      } catch (fetchError) {
+        console.error(
+          `[Server Action][refineZeroVolumeKeywords] Error fetching data for parent keyword '${parentKeyword}':`,
+          fetchError
+        );
+      }
+      // Optional: Add delay between parent keyword processing
+      await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+    }
+
+    if (newKeywordsFromParents.length === 0) {
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] No new keywords found from parent keyword searches for ${researchId}.`
+      );
+      return { success: true, addedKeywordsCount: 0 };
+    }
+
+    console.log(
+      `[Server Action][refineZeroVolumeKeywords] Found ${newKeywordsFromParents.length} new potential keywords from parent searches.`
+    );
+
+    // 5. Merge and Deduplicate
+    const combinedKeywords = [...originalKeywords, ...newKeywordsFromParents];
+    const finalKeywordMap = new Map<string, KeywordVolumeItem>();
+
+    combinedKeywords.forEach(item => {
+      if (!item || !item.text) return; // Skip invalid items
+
+      const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
+      const existingEntry = finalKeywordMap.get(normalizedText);
+      const currentVolume = item.searchVolume ?? -1; // Use -1 to prioritize 0 over null/undefined slightly
+
+      // Add if new, or if current item has volume and existing doesn't,
+      // or if current item has higher volume than existing.
+      if (
+        !existingEntry ||
+        (currentVolume >= 0 && (existingEntry.searchVolume ?? -1) < 0) ||
+        currentVolume > (existingEntry.searchVolume ?? -1)
+      ) {
+        // Ensure we store a complete KeywordVolumeItem
+        finalKeywordMap.set(normalizedText, {
+          text: item.text, // Keep original casing/spacing from the prioritized item
+          searchVolume: item.searchVolume,
+          competition: item.competition,
+          competitionIndex: item.competitionIndex,
+          cpc: item.cpc
+          // Ensure all relevant fields are included
+        });
+      }
+    });
+
+    const finalKeywordsToSave: KeywordVolumeItem[] = Array.from(
+      finalKeywordMap.values()
+    );
+    const addedCount = finalKeywordsToSave.length - originalKeywords.length;
+
+    console.log(
+      `[Server Action][refineZeroVolumeKeywords] Merged and deduplicated keywords for ${researchId}. Original: ${originalKeywords.length}, New: ${newKeywordsFromParents.length}, Final: ${finalKeywordsToSave.length}. Added: ${addedCount}`
+    );
+
+    // 6. Update the research item
+    if (addedCount > 0) {
+      const updateResult = await updateKeywordResearchKeywords(
+        researchId,
+        finalKeywordsToSave
+      );
+
+      if (!updateResult.success) {
+        throw new Error(
+          `Failed to save updated keywords: ${
+            updateResult.error || 'Unknown update error'
+          }`
+        );
+      }
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] Successfully updated keywords for ${researchId}.`
+      );
+
+      // 7. Revalidate cache
+      await revalidateResearch(researchId);
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] Revalidated cache for ${researchId}.`
+      );
+    } else {
+      console.log(
+        `[Server Action][refineZeroVolumeKeywords] No new keywords added after refinement for ${researchId}. No update needed.`
+      );
+    }
+
+    return { success: true, addedKeywordsCount: addedCount };
+  } catch (error) {
+    const errorMsg = `[Server Action][refineZeroVolumeKeywords] Error refining keywords for ${researchId}:`;
+    console.error(errorMsg, error);
+    // Attempt to update status to failed? Maybe not needed here.
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : 'Failed to refine keywords.'
     };
   }
 }

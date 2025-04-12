@@ -1,6 +1,6 @@
+import { SettingsDialog } from '@/app/keyword-mapping/components/settings-dialog';
 import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
 import { ModeToggle } from '@/components/common/mode-toggle';
-import { SettingsDialog } from '@/components/settings-tool/settings-dialog';
 import { SettingsProvider } from '@/providers/settings-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import type { Metadata, Viewport } from 'next';

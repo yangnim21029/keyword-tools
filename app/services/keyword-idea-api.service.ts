@@ -1,11 +1,5 @@
 // --- Google Ads API Functions and constants ---
 
-// Remove import of API_VERSION from constants
-// import { API_VERSION } from '@/app/config/constants';
-
-// Remove imports of utility functions
-// import { estimateProcessingTime, isSimplifiedChinese } from '@/lib/utils-common';
-
 import { KeywordVolumeItem, KeywordVolumeResult } from '@/lib/schema';
 
 // Add API_VERSION constant directly in this file
@@ -130,16 +124,6 @@ const simplifiedToTraditional: Record<string, string> = {
 };
 
 /**
- * 檢測文字是否為簡體中文
- * @param text 要檢查的文字
- * @returns 是否為簡體中文
- */
-function isSimplifiedChinese(text: string): boolean {
-  const type = detectChineseType(text);
-  return type === 'simplified';
-}
-
-/**
  * 檢測文字的中文類型
  * @param text 要檢查的文字
  * @returns 中文類型: 'simplified'(簡體中文), 'traditional'(繁體中文), 'mixed'(混合), 'none'(非中文)
@@ -194,8 +178,7 @@ export function detectChineseType(
 export function filterSimplifiedChinese(keywords: string[]): string[] {
   return keywords.filter(keyword => {
     const type = detectChineseType(keyword);
-    // Keep the keyword if it's NOT simplified (regardless of spaces)
-    return type !== 'simplified'; // Removed the whitespace check: && !/\s/.test(keyword)
+    return type !== 'simplified';
   });
 }
 
@@ -366,8 +349,6 @@ export function getCompetitionLevel(competitionEnum: number): string {
   return competitionLevels[competitionEnum] || String(competitionEnum);
 }
 
-// Regex to check for CJK characters
-const cjkRegex = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/;
 // Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
 const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
 
@@ -394,7 +375,7 @@ const LOCATION_NAME_TO_CODE: Record<string, string> = {
  * Gets keyword search volume data.
  */
 export async function getSearchVolume(
-  keywords: string[],
+  keywords: string[], // Input keywords from keyword-research action
   region: string,
   url: string | undefined,
   language: string
@@ -404,34 +385,31 @@ export async function getSearchVolume(
   const sourceInfo = 'Google Ads API';
   const isUrl = url !== undefined;
 
-  // Map the input language to a Google Ads API language code/ID.
-  // Use 'en' as a fallback if the specific language isn't mapped or invalid.
-  const apiLanguageCode = language.replace('-', '_'); // e.g., 'zh-TW' -> 'zh_TW'
-  const languageId =
-    LANGUAGE_CODES[apiLanguageCode] || LANGUAGE_CODES['en'] || 1000; // Default to English (ID 1000) if specific language not found
+  // --- Add Log: Show received keywords ---
+  console.log(
+    `[getSearchVolume] Received ${keywords.length} keywords to process:`,
+    keywords
+  );
+  // --- End Log ---
 
-  // Convert region name to code if needed
+  // Map language
+  const apiLanguageCode = language.replace('-', '_');
+  const languageId = LANGUAGE_CODES[apiLanguageCode];
+  if (!languageId) throw new Error(`Invalid language code: ${language}`);
+
+  // Map region
   let regionCode = region.toUpperCase();
-  if (LOCATION_NAME_TO_CODE[region]) {
-    regionCode = LOCATION_NAME_TO_CODE[region];
-  }
-
-  // Map region to Google Ads API location ID. Default to Taiwan (2158) if not found.
+  if (LOCATION_NAME_TO_CODE[region]) regionCode = LOCATION_NAME_TO_CODE[region];
   const locationId = LOCATION_CODES[regionCode];
-  if (!locationId) {
-    throw new Error(
-      `Invalid region code: ${region}. Please use a valid region code from LOCATION_CODES.`
-    );
-  }
+  if (!locationId) throw new Error(`Invalid region code: ${region}.`);
 
   console.log(
-    `Fetching search volume data for Region: ${region} (Loc ID: ${locationId}), Language: ${language} (Lang ID: ${languageId})`
+    `[getSearchVolume] Fetching volume: Region=${region}(${locationId}), Language=${language}(${languageId})`
   );
-  // Log if URL was provided, even if not used in this specific function's core logic
-  if (isUrl) {
-    console.log(`URL provided (currently informational): ${url}`);
-  }
+  if (isUrl)
+    console.log(`[getSearchVolume] URL provided (informational): ${url}`);
 
+  // Check credentials
   if (
     !DEVELOPER_TOKEN ||
     !CLIENT_ID ||
@@ -439,27 +417,23 @@ export async function getSearchVolume(
     !REFRESH_TOKEN ||
     !CUSTOMER_ID
   ) {
-    // Consider using a more specific error type or logging details appropriately
-    throw new Error(
-      'Missing Google Ads API credentials, check environment variables'
-    );
+    throw new Error('Missing Google Ads API credentials.');
   }
 
   const allResults: KeywordVolumeItem[] = [];
-  const processedKeywords = new Map<string, boolean>(); // Track processed keywords to avoid duplicates from API variations
+  const processedKeywords = new Map<string, boolean>();
 
   try {
-    const batchSize = 20; // Google Ads API recommended max keywords per request is higher, but batching helps manage load/timeouts
+    const batchSize = 20;
 
-    // Filter out unwanted keywords (e.g., duplicates, specific scripts if necessary)
-    // Example: filterSimplifiedChinese might be relevant depending on target languages
+    // Filter simplified Chinese from the *input* list
     const filteredKeywords = filterSimplifiedChinese(keywords);
-    const uniqueBaseKeywords = [...new Set(filteredKeywords)];
+    const uniqueBaseKeywords = [...new Set(filteredKeywords)]; // Deduplicate based on input
 
-    // Generate spaced variations ONLY for CJK keywords if applicable and sensible
+    // --- Internal Space Variation Generation ---
+    // This happens INSIDE getSearchVolume, based on the uniqueBaseKeywords derived from input
     const spacedVariations: string[] = [];
     for (const keyword of uniqueBaseKeywords) {
-      // Check if the keyword consists only of CJK characters, has no spaces, and is within a reasonable length
       if (
         onlyCjkRegex.test(keyword) &&
         keyword.length > 1 &&
@@ -470,164 +444,125 @@ export async function getSearchVolume(
         spacedVariations.push(spacedKeyword);
       }
     }
+    // --- End Internal Variation Generation ---
 
-    // Combine original keywords and spaced variations, ensuring final uniqueness
+    // Combine original unique keywords AND internally generated spaced variations for API query
     const keywordsToQuery = [
       ...new Set([...spacedVariations, ...uniqueBaseKeywords])
     ];
 
-    if (keywordsToQuery.length > uniqueBaseKeywords.length) {
-      console.log(
-        `Added ${
-          keywordsToQuery.length - uniqueBaseKeywords.length
-        } spaced variations for CJK keywords.`
-      );
-    } else if (uniqueBaseKeywords.length < keywords.length) {
-      console.log(
-        `Removed ${
-          keywords.length - uniqueBaseKeywords.length
-        } duplicate or potentially filtered keywords initially.`
-      );
-    }
+    // --- Add Log: Show keywords actually being sent to API ---
+    console.log(
+      `[getSearchVolume] Total keywords/variations prepared for API query: ${keywordsToQuery.length}`
+    );
+    console.log('[getSearchVolume] List sent to API batches:', keywordsToQuery);
+    // --- End Log ---
 
-    // --- API Call Loop ---
+    // --- API Call Loop (Retry logic remains the same) ---
     for (let i = 0; i < keywordsToQuery.length; i += batchSize) {
-      // Add a small delay between batches to avoid hitting rate limits
-      await new Promise(resolve => setTimeout(resolve, 250)); // 250ms delay
-
+      await new Promise(resolve => setTimeout(resolve, 250)); // Delay
       const batchKeywords = keywordsToQuery.slice(i, i + batchSize);
-
       console.log(
-        `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
-          keywordsToQuery.length / batchSize
-        )}, ${batchKeywords.length} keywords.`
+        `[getSearchVolume] Processing batch ${
+          Math.floor(i / batchSize) + 1
+        }/${Math.ceil(keywordsToQuery.length / batchSize)}, ${
+          batchKeywords.length
+        } keywords.`
       );
 
-      // --- Add Retry Logic for API Call ---
       const MAX_RETRIES = 3;
       let retries = 0;
-      let response: any; // Define response variable outside the loop
+      let response: any;
       let success = false;
 
       while (retries < MAX_RETRIES && !success) {
         try {
-          // Call the underlying function to fetch keyword ideas/volumes from Google Ads API
           response = await fetchKeywordIdeas(
             batchKeywords,
             locationId,
             languageId
           );
-          success = true; // Mark as success if no error is thrown
-          console.log(
-            `Batch ${Math.floor(i / batchSize) + 1}: API call successful.`
-          );
+          success = true;
+          // console.log(`[getSearchVolume] Batch ${Math.floor(i / batchSize) + 1}: API call successful.`); // Less verbose
         } catch (error: unknown) {
           retries++;
           console.error(
-            `Batch ${Math.floor(i / batchSize) + 1} attempt ${retries} failed:`,
+            `[getSearchVolume] Batch ${
+              Math.floor(i / batchSize) + 1
+            } attempt ${retries} failed:`,
             error
           );
-
           const errorMessage =
             error instanceof Error ? error.message : String(error);
-
-          // Check for 429 error and retry suggestion
           if (errorMessage.includes('429') && retries < MAX_RETRIES) {
-            let retryDelayMs = 5000; // Default delay 5 seconds
+            let retryDelayMs = 5000;
             const retryMatch = errorMessage.match(/Retry in (\d+) seconds?/i);
-            if (retryMatch && retryMatch[1]) {
-              retryDelayMs = parseInt(retryMatch[1], 10) * 1000;
-              // Add a small buffer just in case
-              retryDelayMs = Math.max(retryDelayMs + 500, 1000); // Ensure at least 1 second delay
-            }
-
+            if (retryMatch && retryMatch[1])
+              retryDelayMs = parseInt(retryMatch[1], 10) * 1000 + 500;
             console.log(
-              `Batch ${
+              `[getSearchVolume] Retrying batch ${
                 Math.floor(i / batchSize) + 1
-              }: Received 429. Retrying attempt ${
-                retries + 1
-              }/${MAX_RETRIES} after ${retryDelayMs}ms...`
+              } after ${retryDelayMs}ms...`
             );
             await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-            continue; // Continue to the next iteration of the while loop (retry)
+            continue;
           }
-
-          // If not a 429 error, or max retries reached, re-throw to be caught by the outer try/catch
           console.error(
-            `Batch ${
+            `[getSearchVolume] Non-retryable error or max retries reached for batch ${
               Math.floor(i / batchSize) + 1
-            }: Non-retryable error or max retries reached. Propagating error.`
+            }.`
           );
-          throw error;
+          throw error; // Propagate error for the batch
         }
-      }
-      // --- End Retry Logic ---
+      } // End retry while loop
 
-      // If loop finished without success (e.g., max retries reached and final attempt failed)
       if (!success) {
         console.error(
-          `Batch ${
+          `[getSearchVolume] Batch ${
             Math.floor(i / batchSize) + 1
-          }: Failed after ${MAX_RETRIES} attempts. Skipping batch.`
+          } failed after ${MAX_RETRIES} attempts. Skipping batch results.`
         );
-        // Depending on desired behavior, you could continue to the next batch or throw an error.
-        // For now, let's continue to potentially process other batches.
         continue; // Skip processing results for this failed batch
       }
 
-      const keywordIdeas = response.results || []; // Ensure results is an array
-
-      // --- Process Batch Results ---
+      // Process Batch Results (logic remains the same)
+      const keywordIdeas = response.results || [];
       for (const idea of keywordIdeas) {
         try {
           const text = idea.text || '';
-          // Skip if the keyword text is empty or already processed
           if (!text || processedKeywords.has(text)) continue;
-
           const metrics = idea.keywordIdeaMetrics || {};
-          const rawSearchVolume = metrics.avgMonthlySearches; // 月搜索量
-
-          // Safely parse search volume
           let searchVolumeValue: number | undefined = undefined;
-          if (rawSearchVolume != null) {
-            const parsed = parseInt(String(rawSearchVolume), 10);
-            if (!isNaN(parsed)) {
-              searchVolumeValue = parsed;
-            }
+          if (metrics.avgMonthlySearches != null) {
+            const parsed = parseInt(String(metrics.avgMonthlySearches), 10);
+            if (!isNaN(parsed)) searchVolumeValue = parsed;
           }
-
-          // Safely parse CPC (Low Top of Page Bid Micros)
           let cpcValue: number | null = null;
           if (metrics.lowTopOfPageBidMicros != null) {
             const parsedCpc = Number(metrics.lowTopOfPageBidMicros);
-            if (!isNaN(parsedCpc)) {
-              // Convert micros to standard currency unit (e.g., USD) and round
+            if (!isNaN(parsedCpc))
               cpcValue = Number((parsedCpc / 1000000).toFixed(2));
-            }
           }
-
-          // Safely parse Competition Index
           let competitionIndexValue: number | undefined = undefined;
           if (metrics.competitionIndex != null) {
             const parsedCompIndex = Number(metrics.competitionIndex);
-            if (!isNaN(parsedCompIndex)) {
-              competitionIndexValue = Number(parsedCompIndex.toFixed(2)); // Round to 2 decimal places
-            }
+            if (!isNaN(parsedCompIndex))
+              competitionIndexValue = Number(parsedCompIndex.toFixed(2));
           }
           const result: KeywordVolumeItem = {
             text: text,
             searchVolume: searchVolumeValue,
-            competition: getCompetitionLevel(metrics.competition || 0), // Map numeric competition enum to string
+            competition: getCompetitionLevel(metrics.competition || 0),
             competitionIndex: competitionIndexValue,
             cpc: cpcValue
           };
-
           allResults.push(result);
-          processedKeywords.set(text, true); // Mark this keyword text as processed
+          processedKeywords.set(text, true);
         } catch (itemError) {
-          // Log errors processing individual items but continue the loop
           console.error(
-            `Error processing keyword idea "${idea.text || 'N/A'}":`,
+            `[getSearchVolume] Error processing keyword idea "${
+              idea.text || 'N/A'
+            }":`,
             itemError
           );
         }
@@ -638,44 +573,29 @@ export async function getSearchVolume(
     const actualTime: number = Math.round((endTime - startTime) / 1000);
 
     console.log(
-      `Successfully processed ${keywordsToQuery.length} keywords/variations. Found volume data for ${allResults.length} unique keywords.`
+      `[getSearchVolume] Successfully processed. Found volume data for ${allResults.length} unique keywords/variations returned by API.`
     );
-    // log allResults
-    for (const result of allResults) {
-      console.log(
-        `result: ${result.text} ${result.searchVolume} ${result.competition} ${result.competitionIndex} ${result.cpc}`
-      );
-    }
+    // console.log("[getSearchVolume] Final results:", allResults); // Optional: uncomment for detailed debug
 
     return {
-      results: allResults,
-      processingTime: {
-        estimated: estimatedTime,
-        actual: actualTime
-      },
+      results: allResults, // Return only the results from API
+      processingTime: { estimated: estimatedTime, actual: actualTime },
       sourceInfo: sourceInfo,
-      researchId: null // Assuming researchId is handled elsewhere or not applicable here
+      researchId: null
     };
   } catch (error: unknown) {
-    console.error('Error fetching search volume from Google Ads API:', error);
+    console.error('[getSearchVolume] Error fetching search volume:', error);
     const endTime = Date.now();
     const actualTime: number = Math.round((endTime - startTime) / 1000);
-    // Provide a more informative error message back to the caller
     const errorMessage =
-      error instanceof Error
-        ? error.message
-        : 'An unexpected error occurred while fetching keyword volume data.';
-
-    // Return an error structure consistent with the expected return type
+      error instanceof Error ? error.message : 'An unexpected error occurred.';
     return {
+      // Return error structure
       results: [],
-      processingTime: {
-        estimated: estimatedTime, // Keep estimated time if available
-        actual: actualTime
-      },
+      processingTime: { estimated: estimatedTime, actual: actualTime },
       error: errorMessage,
       sourceInfo: 'Error',
       researchId: null
-    }; // Explicitly cast or ensure type compatibility if needed
+    };
   }
 }

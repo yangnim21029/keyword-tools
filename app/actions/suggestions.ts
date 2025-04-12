@@ -4,7 +4,7 @@ import { ALPHABET, SYMBOLS } from '@/app/config/constants';
 import {
   estimateProcessingTime,
   filterSimplifiedChinese
-} from '@/app/services/keyword-data.service';
+} from '@/app/services/keyword-idea-api.service';
 import { fetchAutocomplete } from '@/app/services/suggestion.service';
 import { KeywordSuggestionResult } from '@/lib/schema';
 
