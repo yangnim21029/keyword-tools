@@ -69,7 +69,7 @@ export default function RootLayout({
                       href="/keyword-mapping"
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      新的
+                      查詢
                     </Link>
                     <Link
                       href="/help"
@@ -77,9 +77,12 @@ export default function RootLayout({
                     >
                       說明
                     </Link>
-                    <span className="text-xs text-muted-foreground/70">
-                      v0.1.0
-                    </span>
+                    <Link 
+                      href="/dev" 
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                       各站成效
+                    </Link>
                   </nav>
                 </div>
                 <div className="flex items-center gap-2 ml-auto">

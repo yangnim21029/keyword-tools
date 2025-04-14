@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
+import React from 'react'
 
 const GscDataSchema = z.object({
   site_id: z.string(),
@@ -317,13 +318,10 @@ export default async function DevPage({ searchParams }: {
 }) {
   async function submitQueries(formData: FormData) {
     'use server'
-    
     const queriesInput = formData.get('queries') as string || ''
     const queries = queriesInput.split(/[,\n]+/).map(q => q.trim()).filter(q => q !== '')
-
     const newSearchParams = new URLSearchParams()
     queries.forEach(q => newSearchParams.append('q', q))
-
     redirect(`/dev?${newSearchParams.toString()}`)
   }
 
@@ -336,66 +334,43 @@ export default async function DevPage({ searchParams }: {
   } else if (Array.isArray(qParam)) {
     currentQueries = qParam;
   }
-
   if (currentQueries.length === 0) {
     currentQueries = ['面膜', '保養', '精華'];
   }
 
-  const data = await fetchGscData(currentQueries)
-  const uniqueDataItems = deduplicateData(data)
-  const topPagesBySite = processPageData(uniqueDataItems)
-  const siteKeywordData = processSiteKeywordData(uniqueDataItems)
+  const data = await fetchGscData(currentQueries);
+  const uniqueDataItems = deduplicateData(data);
+  const topPagesBySite = processPageData(uniqueDataItems);
+  const siteKeywordData = processSiteKeywordData(uniqueDataItems);
 
   const topPagesColumns = [
-    { key: 'rank', label: '排名' },
-    { key: 'site', label: '網站' },
-    { key: 'page', label: '頁面' },
-    { key: 'impressions', label: '展示' },
-    { key: 'clicks', label: '點擊' },
-    { key: 'ctr', label: 'CTR' },
-    { key: 'position', label: '排名' },
-    { key: 'keywordCount', label: '詞數' },
-    { key: 'topKeyword', label: '最高流量詞' }
-  ]
-
+    { key: 'rank', label: '排名' }, { key: 'site', label: '網站' }, { key: 'page', label: '頁面' },
+    { key: 'impressions', label: '展示' }, { key: 'clicks', label: '點擊' }, { key: 'ctr', label: 'CTR' },
+    { key: 'position', label: '排名' }, { key: 'keywordCount', label: '詞數' }, { key: 'topKeyword', label: '最高流量詞' }
+  ];
   const mostKeywordsColumns = [
-      { key: 'rank', label: '排名' },
-      { key: 'page', label: '頁面' },
-      { key: 'keywordCount', label: '關鍵字數' },
-      { key: 'keywords', label: '關鍵字 (依展示排序)' }
-  ]
-
+      { key: 'rank', label: '排名' }, { key: 'page', label: '頁面' },
+      { key: 'keywordCount', label: '關鍵字數' }, { key: 'keywords', label: '關鍵字 (依展示排序)' }
+  ];
   const rawDataColumns = [
-      { key: 'site_id', label: '網站' },
-      { key: 'keyword', label: '關鍵字' },
-      { key: 'mean_position', label: '平均排名' },
-      { key: 'min_position', label: '最低排名' },
-      { key: 'max_position', label: '最高排名' },
-      { key: 'total_clicks', label: '點擊' },
-      { key: 'total_impressions', label: '展示' },
-      { key: 'overall_ctr', label: 'CTR (%)' },
-      { key: 'associated_pages', label: '關聯頁面' },
-  ]
-
-  // Create a new array sorted by keyword count for the "Most Keywords" table
-  const pagesSortedByKeywordCount = [...topPagesBySite]
-    .sort((a, b) => b.keyword_count - a.keyword_count)
-    .slice(0, 10);
-
-  // Get top N sites for keyword breakdown
-  const topSitesData = siteKeywordData.slice(0, 10); // Show top 10 sites
-
-  // NEW: Define columns for the Site Keyword Table
+      { key: 'site_id', label: '網站' }, { key: 'keyword', label: '關鍵字' },
+      { key: 'mean_position', label: '平均排名' }, { key: 'min_position', label: '最低排名' }, { key: 'max_position', label: '最高排名' },
+      { key: 'total_clicks', label: '點擊' }, { key: 'total_impressions', label: '展示' },
+      { key: 'overall_ctr', label: 'CTR (%)' }, { key: 'associated_pages', label: '關聯頁面' },
+  ];
   const siteKeywordTableColumns = [
       { key: 'rank', label: '排名' }, 
       { key: 'siteId', label: '網站' }, 
       { key: 'totalImpressions', label: '總展示' }, 
-      { key: 'impressionShare', label: '總展示佔比 (%)' },
+      { key: 'impressionShare', label: '總展示佔比 (%)' }, 
       { key: 'totalClicks', label: '總點擊' }, 
       { key: 'topKeywords', label: '主要關鍵字 (依展示排序)' }
   ];
 
-  // Calculate total impressions *only for the sites displayed in this table*
+  const pagesSortedByKeywordCount = [...topPagesBySite]
+    .sort((a, b) => b.keyword_count - a.keyword_count)
+    .slice(0, 10);
+  const topSitesData = siteKeywordData.slice(0, 10);
   const totalImpressionsInTable = topSitesData.reduce((sum, site) => sum + site.totalSiteImpressions, 0);
 
   return (
@@ -419,107 +394,107 @@ export default async function DevPage({ searchParams }: {
           查詢
         </button>
       </form>
-
       <h1 className="text-xl font-bold">GSC Data Analysis for: {currentQueries.join(', ')}</h1>
+      
+      <div className="space-y-6">
+        <DataTable
+          title="各站最高流量頁面 (依頁面展示排序)"
+          columns={topPagesColumns}
+          data={topPagesBySite}
+          renderRow={(item, index) => (
+            <tr key={index} className="hover:bg-gray-50 text-sm">
+              <td className="px-4 py-1.5">{index + 1}</td>
+              <td className="px-4 py-1.5">{item.site_id}</td>
+              <td className="px-4 py-1.5">
+                <PageLink url={item.url} displayText={item.displayText} />
+              </td>
+              <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
+              <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
+              <td className="px-4 py-1.5 text-right">{item.ctr.toFixed(2)}%</td>
+              <td className="px-4 py-1.5 text-right">{item.avg_position.toFixed(1)}</td>
+              <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
+              <td className="px-4 py-1.5">{item.top_keyword}</td>
+            </tr>
+          )}
+        />
 
-      <DataTable
-        title="各站最高流量頁面 (依頁面展示排序)"
-        columns={topPagesColumns}
-        data={topPagesBySite}
-        renderRow={(item, index) => (
-          <tr key={index} className="hover:bg-gray-50 text-sm">
-            <td className="px-4 py-1.5">{index + 1}</td>
-            <td className="px-4 py-1.5">{item.site_id}</td>
-            <td className="px-4 py-1.5">
-              <PageLink url={item.url} displayText={item.displayText} />
-            </td>
-            <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right">{item.ctr.toFixed(2)}%</td>
-            <td className="px-4 py-1.5 text-right">{item.avg_position.toFixed(1)}</td>
-            <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
-            <td className="px-4 py-1.5">{item.top_keyword}</td>
-          </tr>
-        )}
-      />
+        <DataTable
+          title="主要流量網站與關鍵字 (依網站總展示排序)"
+          columns={siteKeywordTableColumns}
+          data={topSitesData}
+          renderRow={(siteInfo, index) => {
+            const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
+            const percentage = totalImpressionsInTable > 0
+              ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
+              : 0;
+            return (
+              <tr key={index} className="hover:bg-gray-50 text-sm">
+                <td className="px-4 py-1.5">{index + 1}</td>
+                <td className="px-4 py-1.5">
+                  <div className="flex items-center gap-2">
+                    {faviconUrl && (
+                      <Image
+                        src={faviconUrl}
+                        alt=""
+                        width={16}
+                        height={16}
+                        className="w-4 h-4 flex-shrink-0"
+                        loading="lazy"
+                      />
+                    )}
+                    <span>{siteInfo.siteId}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteImpressions.toLocaleString()}</td>
+                <td className="px-4 py-1.5 text-right">{percentage.toFixed(1)}%</td>
+                <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteClicks.toLocaleString()}</td>
+                <td className="px-4 py-1.5">
+                  <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
+                </td>
+              </tr>
+            );
+          }}
+        />
 
-      <DataTable
-        title="主要流量網站與關鍵字 (依網站總展示排序)"
-        columns={siteKeywordTableColumns}
-        data={topSitesData}
-        renderRow={(siteInfo, index) => {
-          const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
-          // Calculate percentage share
-          const percentage = totalImpressionsInTable > 0
-            ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
-            : 0;
-          return (
+        <DataTable
+          title="包含最多關鍵字的頁面 (取前10頁，依關鍵字數量排序)"
+          columns={mostKeywordsColumns}
+          data={pagesSortedByKeywordCount}
+          renderRow={(item, index) => (
             <tr key={index} className="hover:bg-gray-50 text-sm">
               <td className="px-4 py-1.5">{index + 1}</td>
               <td className="px-4 py-1.5">
-                <div className="flex items-center gap-2">
-                  {faviconUrl && (
-                    <Image
-                      src={faviconUrl}
-                      alt=""
-                      width={16}
-                      height={16}
-                      className="w-4 h-4 flex-shrink-0"
-                      loading="lazy"
-                    />
-                  )}
-                  <span>{siteInfo.siteId}</span>
-                </div>
+                <PageLink url={item.url} displayText={item.displayText} />
               </td>
-              <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteImpressions.toLocaleString()}</td>
-              <td className="px-4 py-1.5 text-right">{percentage.toFixed(1)}%</td>
-              <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteClicks.toLocaleString()}</td>
+              <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
               <td className="px-4 py-1.5">
-                <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
+                <KeywordTags keywords={item.keywords} />
               </td>
             </tr>
-          );
-        }}
-      />
+          )}
+        />
 
-      <DataTable
-        title="包含最多關鍵字的頁面 (取前10頁，依關鍵字數量排序)"
-        columns={mostKeywordsColumns}
-        data={pagesSortedByKeywordCount}
-        renderRow={(item, index) => (
-          <tr key={index} className="hover:bg-gray-50 text-sm">
-            <td className="px-4 py-1.5">{index + 1}</td>
-            <td className="px-4 py-1.5">
-              <PageLink url={item.url} displayText={item.displayText} />
-            </td>
-            <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
-            <td className="px-4 py-1.5">
-              <KeywordTags keywords={item.keywords} />
-            </td>
-          </tr>
-        )}
-      />
-
-      <DataTable
-        title="原始 GSC 數據 (依預設排序)"
-        columns={rawDataColumns}
-        data={data}
-        renderRow={(item, index) => (
-          <tr key={index} className="hover:bg-gray-50 text-sm">
-            <td className="px-4 py-1.5">{item.site_id}</td>
-            <td className="px-4 py-1.5">{item.keyword}</td>
-            <td className="px-4 py-1.5 text-right">{item.mean_position.toFixed(1)}</td>
-            <td className="px-4 py-1.5 text-right">{item.min_position}</td>
-            <td className="px-4 py-1.5 text-right">{item.max_position}</td>
-            <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right">{(item.overall_ctr * 100).toFixed(2)}%</td>
-            <td className="px-4 py-1.5 text-xs max-w-[250px] truncate">
-              {Array.isArray(item.associated_pages) ? item.associated_pages.join(', ') : ''}
-            </td>
-          </tr>
-        )}
-      />
+        <DataTable
+          title="原始 GSC 數據 (依預設排序)"
+          columns={rawDataColumns}
+          data={data}
+          renderRow={(item, index) => (
+            <tr key={index} className="hover:bg-gray-50 text-sm">
+              <td className="px-4 py-1.5">{item.site_id}</td>
+              <td className="px-4 py-1.5">{item.keyword}</td>
+              <td className="px-4 py-1.5 text-right">{item.mean_position.toFixed(1)}</td>
+              <td className="px-4 py-1.5 text-right">{item.min_position}</td>
+              <td className="px-4 py-1.5 text-right">{item.max_position}</td>
+              <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
+              <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
+              <td className="px-4 py-1.5 text-right">{(item.overall_ctr * 100).toFixed(2)}%</td>
+              <td className="px-4 py-1.5 text-xs max-w-[250px] truncate">
+                {Array.isArray(item.associated_pages) ? item.associated_pages.join(', ') : ''}
+              </td>
+            </tr>
+          )}
+        />
+      </div>
     </div>
-  )
+  );
 }
