@@ -21,12 +21,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-// Import ClusteringStatus from schemas
 import type { ClusteringStatus } from '@/lib/schema';
 
-// Constants for display
-// const DEFAULT_VISIBLE_CLUSTERS = 3; // Keep all visible by default now
-// const DEFAULT_KEYWORDS_PER_CLUSTER = 5; // Show all keywords
 
 // Define structure for processed cluster data
 interface ProcessedCluster {
@@ -80,11 +76,6 @@ export default function KeywordClustering({
     Record<number, boolean>
   >({});
 
-  // Global stores - Only needed for actions triggered from here
-  // const requestSerpAnalysis = useResearchStore((state) => state.actions.requestSerpAnalysis);
-  // const selectedResearchId = useResearchStore((state) => state.state.selectedResearchId);
-  // const savePersonas = useResearchStore((state) => state.actions.savePersonas);
-
   // --- State for Persona Expansion ---
   const [expandedPersonas, setExpandedPersonas] = useState<
     Record<string, boolean>
@@ -102,9 +93,6 @@ export default function KeywordClustering({
     }));
   }, []);
 
-  // Removed handleClustering and related useEffects - Logic moved to page.tsx
-
-  // Removed useEffect for loading keywords/clusters - Data is passed via props
 
   // Memoize sorted clusters with summaries including long-tail keyword list
   const sortedClusters = useMemo((): ProcessedCluster[] => {
@@ -141,18 +129,6 @@ export default function KeywordClustering({
     return clustersWithSummaries.sort((a, b) => b.totalVolume - a.totalVolume);
   }, [clusters, keywordVolumeMap]);
 
-  // Copy keywords function remains
-  const copyKeywords = (keywordsToCopy: string[], index: number) => {
-    if (!Array.isArray(keywordsToCopy)) return;
-    try {
-      navigator.clipboard.writeText(keywordsToCopy.join('\n'));
-      updateUiState({ copiedClusterIndex: index });
-      setTimeout(() => updateUiState({ copiedClusterIndex: null }), 2000);
-      toast.success(`已複製 ${keywordsToCopy.length} 個關鍵詞`);
-    } catch (err) {
-      toast.error('複製關鍵詞失敗');
-    }
-  };
 
   // Modified: Use the passed callback for starting persona generation/saving
   const onStartPersonaChat = useCallback(
@@ -170,53 +146,7 @@ export default function KeywordClustering({
       // Note: Loading indication and toasts are now handled in the parent (KeywordResearchDetail)
     },
     [researchId, onSavePersona]
-  ); // Depend on props
-
-  // Cluster color logic remains
-  const getClusterColors = (index: number) => {
-    const colors = [
-      {
-        bg: 'bg-blue-50 dark:bg-blue-900/20',
-        border: 'border-blue-200 dark:border-blue-800',
-        text: 'text-blue-700 dark:text-blue-300',
-        badge: 'bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100',
-        volume: 'text-blue-600 dark:text-blue-400'
-      },
-      {
-        bg: 'bg-amber-50 dark:bg-amber-900/20',
-        border: 'border-amber-200 dark:border-amber-800',
-        text: 'text-amber-700 dark:text-amber-300',
-        badge:
-          'bg-amber-100 dark:bg-amber-800 text-amber-800 dark:text-amber-100',
-        volume: 'text-amber-600 dark:text-amber-400'
-      },
-      {
-        bg: 'bg-green-50 dark:bg-green-900/20',
-        border: 'border-green-200 dark:border-green-800',
-        text: 'text-green-700 dark:text-green-300',
-        badge:
-          'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100',
-        volume: 'text-green-600 dark:text-green-400'
-      },
-      // Add more colors if needed
-      {
-        bg: 'bg-purple-50 dark:bg-purple-900/20',
-        border: 'border-purple-200 dark:border-purple-800',
-        text: 'text-purple-700 dark:text-purple-300',
-        badge:
-          'bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100',
-        volume: 'text-purple-600 dark:text-purple-400'
-      },
-      {
-        bg: 'bg-pink-50 dark:bg-pink-900/20',
-        border: 'border-pink-200 dark:border-pink-800',
-        text: 'text-pink-700 dark:text-pink-300',
-        badge: 'bg-pink-100 dark:bg-pink-800 text-pink-800 dark:text-pink-100',
-        volume: 'text-pink-600 dark:text-pink-400'
-      }
-    ];
-    return colors[index % colors.length];
-  };
+  ); // Depend on prop
 
   // Toggle function
   const toggleSupportingKeywords = (index: number) => {
@@ -362,7 +292,7 @@ export default function KeywordClustering({
                     主題 / 總量
                   </div>
                   <div
-                    className="font-semibold truncate"
+                    className="font-semibold"
                     title={cluster.clusterName}
                   >
                     {cluster.clusterName}
@@ -378,7 +308,7 @@ export default function KeywordClustering({
                   <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
                     主軸關鍵字 / 量
                   </div>
-                  <div className="truncate" title={mainAxisKeyword}>
+                  <div title={mainAxisKeyword}>
                     {mainAxisKeyword}{' '}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

@@ -16,7 +16,6 @@ import {
 import { generateUserPersonaFromClusters } from '@/app/actions/generate-persona';
 
 // Internal Components
-import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { EmptyState } from './empty-state';
 import KeywordClustering from './keyword-clustering';
@@ -29,16 +28,6 @@ import {
   type UserPersona
 } from '@/lib/schema';
 
-// Import RefreshCw icon for the recluster button
-
-// Import Tooltip components and Button
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from '@/components/ui/tooltip';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Updated for Fixed Volume Ranges
 interface VolumeDistributionStats {
@@ -69,7 +58,6 @@ export default function KeywordResearchDetail({
 
   // Local State
   const [isRequestingClustering, setIsRequestingClustering] = useState(false);
-  const [isGeneratingPersonas, setIsGeneratingPersonas] = useState(false);
   const [isSavingPersona, setIsSavingPersona] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -250,8 +238,13 @@ export default function KeywordResearchDetail({
   // 3. Memoize raw personas from prop
   const currentPersonas = useMemo(() => {
     console.log('[KeywordResearchDetail] Recalculating currentPersonas...');
-    // Default to an empty array if personas are null/undefined
-    return (initialResearchDetail?.personas || []) as UserPersona[];
+    const personasFromProp = initialResearchDetail?.personas;
+    // Ensure it's an array, default to empty array otherwise
+    if (Array.isArray(personasFromProp)) {
+      return personasFromProp as UserPersona[];
+    }
+    console.warn('[KeywordResearchDetail] initialResearchDetail.personas was not an array, defaulting to []. Value:', personasFromProp);
+    return [] as UserPersona[];
   }, [initialResearchDetail]);
 
   // 4. Create a map for quick persona lookup by cluster name
@@ -457,107 +450,6 @@ export default function KeywordResearchDetail({
     [researchId, currentPersonas, router, settingsState.personaModel]
   );
 
-  const handleGenerateAllPersonas = useCallback(async () => {
-    console.log('[KeywordResearchDetail] handleGenerateAllPersonas called.');
-    if (
-      !researchId ||
-      !currentClusters ||
-      Object.keys(currentClusters).length === 0
-    ) {
-      toast.error('Cannot generate personas: No clusters available.');
-      return;
-    }
-    setIsGeneratingPersonas(true);
-    setLocalError(null);
-    const clusterEntries = Object.entries(currentClusters);
-    const generatedPersonas: Record<string, string> = (
-      currentPersonas || []
-    ).reduce(
-      (acc, persona) => {
-        acc[persona.name] = persona.description; // Map name to description
-        return acc;
-      },
-      {} as Record<string, string> // Initialize accumulator as the target type
-    );
-    let errorsEncountered = 0;
-    const personaPromises = clusterEntries.map(
-      async ([clusterName, keywords]) => {
-        if (!clusterName || !keywords || keywords.length === 0) return;
-        if (generatedPersonas[clusterName]) return;
-        try {
-          const personaResult = await generateUserPersonaFromClusters({
-            clusterName,
-            keywords,
-            model: settingsState.personaModel || 'gpt-4o-mini'
-          });
-          generatedPersonas[clusterName] = personaResult.userPersona;
-        } catch (error) {
-          errorsEncountered++;
-          toast.error(
-            `Persona generation failed for cluster "${clusterName}": ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }`
-          );
-        }
-      }
-    );
-    await Promise.allSettled(personaPromises);
-    if (
-      Object.keys(generatedPersonas).length >
-      Object.keys(currentPersonas || {}).length
-    ) {
-      try {
-        const updateInput: UpdateKeywordResearchInput = {
-          personas: Object.entries(generatedPersonas).map(
-            ([name, description]): UserPersona => ({
-              name,
-              description,
-              keywords: currentClusters?.[name] || [],
-              characteristics: [],
-              interests: [],
-              painPoints: [],
-              goals: []
-            })
-          ),
-          updatedAt: new Date()
-        };
-        const updateResult = await updateKeywordResearch(
-          researchId,
-          updateInput
-        );
-        if (updateResult.success) {
-          if (errorsEncountered === 0)
-            toast.success('All new user personas generated successfully!');
-          else
-            toast.warning(
-              `Generated personas for ${
-                clusterEntries.length - errorsEncountered
-              } out of ${clusterEntries.length} clusters.`
-            );
-          router.refresh();
-        } else {
-          throw new Error(updateResult.error || 'Failed to save personas.');
-        }
-      } catch (saveError) {
-        toast.error(
-          `Failed to save updated personas: ${
-            saveError instanceof Error ? saveError.message : 'Unknown error'
-          }`
-        );
-        setLocalError(`Failed to save updated personas.`);
-      }
-    } else {
-      toast.info('No new personas were generated.');
-    }
-    setIsGeneratingPersonas(false);
-  }, [
-    researchId,
-    currentClusters,
-    currentPersonas,
-    router,
-    settingsState.personaModel
-  ]);
-
   // --- RENDER LOGIC ---
 
   if (localError) {
@@ -607,19 +499,6 @@ export default function KeywordResearchDetail({
           currentClusters &&
           Object.keys(currentClusters).length > 0 && (
             <div className="mt-6 w-full">
-              {/* {(() => {
-                const clusterCount = Object.keys(currentClusters).length;
-                const keywordCountInClusters = Object.values(currentClusters).reduce(
-                  (sum, keywords) => sum + keywords.length,
-                  0
-                );
-                return (
-                  <h2 className="text-xl font-semibold mb-4">
-                    關鍵詞 "{initialResearchDetail.query}" 的分群結果共 {clusterCount} 個分群，包含 {keywordCountInClusters} 個關鍵詞
-                  </h2>
-                );
-              })()} */}
-
               <KeywordClustering
                 clusters={currentClusters}
                 personasMap={personasMapForClustering}
@@ -660,10 +539,9 @@ export default function KeywordResearchDetail({
 
               <LoadingButton
                 onClick={handleRequestClustering}
-                // Show loading if explicitly requesting OR if status is processing
                 isLoading={isRequestingClustering || currentClusteringStatus === 'processing'}
                 disabled={isRequestingClustering || currentClusteringStatus === 'processing'}
-                variant="outline" // Use outline style for less emphasis
+                variant={currentClusteringStatus === 'processing' ? 'default' : 'outline'}
               >
                 {
                 // Determine button text
@@ -691,36 +569,4 @@ export default function KeywordResearchDetail({
       </div>
     </div>
   );
-}
-
-// Helper function to get status text
-function getStatusText(status: ClusteringStatus | null): string {
-  switch (status) {
-    case 'pending':
-      return '等待中';
-    case 'processing':
-      return '處理中...';
-    case 'completed':
-      return '已完成';
-    case 'failed':
-      return '失敗';
-    default:
-      return '未開始'; // Or 'Idle' or '-'
-  }
-}
-
-// Helper function to get status color (Tailwind classes)
-function getStatusColor(status: ClusteringStatus | null): string {
-  switch (status) {
-    case 'pending':
-      return 'text-yellow-600 dark:text-yellow-400';
-    case 'processing':
-      return 'text-blue-600 dark:text-blue-400';
-    case 'completed':
-      return 'text-green-600 dark:text-green-400';
-    case 'failed':
-      return 'text-red-600 dark:text-red-400';
-    default:
-      return 'text-muted-foreground';
-  }
 }

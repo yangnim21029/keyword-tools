@@ -307,7 +307,7 @@ export async function createKeywordResearch(
       description: '', // Default description
       keywords: [], // Default empty array
       clusters: {}, // Default empty object
-      personas: {}, // Default empty object
+      personas: [], // CORRECT: Initialize as empty array
       clustering_status: 'pending' as ClusteringStatus, // <--- Add initial status
       // ---------------------------------------------------------------
       createdAt: now,

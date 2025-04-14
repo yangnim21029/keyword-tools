@@ -58,7 +58,7 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, LoadingButtonProps>(
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex items-center justify-center bg-background/30 backdrop-blur-[1px] rounded-md z-10"
+            className="absolute inset-0 flex items-center justify-center bg-transparent backdrop-blur-[1px] rounded-md z-10"
           >
             {loadingIcon ? (
               loadingIcon
@@ -68,7 +68,7 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, LoadingButtonProps>(
           </motion.span>
         )}
         
-        <span className={cn("flex items-center justify-center gap-2", isLoading ? "opacity-70" : "")}>
+        <span className={cn("flex items-center justify-center gap-2")}>
           {children}
         </span>
         
