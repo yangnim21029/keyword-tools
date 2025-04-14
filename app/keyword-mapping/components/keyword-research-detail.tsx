@@ -38,6 +38,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Updated for Fixed Volume Ranges
 interface VolumeDistributionStats {
@@ -71,7 +72,6 @@ export default function KeywordResearchDetail({
   const [isGeneratingPersonas, setIsGeneratingPersonas] = useState(false);
   const [isSavingPersona, setIsSavingPersona] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [view, setView] = useState<'volume' | 'cluster'>('volume');
 
   // State for current clustering status, initialize to null (or 'pending' if preferred)
   const [currentClusteringStatus, setCurrentClusteringStatus] =
@@ -249,36 +249,43 @@ export default function KeywordResearchDetail({
 
   // 3. Memoize raw personas from prop
   const currentPersonas = useMemo(() => {
-    return initialResearchDetail?.personas || null;
+    console.log('[KeywordResearchDetail] Recalculating currentPersonas...');
+    // Default to an empty array if personas are null/undefined
+    return (initialResearchDetail?.personas || []) as UserPersona[];
   }, [initialResearchDetail]);
 
-  // 4. Keyword Volume Map (for potential use later, uses deduplicated data)
-  const keywordVolumeMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    sortedUniqueKeywords.forEach(
-      (
-        item: KeywordResearchItem['keywords'] extends (infer K)[] | undefined
-          ? K
-          : never
-      ) => {
-        const keywordText = item.text?.trim().toLowerCase();
-        const volume = item.searchVolume ?? 0;
-        if (keywordText) {
-          map[keywordText] = volume;
+  // 4. Create a map for quick persona lookup by cluster name
+  const personasMapForClustering = useMemo(() => {
+    console.log('[KeywordResearchDetail] Recalculating personasMapForClustering...');
+    const map: Record<string, string> = {};
+    // Iterate over the array of personas
+    if (Array.isArray(currentPersonas)) {
+      currentPersonas.forEach((persona: UserPersona) => {
+        // Store the description string instead of the full object
+        if (persona && persona.name && persona.description) {
+          map[persona.name] = persona.description;
+        } else {
+          console.warn(
+            '[KeywordResearchDetail] Persona object missing name or description:',
+            persona
+          );
         }
+      });
+    }
+    return map;
+  }, [currentPersonas]);
+
+  // 5. Create Keyword Volume Map for quick lookup
+  const keywordVolumeMap = useMemo(() => {
+    console.log('[KeywordResearchDetail] Recalculating keywordVolumeMap...');
+    const map = new Map<string, number>();
+    sortedUniqueKeywords.forEach(kw => {
+      if (kw.text) {
+        map.set(kw.text.toLowerCase(), kw.searchVolume ?? 0);
       }
-    );
+    });
     return map;
   }, [sortedUniqueKeywords]);
-
-  // 5. Memoize personas map for clustering
-  const personasMapForClustering = useMemo(() => {
-    if (!currentPersonas || !Array.isArray(currentPersonas)) return null;
-    return currentPersonas.reduce((acc, persona) => {
-      acc[persona.name] = persona.description;
-      return acc;
-    }, {} as Record<string, string>);
-  }, [currentPersonas]);
 
   // --- Clustering Logic (SIMPLIFIED: Calls Server Action) ---
   const handleRequestClustering = useCallback(async () => {
@@ -324,8 +331,6 @@ export default function KeywordResearchDetail({
         );
         // **CRITICAL**: Update local status immediately to 'processing' to trigger polling
         setCurrentClusteringStatus('processing');
-        // Switch view to cluster after requesting
-        setView('cluster');
       } else {
         console.error(
           '[KeywordResearchDetail] Server action requestClustering failed:',
@@ -590,143 +595,95 @@ export default function KeywordResearchDetail({
       <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Conditional Rendering based on 'view' state */}
 
-        {view === 'volume' && (
-          <div className="space-y-4">
-            {/* Title for Volume section */}
-            <h2 className="text-xl font-semibold">搜索量分佈</h2>
-            <KeywordDistribute keywords={sortedUniqueKeywords} />
-            {/* Button to switch to cluster view */}
-            <div className="flex justify-center mt-6">
-              <Button onClick={() => setView('cluster')} variant="outline">
-                查看關鍵詞分群
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Always show Volume Distribution */}
+        <KeywordDistribute
+          keywords={sortedUniqueKeywords}
+        />
 
-        {view === 'cluster' && (
-          <div className="space-y-4">
-            {/* Button to switch back to volume view */}
-            <div className="mb-4">
-              <Button
-                onClick={() => setView('volume')}
-                variant="ghost"
-                size="sm"
-                className="text-sm text-muted-foreground"
-              >
-                <ArrowLeft className="mr-1 h-4 w-4" />
-                返回搜索量分佈
-              </Button>
-            </div>
+        {/* --- Integrated Clustering Section --- */}
 
-            {/* Title for Cluster section */}
-            <h2 className="text-xl font-semibold">關鍵詞分群</h2>
+        {/* Render the Clustering Card ONLY when completed and clusters exist */} 
+        {currentClusteringStatus === 'completed' &&
+          currentClusters &&
+          Object.keys(currentClusters).length > 0 && (
+            <div className="mt-6 w-full">
+              {/* {(() => {
+                const clusterCount = Object.keys(currentClusters).length;
+                const keywordCountInClusters = Object.values(currentClusters).reduce(
+                  (sum, keywords) => sum + keywords.length,
+                  0
+                );
+                return (
+                  <h2 className="text-xl font-semibold mb-4">
+                    關鍵詞 "{initialResearchDetail.query}" 的分群結果共 {clusterCount} 個分群，包含 {keywordCountInClusters} 個關鍵詞
+                  </h2>
+                );
+              })()} */}
 
-            {/* --- Status Display & Re-cluster button (moved inside cluster view) --- */}
-            <div className="mb-4 p-4 border rounded-lg bg-card flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex-grow">
-                <p className="text-sm font-medium">分群狀態:</p>
-                <p
-                  className={`text-lg font-semibold ${getStatusColor(
-                    currentClusteringStatus
-                  )}`}
-                >
-                  {getStatusText(currentClusteringStatus)}
-                </p>
-                {currentClusteringStatus === 'failed' && (
-                  <p className="text-xs text-destructive mt-1">
-                    處理失敗，請重試。
-                  </p>
-                )}
-                {currentClusteringStatus === 'processing' && (
-                  <div className="mt-2 flex items-center text-sm text-blue-600 dark:text-blue-400">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    <span>正在處理中...</span>
-                  </div>
-                )}
-              </div>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <LoadingButton
-                      onClick={handleRequestClustering}
-                      isLoading={
-                        isRequestingClustering ||
-                        currentClusteringStatus === 'processing'
-                      }
-                      loadingText="處理中..."
-                      disabled={
-                        !researchId || currentClusteringStatus === 'processing'
-                      }
-                      className="flex-shrink-0 mt-2 sm:mt-0"
-                      variant={
-                        currentClusteringStatus === 'completed'
-                          ? 'outline'
-                          : 'default'
-                      }
-                      size="sm" // Make button smaller
-                    >
-                      <RefreshCw className="mr-1 h-4 w-4" />
-                      {currentClusteringStatus === 'completed'
-                        ? '重新分群'
-                        : '開始分群'}
-                    </LoadingButton>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      {currentClusteringStatus === 'completed'
-                        ? '重新運行分群分析'
-                        : '開始分群分析'}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            {/* --- End Status Display --- */}
-
-            {/* Check if clusters exist OR if clustering is currently processing */}
-            {(currentClusters && Object.keys(currentClusters).length > 0) ||
-            currentClusteringStatus === 'processing' ? (
-              <>
-                <KeywordClustering
-                  clusters={currentClusters}
-                  personasMap={personasMapForClustering}
-                  keywordVolumeMap={keywordVolumeMap}
-                  onSavePersona={handleSavePersona}
-                  isSavingPersona={isSavingPersona}
-                  researchId={researchId}
-                  clusteringStatus={currentClusteringStatus}
-                  researchRegion={initialResearchDetail.region || ''}
-                  researchLanguage={initialResearchDetail.language || ''}
-                  currentKeywords={sortedUniqueKeywords
-                    .map(k => k.text || '')
-                    .filter(Boolean)}
-                  selectedResearchDetail={{
-                    query: initialResearchDetail.query
-                  }}
-                />
-              </>
-            ) : (
-              // Show Empty state if no clusters and not currently processing.
-              <EmptyState
-                title={
-                  currentClusteringStatus === 'failed'
-                    ? '分群處理失敗'
-                    : '尚未進行分群'
-                }
-                description={
-                  currentClusteringStatus === 'failed'
-                    ? '分群過程中發生錯誤，請點擊按鈕重試。'
-                    : "點擊上方的 '開始分群' 按鈕來將您的關鍵詞分組。"
-                }
-                icon={<FileText className="h-12 w-12 text-muted-foreground" />}
+              <KeywordClustering
+                clusters={currentClusters}
+                personasMap={personasMapForClustering}
+                keywordVolumeMap={Object.fromEntries(keywordVolumeMap.entries())}
+                onSavePersona={handleSavePersona}
+                isSavingPersona={isSavingPersona}
+                researchId={researchId}
+                clusteringStatus={currentClusteringStatus}
+                researchRegion={initialResearchDetail.region || ''}
+                researchLanguage={initialResearchDetail.language || ''}
+                currentKeywords={sortedUniqueKeywords
+                  .map(k => k.text || '')
+                  .filter(Boolean)}
+                selectedResearchDetail={{
+                  query: initialResearchDetail.query,
+                }}
               />
-            )}
-          </div>
+            </div>
+          )}
+
+        {/* Render the standalone button when table is not ready */} 
+        {!(currentClusteringStatus === 'completed' &&
+          currentClusters &&
+          Object.keys(currentClusters).length > 0) && (
+            <div className="mt-6 flex flex-col items-center"> 
+              {/* Optional: Show specific messages based on status */} 
+              {currentClusteringStatus === 'failed' && (
+                <p className="mb-2 text-sm text-destructive">
+                  分群處理失敗。(Clustering failed.)
+                </p>
+              )}
+              {currentClusteringStatus === 'completed' &&
+                (!currentClusters || Object.keys(currentClusters).length === 0) && (
+                <p className="mb-2 text-sm text-muted-foreground">
+                  分群完成，但未找到有效分群。(No valid clusters found.)
+                </p>
+              )}
+
+              <LoadingButton
+                onClick={handleRequestClustering}
+                // Show loading if explicitly requesting OR if status is processing
+                isLoading={isRequestingClustering || currentClusteringStatus === 'processing'}
+                disabled={isRequestingClustering || currentClusteringStatus === 'processing'}
+                variant="outline" // Use outline style for less emphasis
+              >
+                {
+                // Determine button text
+                (currentClusteringStatus === 'failed' ||
+                  (currentClusteringStatus === 'completed' &&
+                    (!currentClusters || Object.keys(currentClusters).length === 0)))
+                  ? '重試分群 (Retry Clustering)' 
+                  : '查看關鍵字分群 (View Keyword Clusters)' 
+                }
+              </LoadingButton>
+
+              {/* Display specific error only when failed */}
+              {currentClusteringStatus === 'failed' && localError && (
+                <p className="mt-2 text-sm text-destructive">{localError}</p>
+              )}
+            </div>
         )}
 
         {/* Display local errors if any */}
-        {localError && view !== 'cluster' && (
+        {localError && (
           <div className="mt-4 text-center text-sm text-red-500">
             {localError}
           </div>

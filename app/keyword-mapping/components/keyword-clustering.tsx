@@ -280,16 +280,8 @@ export default function KeywordClustering({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Main Title and Summary List */}
-        <div className="mb-6 sm:mb-10 pb-5 border-b">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3 sm:gap-0">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex-1 mr-0 sm:mr-4 order-2 sm:order-1">
-              關鍵詞 "{mainQuery}" 的分群結果共 {sortedClusters.length}{' '}
-              個分群，包含 {totalKeywordsCount} 個關鍵詞
-            </h1>
-          </div>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        {/* Main Title and Summary List - This title is rendered inside the component */}
 
         {/* --- Table Layout Start --- */}
         {/* Hide traditional header on mobile, show labels in cards instead */}
