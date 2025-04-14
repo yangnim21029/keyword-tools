@@ -24,6 +24,8 @@ import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-re
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { performSemanticClustering as performSemanticClusteringService } from './semantic-clustering';
+// --- Import the Chinese type detection utility ---
+import { detectChineseType } from '@/app/services/keyword-idea-api.service';
 
 const KEYWORD_RESEARCH_TAG = 'KeywordResearch';
 
@@ -695,23 +697,30 @@ export async function processAndSaveKeywordQuery(
   try {
     // --- Step 2: Generate Space Variations ---
     console.log('[Server Action] Starting Step 2: Generate Space Variations');
-    const queryWithoutEnglish = query.replace(/[a-zA-Z0-9]/g, '');
-    if (queryWithoutEnglish.length > 1) {
-      for (let i = 1; i < queryWithoutEnglish.length; i++) {
-        // Start from 1 to avoid leading space
-        const spacedKeyword =
-          queryWithoutEnglish.slice(0, i) + ' ' + queryWithoutEnglish.slice(i);
-        spaceVariations.push(spacedKeyword);
+    // Check if the query consists ONLY of CJK characters and spaces
+    if (/^[\u4e00-\u9fa5\s]+$/.test(query)) {
+      console.log('[Server Action] Query is CJK-only, generating space variations...');
+      // Add the original query itself
+      spaceVariations.push(query.trim()); // Trim whitespace just in case
+
+      // Loop through the original CJK query to insert spaces
+      // Ensure we don't add leading/trailing spaces if query wasn't trimmed initially
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length > 1) {
+        for (let i = 1; i < trimmedQuery.length; i++) {
+          const spacedKeyword =
+            trimmedQuery.slice(0, i) + ' ' + trimmedQuery.slice(i);
+          spaceVariations.push(spacedKeyword);
+        }
       }
+    } else {
+      console.log('[Server Action] Query contains non-CJK characters, skipping space variations.');
+      // If query is not purely CJK/space, spaceVariations remains empty for this step
+      // We might still add the original query later if needed, but not spaced variations.
     }
-    // Add the original query without modification as well, if it's primarily CJK
-    if (
-      /^[\u4e00-\u9fa5\s]+$/.test(query) &&
-      !spaceVariations.includes(query)
-    ) {
-      spaceVariations.push(query); // Ensure original CJK query is included if relevant
-    }
-    spaceVariations = [...new Set(spaceVariations)]; // Deduplicate just in case
+
+    // Deduplicate any generated variations (including the original if added)
+    spaceVariations = [...new Set(spaceVariations)];
     console.log(
       `[Server Action] Generated ${spaceVariations.length} space variations.`
     );
@@ -780,19 +789,19 @@ export async function processAndSaveKeywordQuery(
 
     // --- Step 5: Combine All & Deduplicate ---
     console.log('[Server Action] Starting Step 5: Combine All & Deduplicate');
-    // Combine in a neutral order first just to get the full unique set
     const allCombinedSources = [
       ...spaceVariations,
       ...aiSuggestList,
       ...googleSuggestList
     ];
+
     const initialUniqueKeywords = [...new Set(allCombinedSources)].filter(
       kw => kw && kw.trim()
     ); // Ensure not empty/whitespace
+
     console.log(
-      `[Server Action] Total unique keywords from all sources: ${initialUniqueKeywords.length}`
+      `[Server Action] Total unique keywords from all sources (after potential filtering): ${initialUniqueKeywords.length}`
     );
-    // console.log("[Server Action] Master Unique Keywords List:", initialUniqueKeywords);
 
     if (initialUniqueKeywords.length === 0) {
       console.warn(
@@ -1189,252 +1198,6 @@ export async function requestClustering(
       success: false,
       error:
         error instanceof Error ? error.message : 'Failed to request clustering.'
-    };
-  }
-}
-
-// --- Action to Refine Zero Volume Keywords using AI ---
-
-interface RefineZeroVolumeResult {
-  success: boolean;
-  addedKeywordsCount?: number;
-  error?: string;
-}
-
-/**
- * Identifies zero-volume keywords in a research item, uses AI to find their parent keywords,
- * searches for suggestions based on parent keywords, and merges the results back.
- *
- * @param researchId The ID of the Keyword Research item.
- * @returns Object indicating success, count of added keywords, or failure.
- */
-export async function refineZeroVolumeKeywords(
-  researchId: string
-): Promise<RefineZeroVolumeResult> {
-  console.log(
-    `[Server Action] Starting refinement for zero-volume keywords in researchId: ${researchId}`
-  );
-  if (!db) {
-    const errorMsg =
-      '[Server Action][refineZeroVolumeKeywords] Database not initialized';
-    console.error(errorMsg);
-    return { success: false, error: errorMsg };
-  }
-  if (!researchId) {
-    const errorMsg =
-      '[Server Action][refineZeroVolumeKeywords] Research ID is required';
-    console.warn(errorMsg);
-    return { success: false, error: errorMsg };
-  }
-
-  try {
-    // 1. Fetch existing research data
-    const researchDetail = await fetchKeywordResearchDetail(researchId); // Uses cache initially
-    if (!researchDetail) {
-      return { success: false, error: 'Research item not found.' };
-    }
-
-    const originalKeywords = (researchDetail.keywords ||
-      []) as KeywordVolumeItem[];
-    const region = researchDetail.region || 'TW'; // Default region if not set
-    const language = researchDetail.language || 'zh-TW'; // Default language if not set
-
-    // 2. Identify zero-volume keywords
-    const zeroVolumeKeywords = originalKeywords
-      .filter(
-        kw => !kw.searchVolume || kw.searchVolume === 0 // Includes null, undefined, 0
-      )
-      .map(kw => kw.text)
-      .filter((text): text is string => !!text); // Ensure text is not null/undefined
-
-    if (zeroVolumeKeywords.length === 0) {
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] No zero-volume keywords found for ${researchId}. Nothing to refine.`
-      );
-      return { success: true, addedKeywordsCount: 0 };
-    }
-
-    console.log(
-      `[Server Action][refineZeroVolumeKeywords] Found ${zeroVolumeKeywords.length} zero-volume keywords to process.`
-    );
-
-    // 3. Call AI to identify parent keywords (Hypothetical)
-    // This function needs to be implemented elsewhere, using your AI provider/library
-    // It should handle API calls, errors, and return a mapping.
-    // Example: { "零量關鍵字 A": "父關鍵字 X", "零量關鍵字 B": "父關鍵字 Y", ... }
-    let parentKeywordMap: Record<string, string> = {};
-    try {
-      parentKeywordMap = await identifyParentKeywordsFromAI(zeroVolumeKeywords);
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] AI identified ${
-          Object.keys(parentKeywordMap).length
-        } parent keywords.`
-      );
-    } catch (aiError) {
-      console.error(
-        `[Server Action][refineZeroVolumeKeywords] AI parent keyword identification failed for ${researchId}:`,
-        aiError
-      );
-      // Decide if we should stop or continue without AI results
-      return {
-        success: false,
-        error: `AI identification failed: ${
-          aiError instanceof Error ? aiError.message : String(aiError)
-        }`
-      };
-    }
-
-    const uniqueParentKeywords = [
-      ...new Set(Object.values(parentKeywordMap))
-    ].filter(kw => kw.trim() !== ''); // Get unique, non-empty parent keywords
-
-    if (uniqueParentKeywords.length === 0) {
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] No valid parent keywords identified by AI for ${researchId}.`
-      );
-      return { success: true, addedKeywordsCount: 0 };
-    }
-
-    console.log(
-      `[Server Action][refineZeroVolumeKeywords] Processing ${
-        uniqueParentKeywords.length
-      } unique parent keywords: ${uniqueParentKeywords.join(', ')}`
-    );
-
-    // 4. Fetch suggestions and volume for parent keywords
-    let newKeywordsFromParents: KeywordVolumeItem[] = [];
-    for (const parentKeyword of uniqueParentKeywords) {
-      try {
-        // Fetch suggestions (limit?)
-        // Assuming default useAlphabet=false, useSymbols=false for refinement
-        const suggestionsResult = await getKeywordSuggestions(
-          parentKeyword,
-          region,
-          language,
-          false,
-          false
-        );
-        const suggestions = suggestionsResult.suggestions || [];
-        if (suggestions.length > 0) {
-          // Fetch volume (limit?)
-          const volumeResult = await getSearchVolume(
-            suggestions,
-            region,
-            undefined, // Not URL-based
-            language
-          );
-          if (volumeResult.results && volumeResult.results.length > 0) {
-            newKeywordsFromParents = newKeywordsFromParents.concat(
-              volumeResult.results as KeywordVolumeItem[] // Type assertion
-            );
-          } else if (volumeResult.error) {
-            console.warn(
-              `[Server Action][refineZeroVolumeKeywords] Volume fetch failed for suggestions of '${parentKeyword}': ${volumeResult.error}`
-            );
-          }
-        } else if (suggestionsResult.error) {
-          console.warn(
-            `[Server Action][refineZeroVolumeKeywords] Suggestion fetch failed for '${parentKeyword}': ${suggestionsResult.error}`
-          );
-        }
-      } catch (fetchError) {
-        console.error(
-          `[Server Action][refineZeroVolumeKeywords] Error fetching data for parent keyword '${parentKeyword}':`,
-          fetchError
-        );
-      }
-      // Optional: Add delay between parent keyword processing
-      await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
-    }
-
-    if (newKeywordsFromParents.length === 0) {
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] No new keywords found from parent keyword searches for ${researchId}.`
-      );
-      return { success: true, addedKeywordsCount: 0 };
-    }
-
-    console.log(
-      `[Server Action][refineZeroVolumeKeywords] Found ${newKeywordsFromParents.length} new potential keywords from parent searches.`
-    );
-
-    // 5. Merge and Deduplicate
-    const combinedKeywords = [...originalKeywords, ...newKeywordsFromParents];
-    const finalKeywordMap = new Map<string, KeywordVolumeItem>();
-
-    combinedKeywords.forEach(item => {
-      if (!item || !item.text) return; // Skip invalid items
-
-      const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
-      const existingEntry = finalKeywordMap.get(normalizedText);
-      const currentVolume = item.searchVolume ?? -1; // Use -1 to prioritize 0 over null/undefined slightly
-
-      // Add if new, or if current item has volume and existing doesn't,
-      // or if current item has higher volume than existing.
-      if (
-        !existingEntry ||
-        (currentVolume >= 0 && (existingEntry.searchVolume ?? -1) < 0) ||
-        currentVolume > (existingEntry.searchVolume ?? -1)
-      ) {
-        // Ensure we store a complete KeywordVolumeItem
-        finalKeywordMap.set(normalizedText, {
-          text: item.text, // Keep original casing/spacing from the prioritized item
-          searchVolume: item.searchVolume,
-          competition: item.competition,
-          competitionIndex: item.competitionIndex,
-          cpc: item.cpc
-          // Ensure all relevant fields are included
-        });
-      }
-    });
-
-    const finalKeywordsToSave: KeywordVolumeItem[] = Array.from(
-      finalKeywordMap.values()
-    );
-    const addedCount = finalKeywordsToSave.length - originalKeywords.length;
-
-    console.log(
-      `[Server Action][refineZeroVolumeKeywords] Merged and deduplicated keywords for ${researchId}. Original: ${originalKeywords.length}, New: ${newKeywordsFromParents.length}, Final: ${finalKeywordsToSave.length}. Added: ${addedCount}`
-    );
-
-    // 6. Update the research item
-    if (addedCount > 0) {
-      const updateResult = await updateKeywordResearchKeywords(
-        researchId,
-        finalKeywordsToSave
-      );
-
-      if (!updateResult.success) {
-        throw new Error(
-          `Failed to save updated keywords: ${
-            updateResult.error || 'Unknown update error'
-          }`
-        );
-      }
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] Successfully updated keywords for ${researchId}.`
-      );
-
-      // 7. Revalidate cache
-      await revalidateResearch(researchId);
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] Revalidated cache for ${researchId}.`
-      );
-    } else {
-      console.log(
-        `[Server Action][refineZeroVolumeKeywords] No new keywords added after refinement for ${researchId}. No update needed.`
-      );
-    }
-
-    return { success: true, addedKeywordsCount: addedCount };
-  } catch (error) {
-    const errorMsg = `[Server Action][refineZeroVolumeKeywords] Error refining keywords for ${researchId}:`;
-    console.error(errorMsg, error);
-    // Attempt to update status to failed? Maybe not needed here.
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : 'Failed to refine keywords.'
     };
   }
 }

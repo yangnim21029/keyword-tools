@@ -39,6 +39,7 @@ export function estimateProcessingTime(
 
 // 簡體中文和繁體中文對照表 (常用字)
 const simplifiedToTraditional: Record<string, string> = {
+  晒: '曬',
   个: '個',
   东: '東',
   丝: '絲',
@@ -69,7 +70,6 @@ const simplifiedToTraditional: Record<string, string> = {
   产: '產',
   亩: '畝',
   亲: '親',
-  亵: '褻',
   亿: '億',
   仅: '僅',
   从: '從',
@@ -171,9 +171,9 @@ export function detectChineseType(
 }
 
 /**
- * 過濾掉簡體中文關鍵詞
- * @param keywords 關鍵詞數組
- * @returns 過濾後的關鍵詞數組
+ * 過濾掉簡體中文關鍵字
+ * @param keywords 關鍵字數組
+ * @returns 過濾後的關鍵字數組
  */
 export function filterSimplifiedChinese(keywords: string[]): string[] {
   return keywords.filter(keyword => {
@@ -425,10 +425,10 @@ export async function getSearchVolume(
 
   try {
     const batchSize = 20;
+    const originalKeywordsCount = keywords.length; // Store original count
 
-    // Filter simplified Chinese from the *input* list
-    const filteredKeywords = filterSimplifiedChinese(keywords);
-    const uniqueBaseKeywords = [...new Set(filteredKeywords)]; // Deduplicate based on input
+    // Use the original input keywords for deduplication and variation generation
+    const uniqueBaseKeywords = [...new Set(keywords)];
 
     // --- Internal Space Variation Generation ---
     // This happens INSIDE getSearchVolume, based on the uniqueBaseKeywords derived from input
@@ -531,6 +531,16 @@ export async function getSearchVolume(
         try {
           const text = idea.text || '';
           if (!text || processedKeywords.has(text)) continue;
+
+          // Filter simplified Chinese results *if* the requested language is not zh_CN
+          if (apiLanguageCode !== 'zh_CN') {
+            const type = detectChineseType(text);
+            if (type === 'simplified') {
+              console.log(`[getSearchVolume] Filtering simplified Chinese keyword from API result: "${text}"`);
+              continue; // Skip this simplified keyword idea
+            }
+          }
+
           const metrics = idea.keywordIdeaMetrics || {};
           let searchVolumeValue: number | undefined = undefined;
           if (metrics.avgMonthlySearches != null) {

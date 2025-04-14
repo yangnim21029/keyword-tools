@@ -13,7 +13,7 @@ const firestoreTimestampSchema = z
   .describe('Firestore Timestamp');
 
 /**
- * 關鍵詞搜索量項目 Schema
+ * 關鍵字搜索量項目 Schema
  */
 export const keywordVolumeItemSchema = z.object({
   text: z.string(),
@@ -39,7 +39,7 @@ export const UserPersonaSchema = z.object({
 // 語義分群結果 Schema
 export const ClusterSchema = z
   .record(z.string(), z.array(z.string()))
-  .describe('語義分群結果: 主題名稱映射到關鍵詞數組');
+  .describe('語義分群結果: 主題名稱映射到關鍵字數組');
 
 // Define the possible clustering statuses
 export const clusteringStatusSchema = z
@@ -52,13 +52,13 @@ export type ClusteringStatus = z.infer<typeof clusteringStatusSchema>;
 
 // Base schema for keyword research data
 export const KeywordResearchBaseSchema = z.object({
-  query: z.string().min(1, '主關鍵詞不能為空').describe('主關鍵詞'),
+  query: z.string().min(1, '主關鍵字不能為空').describe('主關鍵字'),
   createdAt: firestoreTimestampSchema,
   updatedAt: firestoreTimestampSchema,
   keywords: z
     .array(keywordVolumeItemSchema)
     .optional()
-    .describe('關鍵詞列表及其搜索量數據'),
+    .describe('關鍵字列表及其搜索量數據'),
   clusters: ClusterSchema.optional().describe('語義分群結果'),
   personas: z.array(UserPersonaSchema).optional().describe('詳細用戶畫像列表'),
   searchEngine: z.string().optional().describe('使用的搜尋引擎 (例如 google)'),
@@ -207,10 +207,10 @@ import { LANGUAGES, REGIONS } from '@/app/config/constants';
 const MIN_KEYWORD_LENGTH = 1;
 
 /**
- * 關鍵詞表單數據 Schema
+ * 關鍵字表單數據 Schema
  */
 export const keywordFormSchema = z.object({
-  query: z.string().min(MIN_KEYWORD_LENGTH, '關鍵詞是必填的'),
+  query: z.string().min(MIN_KEYWORD_LENGTH, '關鍵字是必填的'),
   region: z
     .string()
     .refine(
@@ -236,7 +236,7 @@ export const keywordFormSchema = z.object({
 });
 
 /**
- * 關鍵詞建議結果 Schema
+ * 關鍵字建議結果 Schema
  */
 export const keywordSuggestionResultSchema = z.object({
   suggestions: z.array(z.string()),
@@ -262,7 +262,7 @@ export const keywordVolumeResultSchema = z.object({
 });
 
 /**
- * 關鍵詞聚類 Schema (Same as ClusterSchema defined earlier? If so, consider reusing)
+ * 關鍵字聚類 Schema (Same as ClusterSchema defined earlier? If so, consider reusing)
  * If this represents a different structure (e.g., from a specific API), keep it.
  * Otherwise, consider alias: export const KeywordClustersSchema = ClusterSchema;
  */

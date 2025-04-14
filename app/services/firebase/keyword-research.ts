@@ -220,7 +220,7 @@ export async function updateKeywordResearchClusters(
 }
 
 /**
- * 更新現有 Keyword Research 的關鍵詞結果
+ * 更新現有 Keyword Research 的關鍵字結果
  */
 export async function updateKeywordResearchResults(
   researchId: string,

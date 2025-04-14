@@ -7,7 +7,7 @@ import { z } from 'zod';
 // 定义分群结果的 schema
 const clusterSchema = z.object({
   clusters: z.record(z.string(), z.array(z.string()))
-    .describe('主題名稱映射到關鍵詞數組的分群結果'),
+    .describe('主題名稱映射到關鍵字數組的分群結果'),
 });
 
 // 定义输入 schema (可选，但推荐)
@@ -36,40 +36,40 @@ export async function performSemanticClustering(input: { keywords: string[], mod
     // 即使有 default，類型推斷仍可能為 undefined，在此明確處理
     const openaiModel = model ?? 'gpt-4o-mini'; // 如果 model 是 undefined，使ㄏ用預設值
     
-    console.log(`[Server Action] 收到語意分群請求: 模型=${openaiModel}, 關鍵詞數量=${keywords.length}`);
+    console.log(`[Server Action] 收到語意分群請求: 模型=${openaiModel}, 關鍵字數量=${keywords.length}`);
     
     // Limit number of keywords to prevent large requests
     const MAX_CLUSTERING_KEYWORDS = 80; // 与原 API Route 保持一致
     const limitedKeywords = keywords.slice(0, MAX_CLUSTERING_KEYWORDS);
     if (limitedKeywords.length < keywords.length) {
-      console.log(`[Server Action] 關鍵詞數量已限制: ${keywords.length} → ${limitedKeywords.length}`);
+      console.log(`[Server Action] 關鍵字數量已限制: ${keywords.length} → ${limitedKeywords.length}`);
     }
     
-    console.log(`[Server Action] 前幾個關鍵詞: "${limitedKeywords.slice(0, 3).join('", "')}", ...`);
+    console.log(`[Server Action] 前幾個關鍵字: "${limitedKeywords.slice(0, 3).join('", "')}", ...`);
 
     // 使用更明確的提示 (与原 API Route 保持一致)
-    const prompt = `你是一個專業的關鍵詞分群專家。請根據以下關鍵詞進行語意分群，將相關的關鍵詞歸類到合適的主題中。
+    const prompt = `你是一個專業的關鍵字分群專家。請根據以下關鍵字進行語意分群，將相關的關鍵字歸類到合適的主題中。
 
 語意辨識的方法是根據能否放到同一篇文章作為列表文章(listicle)的依據，不是以 SEO 為主。避免使用"基本知識"這種過於概括的詞分群。
 
-關鍵詞列表：
+關鍵字列表：
 ${limitedKeywords.join(', ')}
 
-請將關鍵詞分群並返回一個 JSON 對象，格式如下：
+請將關鍵字分群並返回一個 JSON 對象，格式如下：
 {
   "clusters": {
-    "主題名稱1": ["關鍵詞1", "關鍵詞2", ...],
-    "主題名稱2": ["關鍵詞3", "關鍵詞4", ...]
+    "主題名稱1": ["關鍵字1", "關鍵字2", ...],
+    "主題名稱2": ["關鍵字3", "關鍵字4", ...]
   }
 }
 
 注意事項：
 1. 每個主題名稱應該簡潔明確
-2. 每個分群至少包含 2 個關鍵詞
+2. 每個分群至少包含 2 個關鍵字
 3. 確保返回的是有效的 JSON 格式
 4. 不要添加任何額外的說明文字，只返回 JSON 對象`;
 
-    console.log(`[Server Action] 正在發送請求到 OpenAI，模型: ${openaiModel}, 關鍵詞數量: ${limitedKeywords.length}`);
+    console.log(`[Server Action] 正在發送請求到 OpenAI，模型: ${openaiModel}, 關鍵字數量: ${limitedKeywords.length}`);
     
     // 使用 generateText 获取完整结果
     const { text } = await generateText({

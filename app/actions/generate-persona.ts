@@ -7,17 +7,17 @@ import { z } from 'zod';
 // Define input schema for a SINGLE cluster
 const inputSchema = z.object({
   clusterName: z.string().describe('要生成畫像的分群主題名稱'),
-  keywords: z.array(z.string()).min(1).describe('該分群包含的關鍵詞列表'),
+  keywords: z.array(z.string()).min(1).describe('該分群包含的關鍵字列表'),
   model: z.enum(['gpt-4o', 'gpt-4o-mini']).default('gpt-4o-mini').optional(),
 });
 
 // Define output schema for a SINGLE persona string
 const outputSchema = z.object({
-  userPersona: z.string().describe('AI 基於單一關鍵詞分群生成的使用者畫像描述'),
+  userPersona: z.string().describe('AI 基於單一關鍵字分群生成的使用者畫像描述'),
 });
 
 /**
- * 使用 AI 根據單一關鍵詞分群生成用戶畫像
+ * 使用 AI 根據單一關鍵字分群生成用戶畫像
  * @param input 包含 clusterName, keywords 和可选 model 的对象
  * @returns 返回包含 userPersona 的对象或抛出错误
  */
@@ -41,13 +41,13 @@ export async function generateUserPersonaFromClusters(
     const keywordString = keywords.join(', ');
 
     // Reverted Prompt to generate persona for the SINGLE provided cluster
-    const prompt = `你是一位市場分析專家和用戶研究員。請根據以下提供的 **單一** 關鍵詞分群主題及其包含的關鍵詞，分析並描述這些搜索背後可能的用戶畫像。
+    const prompt = `你是一位市場分析專家和用戶研究員。請根據以下提供的 **單一** 關鍵字分群主題及其包含的關鍵字，分析並描述這些搜索背後可能的用戶畫像。
 
 分群主題: ${clusterName}
-關鍵詞: ${keywordString}
+關鍵字: ${keywordString}
 
 請提供一個簡潔（約 100-150 字）的用戶畫像描述，涵蓋以下幾點：
-1.  **主要意圖**: 搜索該主題關鍵詞的用戶可能想達成什麼目標？
+1.  **主要意圖**: 搜索該主題關鍵字的用戶可能想達成什麼目標？
 2.  **知識水平**: 他們對該特定主題的了解程度大概如何？
 3.  **潛在需求/痛點**: 與該主題相關，他們可能有什麼需求或痛點？
 4.  **可能的背景**: 簡單推測用戶可能的職業、興趣或身份。

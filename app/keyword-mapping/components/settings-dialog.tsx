@@ -92,10 +92,10 @@ export function SettingsDialog() {
                     htmlFor="settingsUseAlphabet"
                     className="text-sm font-medium cursor-pointer"
                   >
-                    包含字母 (用於關鍵詞建議)
+                    包含字母 (用於關鍵字建議)
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    自動添加 A-Z 字母到關鍵詞建議中
+                    自動添加 A-Z 字母到關鍵字建議中
                   </p>
                 </div>
               </div>
@@ -111,10 +111,10 @@ export function SettingsDialog() {
                     htmlFor="settingsUseSymbols"
                     className="text-sm font-medium cursor-pointer"
                   >
-                    包含符號 (用於關鍵詞建議)
+                    包含符號 (用於關鍵字建議)
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    自動添加常用符號到關鍵詞建議中
+                    自動添加常用符號到關鍵字建議中
                   </p>
                 </div>
               </div>
@@ -132,10 +132,10 @@ export function SettingsDialog() {
                     htmlFor="filter-zero"
                     className="text-sm font-medium cursor-pointer"
                   >
-                    過濾零搜索量關鍵詞
+                    過濾零搜索量關鍵字
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    自動過濾沒有搜索量的關鍵詞
+                    自動過濾沒有搜索量的關鍵字
                   </p>
                 </div>
               </div>
@@ -145,7 +145,7 @@ export function SettingsDialog() {
                   <Label htmlFor="max-results" className="text-sm font-medium">
                     最大結果數
                     <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                      ({maxResults} 個關鍵詞)
+                      ({maxResults} 個關鍵字)
                     </span>
                   </Label>
                 </div>
@@ -167,7 +167,7 @@ export function SettingsDialog() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  限制獲取搜索量時使用的關鍵詞數量，數量越多API消耗越大
+                  限制獲取搜索量時使用的關鍵字數量，數量越多API消耗越大
                 </p>
               </div>
 
@@ -202,7 +202,7 @@ export function SettingsDialog() {
             <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-md text-sm text-amber-800 dark:text-amber-300 border border-amber-100 dark:border-amber-800/50">
               <p className="flex items-start">
                 <BarChart2 className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-                搜索選項會影響關鍵詞建議的數量和質量。請根據您的需求調整這些設置。
+                搜索選項會影響關鍵字建議的數量和質量。請根據您的需求調整這些設置。
               </p>
             </div>
           </TabsContent>

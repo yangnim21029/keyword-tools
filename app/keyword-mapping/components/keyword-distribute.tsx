@@ -195,7 +195,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
           搜索量分布
           <span className="text-sm font-normal text-muted-foreground">
             (總共 {formatCount(overallStats.count + overallStats.countZero)}{' '}
-            個關鍵詞)
+            個關鍵字)
           </span>
         </h3>
         {/* Grid for Stats and Selection */}
@@ -286,7 +286,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
       {selectedRangeLabel && (
         <div className="bg-card border rounded-lg">
           <h4 className="text-md font-semibold p-4 border-b flex items-center gap-2">
-            關鍵詞列表
+            關鍵字列表
             <Badge variant="secondary">
               {formatCount(filteredKeywords.length)} 個
             </Badge>
@@ -303,7 +303,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead className="w-[70%] font-medium text-muted-foreground">
-                      關鍵詞
+                      關鍵字
                     </TableHead>
                     <TableHead className="text-right font-medium text-muted-foreground">
                       搜索量
@@ -328,7 +328,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
             </div>
           ) : (
             <p className="p-4 text-center text-muted-foreground italic">
-              此範圍內沒有關鍵詞。
+              此範圍內沒有關鍵字。
             </p>
           )}
         </div>

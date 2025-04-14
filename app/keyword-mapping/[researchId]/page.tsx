@@ -2,8 +2,8 @@ import {
   fetchKeywordResearchDetail,
   fetchKeywordResearchList
 } from '@/app/actions';
-import type { KeywordVolumeItem } from '@/lib/schema'; // Import Keyword type
-import { notFound } from 'next/navigation';
+import type { KeywordVolumeItem, KeywordResearchItem } from '@/lib/schema'; // Added KeywordResearchItem import
+import { notFound } from 'next/navigation'; // Ensure notFound is imported
 import React from 'react'; // Import React
 import KeywordResearchDetail from '../components/keyword-research-detail';
 
@@ -111,10 +111,13 @@ export default async function KeywordResultPage({ params }: Props) {
   // Resolve the Promise to get params
   const { researchId } = await params;
 
-  // Fetch initial data on the server
-  // Note: Data fetching is now inside the component, but the initial fetch
-  // happens on the server because the parent component is a Server Component.
-  // We still need to pass the researchId down.
+  // --- Fetch detail ONCE here in the parent Server Component ---
+  const researchDetail = await fetchKeywordResearchDetail(researchId);
+
+  // --- Handle not found early ---
+  if (!researchDetail) {
+    notFound();
+  }
 
   // Define a simple loading fallback component for the detail view
   const DetailLoadingFallback = () => {
@@ -126,35 +129,44 @@ export default async function KeywordResultPage({ params }: Props) {
   };
 
   return (
-    <React.Suspense fallback={<DetailLoadingFallback />}>
-      <KeywordResearchDetailLoader researchId={researchId} />
-    </React.Suspense>
+    // Use a Fragment or main container div if needed
+    <>
+      {/* --- Add H1 Title Here --- */}
+      <h1 className="text-2xl font-semibold mb-4 sm:mb-6 text-center">
+        {researchDetail.query}
+      </h1>
+
+      <React.Suspense fallback={<DetailLoadingFallback />}>
+        {/* --- Pass fetched data down --- */}
+        <KeywordResearchDetailLoader researchDetail={researchDetail} />
+      </React.Suspense>
+    </>
   );
 }
 
-// Create an async component to handle data fetching for KeywordResearchDetail
+// --- Modify Loader to accept the detail prop ---
 async function KeywordResearchDetailLoader({
-  researchId
+  researchDetail, // Accept the fetched detail
 }: {
-  researchId: string;
+  researchDetail: KeywordResearchItem; // Use the correct type
 }) {
-  const researchDetail = await fetchKeywordResearchDetail(researchId);
+  // --- No need to fetch again! ---
+  // const researchDetail = await fetchKeywordResearchDetail(researchId);
 
-  // If no research detail is found, show 404
-  if (!researchDetail) {
-    notFound();
-  }
+  // --- No need for notFound() check here anymore ---
+  // if (!researchDetail) {
+  //   notFound();
+  // }
 
-  // --- Calculate volume distribution on the server ---
+  // --- Calculate volume distribution from the prop ---
   const volumeDistribution = calculateVolumeDistribution(
     researchDetail.keywords
   );
 
   return (
     <KeywordResearchDetail
-      initialResearchDetail={researchDetail}
-      researchId={researchId}
-      // Pass calculated distribution data as prop
+      initialResearchDetail={researchDetail} // Pass the full detail object
+      researchId={researchDetail.id} // Get ID from the object
       volumeDistribution={volumeDistribution}
     />
   );

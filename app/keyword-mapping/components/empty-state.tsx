@@ -46,7 +46,7 @@ export function EmptyState({
             className="flex items-center justify-center gap-2 p-2 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"
           >
             <FileText className="h-4 w-4 text-blue-500" />
-            關鍵詞工具
+            關鍵字工具
           </Link>
         </div>
       )}

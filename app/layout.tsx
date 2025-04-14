@@ -22,8 +22,8 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: 'PressLogic 編輯專用找關鍵詞的工具',
-  description: '輸入關鍵詞或網址以開始分析。',
+  title: 'PressLogic 編輯專用找關鍵字的工具',
+  description: '輸入關鍵字或網址以開始分析。',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

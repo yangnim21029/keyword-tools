@@ -23,7 +23,7 @@ export async function getKeywordSuggestions(
 
   try {
     console.log(
-      `從API獲取關鍵詞建議: ${searchPrefix}, 區域: ${region}, 語言: ${language}, A:${useAlphabet}, S:${useSymbols}`
+      `從API獲取關鍵字建議: ${searchPrefix}, 區域: ${region}, 語言: ${language}, A:${useAlphabet}, S:${useSymbols}`
     );
 
     let allSuggestions: string[] = [];
@@ -81,7 +81,7 @@ export async function getKeywordSuggestions(
       sourceInfo: '數據來源: Google Autocomplete API'
     };
   } catch (error) {
-    console.error('獲取關鍵詞建議時出錯:', error);
+    console.error('獲取關鍵字建議時出錯:', error);
     return {
       suggestions: [],
       estimatedProcessingTime: 0,
@@ -135,7 +135,7 @@ export async function getUrlSuggestions(
       return {
         suggestions: [],
         estimatedProcessingTime: 0,
-        error: '無法從 URL 提取關鍵詞',
+        error: '無法從 URL 提取關鍵字',
         sourceInfo: '數據來源: URL 解析失敗'
       };
     }

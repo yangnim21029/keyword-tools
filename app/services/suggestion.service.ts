@@ -1,12 +1,12 @@
 /**
- * Suggestion Service - 提供關鍵詞建議的功能
+ * Suggestion Service - 提供關鍵字建議的功能
  * 此服務僅負責從 Google 獲取建議數據，不處理快取邏輯
  */
 
 // --- 數據獲取功能 ---
 
 /**
- * 使用 Google Autocomplete API 獲取關鍵詞建議
+ * 使用 Google Autocomplete API 獲取關鍵字建議
  */
 export async function fetchAutocomplete(query: string, region: string = 'TW', language: string = 'zh-TW'): Promise<string[]> {
   try {
@@ -33,8 +33,8 @@ export async function fetchAutocomplete(query: string, region: string = 'TW', la
 }
 
 /**
- * 使用 Google Autocomplete API 獲取關鍵詞建議，使用較長的延遲
- * 適用於特定 UI 互動（例如點擊關鍵詞卡片）
+ * 使用 Google Autocomplete API 獲取關鍵字建議，使用較長的延遲
+ * 適用於特定 UI 互動（例如點擊關鍵字卡片）
  */
 export async function fetchSuggestionWithDelay(query: string, region: string = 'TW', language: string = 'zh-TW'): Promise<string[]> {
   try {

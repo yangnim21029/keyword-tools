@@ -8,17 +8,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 項目中有兩個主要的數據模型，分別用於不同的分析目的：
 
-### KeywordResearch（關鍵詞研究）
+### KeywordResearch（關鍵字研究）
 
-KeywordResearch文檔主要用於關鍵詞分析和用戶意圖研究：
+KeywordResearch文檔主要用於關鍵字分析和用戶意圖研究：
 
-- **功能**：分析關鍵詞的搜索量、競爭程度和用戶意圖
+- **功能**：分析關鍵字的搜索量、競爭程度和用戶意圖
 - **數據結構**：
   ```typescript
   interface KeywordResearchDoc {
     id: string;
-    query: string;  // 主關鍵詞
-    keywords?: Keyword[];  // 關鍵詞列表及其搜索量數據
+    query: string;  // 主關鍵字
+    keywords?: Keyword[];  // 關鍵字列表及其搜索量數據
     clusters?: Record<string, string[]>;  // 語義分群結果
     personas?: Record<string, string>;  // 用戶畫像映射
     location?: string;  // 地區代碼，如 'TW'
@@ -31,7 +31,7 @@ KeywordResearch文檔主要用於關鍵詞分析和用戶意圖研究：
   - SEO策略規劃
   - 內容創作方向指導
   - 了解目標受眾搜索行為和意圖
-  - 發現相關關鍵詞和潛在內容主題
+  - 發現相關關鍵字和潛在內容主題
 
 ### SerpAnalysis（搜索引擎結果分析）
 
@@ -44,13 +44,13 @@ SerpAnalysis文檔專注於分析搜索引擎結果頁面的數據：
   interface SerpDoc {
     id: string;  // 分析ID
     type: string;  // 類型標識為 "serp"
-    query?: string;  // 主查詢關鍵詞
+    query?: string;  // 主查詢關鍵字
     serpResults?: title, metadescription, url, position, type(organic / ads), device(mobile/ desktop)
     domains: Record<string, number>;  // 域名分布統計
   }
   ```
 - **分析內容**：
-  - **域名分布**：統計排名頁面的域名分布情況，發現主導該關鍵詞的網站
+  - **域名分布**：統計排名頁面的域名分布情況，發現主導該關鍵字的網站
   - **標題長度分析**：計算排名頁面的平均標題長度，了解最佳標題結構
   - **描述長度分析**：計算排名頁面的平均描述長度，了解最佳描述結構
   - **頁面類型分布**：分析結果頁面中的不同結果類型（標準結果、特色摘要、問答框等）
@@ -65,10 +65,10 @@ SerpAnalysis文檔專注於分析搜索引擎結果頁面的數據：
 
 這兩種數據模型相輔相成，共同為SEO和內容策略提供完整視角：
 
-- **KeywordResearch**：側重"什麼"—發現有價值的關鍵詞、用戶意圖和主題分群
-- **Serp**：側重"如何"這些關鍵詞在搜索引擎中的具體表現和排名
+- **KeywordResearch**：側重"什麼"—發現有價值的關鍵字、用戶意圖和主題分群
+- **Serp**：側重"如何"這些關鍵字在搜索引擎中的具體表現和排名
 
-當用戶通過KeywordResearch找到有價值的關鍵詞後，可以通過SerpAnalysis深入了解如何針對這些關鍵詞優化內容以獲得更好的排名。
+當用戶通過KeywordResearch找到有價值的關鍵字後，可以通過SerpAnalysis深入了解如何針對這些關鍵字優化內容以獲得更好的排名。
 
 ## Getting Started
 
