@@ -26,7 +26,6 @@ import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { performSemanticClustering as performSemanticClusteringService } from './semantic-clustering';
 
 const KEYWORD_RESEARCH_TAG = 'KeywordResearch';
-// const TOOLS_PATH = '/tools'; // Not currently used
 
 // Define the extended type locally
 export type KeywordResearchListItemWithTotalVolume = KeywordResearchListItem & {

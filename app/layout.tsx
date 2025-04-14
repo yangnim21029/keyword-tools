@@ -71,6 +71,12 @@ export default function RootLayout({
                     >
                       新的
                     </Link>
+                    <Link
+                      href="/help"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      說明
+                    </Link>
                     <span className="text-xs text-muted-foreground/70">
                       v0.1.0
                     </span>
