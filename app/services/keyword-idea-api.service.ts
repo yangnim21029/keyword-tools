@@ -39,6 +39,7 @@ export function estimateProcessingTime(
 
 // 簡體中文和繁體中文對照表 (常用字)
 const simplifiedToTraditional: Record<string, string> = {
+  樱: '櫻',
   晒: '曬',
   个: '個',
   东: '東',

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import React from 'react'
+import { cn } from '@/lib/utils'
+import SearchButton from './search-button'
 
 const GscDataSchema = z.object({
   site_id: z.string(),
@@ -19,8 +21,13 @@ const GscDataSchema = z.object({
 type GscData = z.infer<typeof GscDataSchema>
 
 async function fetchGscData(queries: string[], minImpressions: number = 1): Promise<GscData[]> {
+  "use server"
   if (queries.length === 0) return [];
   const response = await fetch('https://gsc-weekly-analyzer-241331030537.asia-east2.run.app/analyze/all', {
+    next: {
+      revalidate: 60 * 60 * 24, // 24 hours
+    },
+    cache: 'force-cache',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,6 +119,10 @@ function processPageData(uniqueDataItems: GscData[]) {
   uniqueDataItems.forEach(uniqueItem => {
     const normalizedSiteId = uniqueItem.site_id;
     if (!Array.isArray(uniqueItem.associated_pages) || uniqueItem.associated_pages.length === 0) return;
+    
+    // 只處理展示次數 >= 10 的數據
+    if (uniqueItem.total_impressions < 10) return;
+    
     const representativeCleanUrl = getCleanUrl(uniqueItem.associated_pages[0]);
 
     if (!aggregatedStatsMap.has(normalizedSiteId)) {
@@ -142,7 +153,12 @@ function processPageData(uniqueDataItems: GscData[]) {
       if (pages.size === 0) return null;
       const pageEntries = [...pages.entries()];
       if (pageEntries.length === 0) return null;
-      const [url, stats] = pageEntries.sort((a, b) => b[1].impressions - a[1].impressions)[0];
+
+      pageEntries.sort((a, b) => b[1].impressions - a[1].impressions);
+      const [url, stats] = pageEntries[0];
+
+      const impressionShare = stats.impressions > 0 ? (stats.impressions / stats.impressions) * 100 : 0;
+
       const avgPosition = stats.positions.length > 0 ? stats.positions.reduce((a, b) => a + b, 0) / stats.positions.length : 0;
       const ctr = stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0;
       const sortedKeywords = Array.from(stats.keywords).sort((a, b) => {
@@ -156,22 +172,23 @@ function processPageData(uniqueDataItems: GscData[]) {
       try {
          pagePath = decodeURIComponent(new URL(url).pathname);
       } catch {}
-      const displayText = pagePath.split('/').pop() || pagePath
+      const displayText = pagePath.split('/').pop() || pagePath;
+
       return {
         site_id: normalizedSiteId,
         url,
-        total_impressions: stats.impressions,
+        impressionShare,
         total_clicks: stats.clicks,
         ctr,
         avg_position: avgPosition,
         keyword_count: stats.keywords.size,
         keywords: sortedKeywords,
         top_keyword: sortedKeywords[0] || '',
-        displayText: displayText,
-      }
+        displayText,
+      };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
-    .sort((a, b) => (b.total_impressions ?? 0) - (a.total_impressions ?? 0));
+    .sort((a, b) => (b.impressionShare ?? 0) - (a.impressionShare ?? 0));
 }
 
 type KeywordPerformance = {
@@ -185,6 +202,7 @@ type SiteKeywordData = {
   siteUrl: string;
   totalSiteImpressions: number;
   totalSiteClicks: number;
+  avgCtr: number;
   keywords: KeywordPerformance[];
 };
 
@@ -230,11 +248,16 @@ function processSiteKeywordData(uniqueDataItems: GscData[]): SiteKeywordData[] {
       .map(([keyword, stats]) => ({ keyword, impressions: stats.impressions, clicks: stats.clicks }))
       .sort((a, b) => b.impressions - a.impressions);
 
+    const avgCtr = siteData.totalImpressions > 0
+      ? (siteData.totalClicks / siteData.totalImpressions) * 100
+      : 0;
+
     result.push({
       siteId: siteId,
       siteUrl: siteData.representativeUrl || '', 
       totalSiteImpressions: siteData.totalImpressions,
       totalSiteClicks: siteData.totalClicks,
+      avgCtr: avgCtr,
       keywords: sortedKeywords
     });
   });
@@ -243,69 +266,63 @@ function processSiteKeywordData(uniqueDataItems: GscData[]): SiteKeywordData[] {
   return result;
 }
 
-function PageLink({ url, displayText }: { url: string; displayText: string }) {
-  const faviconUrl = getFaviconUrl(url)
-  return (
-    <div className="flex items-center gap-2">
-      {faviconUrl && (
-        <Image
-          src={faviconUrl}
-          alt=""
-          width={16}
-          height={16}
-          className="w-4 h-4 flex-shrink-0"
-          loading="lazy"
-        />
-      )}
-      <a 
-        href={url} 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[300px]"
-      >
-        {displayText}
-      </a>
-    </div>
-  )
-}
-
 function DataTable<T extends Record<string, any>>({
   title,
   columns,
   data,
-  renderRow
+  renderRow,
+  headerClassName
 }: {
   title: string;
   columns: { key: string; label: string }[];
   data: T[];
   renderRow: (item: T, index: number) => React.ReactNode;
+  headerClassName?: string;
 }) {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">{title}</h2>
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
+    <>
+      <div className="overflow-x-auto border border-gray-300 bg-white rounded-md shadow-md">
+        <div className="px-4 py-2 bg-gray-100 border-b border-gray-300 flex justify-between items-center">
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+            <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+            <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+            <span className="text-gray-700 text-xs font-mono tracking-wider uppercase">{title}</span>
+          </div>
+          <span className="text-gray-600 text-xs font-mono">GSC_ANALYZER.v1.0</span>
+        </div>
+        <table className="min-w-full divide-y divide-gray-200">
           <thead>
-            <tr className="bg-gray-100">
+            <tr className={cn("bg-gray-100", headerClassName)}>
               {columns.map(column => (
-                <th key={column.key} className="px-4 py-2 text-left">{column.label}</th>
+                <th
+                  key={column.key}
+                  className="px-4 py-2 text-left text-xs font-mono text-gray-700 uppercase tracking-wider"
+                >
+                  {column.label}
+                </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-200 bg-white">
             {data.map((item, index) => renderRow(item, index))}
           </tbody>
         </table>
       </div>
-    </div>
+      {title && (
+        <p className="my-2 px-6 text-xs text-gray-500 font-mono">
+          <span className="text-gray-700">*</span> {title}
+        </p>
+      )}
+    </>
   )
 }
 
 function KeywordTags({ keywords }: { keywords: string[] }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap gap-1 overflow-hidden sm:max-h-none sm:overflow-visible">
       {keywords.map((keyword, i) => (
-        <span key={i} className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">
+        <span key={i} className="bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-700 font-mono border border-gray-200">
           {keyword}
         </span>
       ))}
@@ -313,40 +330,68 @@ function KeywordTags({ keywords }: { keywords: string[] }) {
   )
 }
 
+const PRESET_QUERIES = {
+  beauty: {
+    label: '4月 Skincare',
+    queries: ['面膜', '保養', '精華', '化妝水', '防曬'] as string[]
+  },
+  travel: {
+    label: '4月 櫻花',
+    queries: ['櫻花'] as string[]
+  },
+  lifestyle: {
+    label: '4月 食譜',
+    queries: ['食譜'] as string[]
+  }
+} as const;
+
+// 預先獲取所有主題的數據
+async function fetchAllThemesData() {
+  const themesData = await Promise.all(
+    Object.entries(PRESET_QUERIES).map(async ([theme, { queries }]) => {
+      const data = await fetchGscData(queries);
+      return {
+        theme,
+        data,
+      };
+    })
+  );
+
+  return Object.fromEntries(
+    themesData.map(({ theme, data }) => [theme, data])
+  );
+}
+
+async function submitQueries(formData: FormData) {
+  'use server'
+  const queriesStr = formData.get('queries')?.toString() || '';
+  const queries = queriesStr.split(/[,\n]/).map(q => q.trim()).filter(Boolean);
+  if (queries.length === 0) return;
+  redirect(`/dev?queries=${encodeURIComponent(queries.join(','))}`);
+}
+
 export default async function DevPage({ searchParams }: { 
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
-  async function submitQueries(formData: FormData) {
-    'use server'
-    const queriesInput = formData.get('queries') as string || ''
-    const queries = queriesInput.split(/[,\n]+/).map(q => q.trim()).filter(q => q !== '')
-    const newSearchParams = new URLSearchParams()
-    queries.forEach(q => newSearchParams.append('q', q))
-    redirect(`/dev?${newSearchParams.toString()}`)
-  }
-
-  const currentSearchParams = await searchParams;
-
-  let currentQueries: string[] = [];
-  const qParam = currentSearchParams?.q;
-  if (typeof qParam === 'string') {
-    currentQueries = [qParam];
-  } else if (Array.isArray(qParam)) {
-    currentQueries = qParam;
-  }
-  if (currentQueries.length === 0) {
-    currentQueries = ['面膜', '保養', '精華'];
-  }
-
-  const data = await fetchGscData(currentQueries);
+  // 預先獲取所有主題的數據
+  const allThemesData = await fetchAllThemesData();
+  
+  // 獲取當前選中的主題
+  const currentTheme = ((await searchParams)?.theme as keyof typeof PRESET_QUERIES) || 'beauty';
+  
+  // 使用當前主題的數據
+  const data = allThemesData[currentTheme];
   const uniqueDataItems = deduplicateData(data);
+  const sortedRawData = [...data].sort((a, b) => a.max_position - b.max_position);
   const topPagesBySite = processPageData(uniqueDataItems);
   const siteKeywordData = processSiteKeywordData(uniqueDataItems);
 
   const topPagesColumns = [
-    { key: 'rank', label: '排名' }, { key: 'site', label: '網站' }, { key: 'page', label: '頁面' },
-    { key: 'impressions', label: '展示' }, { key: 'clicks', label: '點擊' }, { key: 'ctr', label: 'CTR' },
-    { key: 'position', label: '排名' }, { key: 'keywordCount', label: '詞數' }, { key: 'topKeyword', label: '最高流量詞' }
+    { key: 'rank', label: '排名' },
+    { key: 'site', label: '網站' },
+    { key: 'page', label: '頁面' },
+    { key: 'impressionShare', label: '單頁面展示佔比 (%)' },
+    { key: 'topKeyword', label: '最高流量詞' }
   ];
   const mostKeywordsColumns = [
       { key: 'rank', label: '排名' }, { key: 'page', label: '頁面' },
@@ -359,11 +404,11 @@ export default async function DevPage({ searchParams }: {
       { key: 'overall_ctr', label: 'CTR (%)' }, { key: 'associated_pages', label: '關聯頁面' },
   ];
   const siteKeywordTableColumns = [
-      { key: 'rank', label: '排名' }, 
-      { key: 'siteId', label: '網站' }, 
-      { key: 'totalImpressions', label: '總展示' }, 
-      { key: 'impressionShare', label: '總展示佔比 (%)' }, 
-      { key: 'totalClicks', label: '總點擊' }, 
+      { key: 'rank', label: '排名' },
+      { key: 'siteId', label: '網站' },
+      { key: 'totalImpressions', label: '總展示' },
+      { key: 'impressionShare', label: '各站展示佔比 (%)' },
+      { key: 'avgCtr', label: '平均 CTR (%)'},
       { key: 'topKeywords', label: '主要關鍵字 (依展示排序)' }
   ];
 
@@ -374,67 +419,63 @@ export default async function DevPage({ searchParams }: {
   const totalImpressionsInTable = topSitesData.reduce((sum, site) => sum + site.totalSiteImpressions, 0);
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <form action={submitQueries} className="mb-6 space-y-2">
-         <label htmlFor="queriesInput" className="block text-sm font-medium text-gray-700">
-           輸入查詢關鍵字 (以逗號或換行分隔)
-         </label>
-         <input
-           type="text"
-           id="queriesInput"
-           name="queries"
-           defaultValue={currentQueries.join(', ')}
-           className="block w-full max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-           placeholder="例如：面膜, 保養, 精華"
-         />
-         <button
-           type="submit"
-           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-         >
-          查詢
-        </button>
-      </form>
-      <h1 className="text-xl font-bold">GSC Data Analysis for: {currentQueries.join(', ')}</h1>
-      
-      <div className="space-y-6">
-        <DataTable
-          title="各站最高流量頁面 (依頁面展示排序)"
-          columns={topPagesColumns}
-          data={topPagesBySite}
-          renderRow={(item, index) => (
-            <tr key={index} className="hover:bg-gray-50 text-sm">
-              <td className="px-4 py-1.5">{index + 1}</td>
-              <td className="px-4 py-1.5">{item.site_id}</td>
-              <td className="px-4 py-1.5">
-                <PageLink url={item.url} displayText={item.displayText} />
-              </td>
-              <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
-              <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
-              <td className="px-4 py-1.5 text-right">{item.ctr.toFixed(2)}%</td>
-              <td className="px-4 py-1.5 text-right">{item.avg_position.toFixed(1)}</td>
-              <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
-              <td className="px-4 py-1.5">{item.top_keyword}</td>
-            </tr>
-          )}
-        />
+    <>
+      <div className="container mx-auto p-4 space-y-4 mb-16">
+        <h1 className="text-xl font-medium mb-4">GSC Data Analysis for: <span className="font-mono text-gray-700">{PRESET_QUERIES[currentTheme].queries.join(', ')}</span></h1>
 
-        <DataTable
-          title="主要流量網站與關鍵字 (依網站總展示排序)"
-          columns={siteKeywordTableColumns}
-          data={topSitesData}
-          renderRow={(siteInfo, index) => {
-            const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
-            const percentage = totalImpressionsInTable > 0
-              ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
-              : 0;
-            return (
-              <tr key={index} className="hover:bg-gray-50 text-sm">
-                <td className="px-4 py-1.5">{index + 1}</td>
+        <div className="border border-gray-300 bg-white rounded-md shadow-md overflow-hidden">
+          <div className="px-4 py-2 bg-gray-100 border-b border-gray-300 flex justify-between items-center">
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+              <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+              <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+              <span className="text-gray-700 text-xs font-mono tracking-wider uppercase">查詢終端</span>
+            </div>
+            <span className="text-gray-600 text-xs font-mono">GSC_QUERY.v1.0</span>
+          </div>
+          <div className="p-4">
+            <form action={submitQueries} className="space-y-3">
+              <div>
+                <label htmlFor="queriesInput" className="block text-xs font-mono text-gray-700 uppercase tracking-wider mb-2">
+                  $ INPUT_SEARCH_TERMS (以逗號或換行分隔)
+                </label>
+                <input
+                  type="text"
+                  id="queriesInput"
+                  name="queries"
+                  defaultValue={PRESET_QUERIES[currentTheme].queries.join(', ')}
+                  className="block w-full px-4 py-2 border border-gray-300 rounded-md font-mono text-gray-700 bg-gray-50 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="例如：面膜, 保養"
+                />
+              </div>
+              <div className="flex justify-end">
+                <SearchButton />
+              </div>
+            </form>
+          </div>
+        </div>
+        
+        <p className="my-2 px-6 text-xs text-gray-500 font-mono">
+          <span className="text-gray-700">*</span> 使用上週數據
+        </p>
+
+        <div className='h-2'></div>
+        
+        <div className="">
+          <DataTable
+            title="各站最高流量頁面"
+            columns={topPagesColumns}
+            data={topPagesBySite}
+            headerClassName="bg-gray-100"
+            renderRow={(item, index) => (
+              <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
+                <td className="px-4 py-1.5 text-gray-700 font-mono">{item.site_id}</td>
                 <td className="px-4 py-1.5">
                   <div className="flex items-center gap-2">
-                    {faviconUrl && (
+                    {getFaviconUrl(item.url) && (
                       <Image
-                        src={faviconUrl}
+                        src={getFaviconUrl(item.url)}
                         alt=""
                         width={16}
                         height={16}
@@ -442,59 +483,226 @@ export default async function DevPage({ searchParams }: {
                         loading="lazy"
                       />
                     )}
-                    <span>{siteInfo.siteId}</span>
+                    <a 
+                      href={item.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[300px] font-mono"
+                    >
+                      {item.displayText}
+                    </a>
                   </div>
                 </td>
-                <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteImpressions.toLocaleString()}</td>
-                <td className="px-4 py-1.5 text-right">{percentage.toFixed(1)}%</td>
-                <td className="px-4 py-1.5 text-right">{siteInfo.totalSiteClicks.toLocaleString()}</td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.impressionShare.toFixed(1)}%</td>
+                <td className="px-4 py-1.5 text-gray-700 font-mono">{item.top_keyword}</td>
+              </tr>
+            )}
+          />
+          
+          <div className="h-4"></div>
+
+          <DataTable
+            title="主要流量網站與關鍵字"
+            columns={siteKeywordTableColumns}
+            data={topSitesData}
+            headerClassName="bg-gray-100"
+            renderRow={(siteInfo, index) => {
+              const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
+              const percentage = totalImpressionsInTable > 0
+                ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
+                : 0;
+              return (
+                <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
+                  <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
+                  <td className="px-4 py-1.5">
+                    <div className="flex items-center gap-2">
+                      {faviconUrl && (
+                        <Image
+                          src={faviconUrl}
+                          alt=""
+                          width={16}
+                          height={16}
+                          className="w-4 h-4 flex-shrink-0"
+                          loading="lazy"
+                        />
+                      )}
+                      <span className="text-gray-700 font-mono">{siteInfo.siteId}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-1.5 text-right font-mono text-gray-700">{siteInfo.totalSiteImpressions.toLocaleString()}</td>
+                  <td className="px-4 py-1.5 text-right font-mono text-gray-700">{percentage.toFixed(1)}%</td>
+                  <td className="px-4 py-1.5 text-right font-mono text-gray-700">{siteInfo.avgCtr.toFixed(2)}%</td>
+                  <td className="px-4 py-1.5 min-w-[250px]">
+                    <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
+                  </td>
+                </tr>
+              );
+            }}
+          />
+          
+        <div className='h-2'></div>
+
+          <DataTable
+            title="包含最多關鍵字的頁面"
+            columns={mostKeywordsColumns}
+            data={pagesSortedByKeywordCount}
+            headerClassName="bg-gray-100"
+            renderRow={(item, index) => (
+              <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
                 <td className="px-4 py-1.5">
-                  <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
+                  <div className="flex items-center gap-2">
+                    {getFaviconUrl(item.url) && (
+                      <Image
+                        src={getFaviconUrl(item.url)}
+                        alt=""
+                        width={16}
+                        height={16}
+                        className="w-4 h-4 flex-shrink-0"
+                        loading="lazy"
+                      />
+                    )}
+                    <a 
+                      href={item.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[300px] font-mono"
+                    >
+                      {item.displayText}
+                    </a>
+                  </div>
+                </td>
+                <td className="px-4 py-1.5 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${
+                      item.keyword_count > 30 ? "bg-yellow-500" : 
+                      item.keyword_count > 20 ? "bg-yellow-400" : 
+                      item.keyword_count > 10 ? "bg-yellow-300" : "bg-yellow-200"
+                    }`}></span>
+                    <span className="font-mono text-yellow-600">{item.keyword_count}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-1.5 min-w-[250px]">
+                  <KeywordTags keywords={item.keywords} />
                 </td>
               </tr>
-            );
-          }}
-        />
+            )}
+          />
 
-        <DataTable
-          title="包含最多關鍵字的頁面 (取前10頁，依關鍵字數量排序)"
-          columns={mostKeywordsColumns}
-          data={pagesSortedByKeywordCount}
-          renderRow={(item, index) => (
-            <tr key={index} className="hover:bg-gray-50 text-sm">
-              <td className="px-4 py-1.5">{index + 1}</td>
-              <td className="px-4 py-1.5">
-                <PageLink url={item.url} displayText={item.displayText} />
-              </td>
-              <td className="px-4 py-1.5 text-right">{item.keyword_count}</td>
-              <td className="px-4 py-1.5">
-                <KeywordTags keywords={item.keywords} />
-              </td>
-            </tr>
-          )}
-        />
+          <div className="my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6">
+            <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_RAW_DATA</h3>
+            <p className="mb-3 text-sm text-gray-500 font-mono">下方顯示未經處理的原始資料，包含完整的排名與流量信息</p>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="24" 
+              height="24" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="animate-bounce text-gray-500"
+            >
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+          </div>
 
-        <DataTable
-          title="原始 GSC 數據 (依預設排序)"
-          columns={rawDataColumns}
-          data={data}
-          renderRow={(item, index) => (
-            <tr key={index} className="hover:bg-gray-50 text-sm">
-              <td className="px-4 py-1.5">{item.site_id}</td>
-              <td className="px-4 py-1.5">{item.keyword}</td>
-              <td className="px-4 py-1.5 text-right">{item.mean_position.toFixed(1)}</td>
-              <td className="px-4 py-1.5 text-right">{item.min_position}</td>
-              <td className="px-4 py-1.5 text-right">{item.max_position}</td>
-              <td className="px-4 py-1.5 text-right">{item.total_clicks.toLocaleString()}</td>
-              <td className="px-4 py-1.5 text-right">{item.total_impressions.toLocaleString()}</td>
-              <td className="px-4 py-1.5 text-right">{(item.overall_ctr * 100).toFixed(2)}%</td>
-              <td className="px-4 py-1.5 text-xs max-w-[250px] truncate">
-                {Array.isArray(item.associated_pages) ? item.associated_pages.join(', ') : ''}
-              </td>
-            </tr>
-          )}
-        />
+          <DataTable
+            title="原始 GSC 數據 (依最高排名排序)"
+            columns={rawDataColumns}
+            data={sortedRawData}
+            headerClassName="bg-gray-100"
+            renderRow={(item, index) => (
+              <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
+                <td className="px-4 py-1.5 font-mono text-gray-700">{item.site_id}</td>
+                <td className="px-4 py-1.5 font-mono text-gray-700">{item.keyword}</td>
+                <td className="px-4 py-1.5 text-right">
+                  <span className={`px-1.5 py-0.5 rounded font-mono ${
+                    item.mean_position <= 3 ? "bg-green-100 text-green-800" : 
+                    item.mean_position <= 10 ? "bg-blue-100 text-blue-800" : 
+                    item.mean_position <= 20 ? "bg-yellow-100 text-yellow-800" : 
+                    "bg-red-100 text-red-800"
+                  }`}>
+                    {item.mean_position.toFixed(1)}
+                  </span>
+                </td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.min_position.toFixed(1)}</td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.max_position.toFixed(1)}</td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.total_clicks.toLocaleString()}</td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.total_impressions.toLocaleString()}</td>
+                <td className="px-4 py-1.5 text-right font-mono text-gray-700">{(item.overall_ctr).toFixed(2)}%</td>
+                <td className="px-4 py-1.5 text-xs max-w-[250px]">
+                  {Array.isArray(item.associated_pages) && item.associated_pages.length > 0 ? (
+                    <ul className="list-disc pl-4 space-y-0.5 font-mono">
+                      {item.associated_pages.slice(0, 3).map((url, i) => {
+                        let displayText;
+                        try {
+                          const pathname = decodeURIComponent(new URL(url).pathname);
+                          displayText = pathname.split('/').pop() || pathname;
+                        } catch {
+                          displayText = url.split('/').pop() || url;
+                        }
+                        
+                        return (
+                          <li key={i} className="truncate">
+                            <a 
+                              href={url} 
+                              target="_blank"
+                              rel="noopener noreferrer" 
+                              className="hover:underline text-blue-600"
+                            >
+                              {displayText}
+                            </a>
+                          </li>
+                        );
+                      })}
+                      {item.associated_pages.length > 3 && (
+                        <li className="text-gray-500 text-xs">
+                          +{item.associated_pages.length - 3} 個更多頁面
+                        </li>
+                      )}
+                    </ul>
+                  ) : '無關聯頁面'}
+                </td>
+              </tr>
+            )}
+          />
+        </div>
       </div>
-    </div>
+
+      {/* 固定在底部的預設查詢 tabs */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-100 border-t border-gray-300 shadow-lg">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center gap-2 py-2">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-red-500"></div>
+              <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            </div>
+            <span className="text-xs font-mono text-gray-500 mr-4">PRESET_QUERIES</span>
+            <div className="flex gap-2">
+              {Object.entries(PRESET_QUERIES).map(([key, { label, queries }]) => (
+                <a
+                  key={key}
+                  href={`/dev?theme=${key}`}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-mono rounded-md transition-colors",
+                    "border border-gray-300",
+                    "hover:bg-gray-200",
+                    currentTheme === key
+                      ? "bg-gray-700 text-white border-gray-700"
+                      : "bg-white text-gray-700"
+                  )}
+                >
+                  <span className="opacity-50">$</span> {label}
+                  <span className="ml-2 text-xs opacity-50">[{queries.length}]</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
