@@ -17,15 +17,30 @@ import {
   type UserPersona // <-- Import UserPersona type
 } from '@/lib/schema'; // Adjusted import path
 // Import the extended list item and potentially Keyword from our specific types file
-import {
-  identifyParentKeywordsFromAI // Hypothetical AI function import
-} from '@/app/services/ai-keyword-patch'; // Removed .ts extension
 import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { performSemanticClustering as performSemanticClusteringService } from './semantic-clustering';
 // --- Import the Chinese type detection utility ---
-import { detectChineseType } from '@/app/services/keyword-idea-api.service';
+
+interface ProcessQueryInput {
+  query: string;
+  region: string;
+  language: string;
+  useAlphabet: boolean;
+  useSymbols: boolean;
+  maxKeywords?: number; // OBSOLETE - Now using fixed limit below
+  minSearchVolume?: number;
+}
+
+interface ProcessQueryResult {
+  success: boolean;
+  researchId: string | null;
+  error?: string | null;
+}
+
+// Define the fixed limit for keywords sent to Ads API
+const MAX_VOLUME_CHECK_KEYWORDS = 60;
 
 const KEYWORD_RESEARCH_TAG = 'KeywordResearch';
 
@@ -640,27 +655,6 @@ export async function triggerKeywordClustering(
   }
 }
 
-// --- New Server Action for Processing Full Query ---
-
-interface ProcessQueryInput {
-  query: string;
-  region: string;
-  language: string;
-  useAlphabet: boolean;
-  useSymbols: boolean;
-  maxKeywords?: number; // OBSOLETE - Now using fixed limit below
-  minSearchVolume?: number;
-}
-
-interface ProcessQueryResult {
-  success: boolean;
-  researchId: string | null;
-  error?: string | null;
-}
-
-// Define the fixed limit for keywords sent to Ads API
-const MAX_VOLUME_CHECK_KEYWORDS = 60;
-
 export async function processAndSaveKeywordQuery(
   input: ProcessQueryInput
 ): Promise<ProcessQueryResult> {
@@ -699,7 +693,9 @@ export async function processAndSaveKeywordQuery(
     console.log('[Server Action] Starting Step 2: Generate Space Variations');
     // Check if the query consists ONLY of CJK characters and spaces
     if (/^[\u4e00-\u9fa5\s]+$/.test(query)) {
-      console.log('[Server Action] Query is CJK-only, generating space variations...');
+      console.log(
+        '[Server Action] Query is CJK-only, generating space variations...'
+      );
       // Add the original query itself
       spaceVariations.push(query.trim()); // Trim whitespace just in case
 
@@ -714,7 +710,9 @@ export async function processAndSaveKeywordQuery(
         }
       }
     } else {
-      console.log('[Server Action] Query contains non-CJK characters, skipping space variations.');
+      console.log(
+        '[Server Action] Query contains non-CJK characters, skipping space variations.'
+      );
       // If query is not purely CJK/space, spaceVariations remains empty for this step
       // We might still add the original query later if needed, but not spaced variations.
     }

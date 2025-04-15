@@ -537,7 +537,9 @@ export async function getSearchVolume(
           if (apiLanguageCode !== 'zh_CN') {
             const type = detectChineseType(text);
             if (type === 'simplified') {
-              console.log(`[getSearchVolume] Filtering simplified Chinese keyword from API result: "${text}"`);
+              console.log(
+                `[getSearchVolume] Filtering simplified Chinese keyword from API result: "${text}"`
+              );
               continue; // Skip this simplified keyword idea
             }
           }

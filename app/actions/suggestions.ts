@@ -8,9 +8,6 @@ import {
 import { fetchAutocomplete } from '@/app/services/suggestion.service';
 import { KeywordSuggestionResult } from '@/lib/schema';
 
-// Note: Caching logic was commented out in the original file and remains so here.
-// Implement server-side caching (e.g., using unstable_cache or external store) if needed.
-
 // Refactored getKeywordSuggestions
 export async function getKeywordSuggestions(
   query: string,
