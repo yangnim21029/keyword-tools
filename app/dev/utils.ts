@@ -244,4 +244,39 @@ export function processSiteKeywordData(uniqueDataItems: GscData[]): SiteKeywordD
 
   result.sort((a, b) => b.totalSiteImpressions - a.totalSiteImpressions);
   return result;
+}
+
+export async function fetchGscData(queries: string[], minImpressions: number = 1): Promise<GscData[]> {
+  if (queries.length === 0) return [];
+  
+  // Create a cache key based on the queries
+  const cacheKey = queries.sort().join(',') + minImpressions;
+  
+  const response = await fetch('https://gsc-weekly-analyzer-241331030537.asia-east2.run.app/analyze/all', {
+    next: {
+      revalidate: 3600, // Revalidate every hour
+      tags: ['gsc-data', `queries-${cacheKey}`]
+    },
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      queries,
+      min_impressions: minImpressions
+    })
+  })
+
+  if (!response.ok) {
+    console.error('Failed to fetch GSC data:', await response.text());
+    throw new Error('Failed to fetch GSC data')
+  }
+
+  const data = await response.json()
+  return z.array(GscDataSchema).parse(data)
+}
+
+// Add a new function for lazy loading theme data
+export async function fetchThemeData(theme: string, queries: string[]) {
+  return fetchGscData(queries);
 } 
