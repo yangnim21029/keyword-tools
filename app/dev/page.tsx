@@ -24,9 +24,6 @@ async function fetchGscData(queries: string[], minImpressions: number = 1): Prom
   "use server"
   if (queries.length === 0) return [];
   const response = await fetch('https://gsc-weekly-analyzer-241331030537.asia-east2.run.app/analyze/all', {
-    next: {
-      revalidate: 60 * 60 * 24, // 24 hours
-    },
     cache: 'force-cache',
     method: 'POST',
     headers: {
@@ -116,6 +113,14 @@ function processPageData(uniqueDataItems: GscData[]) {
     uniqueKeywordData: Map<string, GscData>;
   }>>();
 
+  // 先計算每個站點的總展示次數
+  const siteTotalImpressions = new Map<string, number>();
+  uniqueDataItems.forEach(item => {
+    const normalizedSiteId = item.site_id;
+    const currentTotal = siteTotalImpressions.get(normalizedSiteId) || 0;
+    siteTotalImpressions.set(normalizedSiteId, currentTotal + item.total_impressions);
+  });
+
   uniqueDataItems.forEach(uniqueItem => {
     const normalizedSiteId = uniqueItem.site_id;
     if (!Array.isArray(uniqueItem.associated_pages) || uniqueItem.associated_pages.length === 0) return;
@@ -157,7 +162,10 @@ function processPageData(uniqueDataItems: GscData[]) {
       pageEntries.sort((a, b) => b[1].impressions - a[1].impressions);
       const [url, stats] = pageEntries[0];
 
-      const impressionShare = stats.impressions > 0 ? (stats.impressions / stats.impressions) * 100 : 0;
+      const siteTotalImpression = siteTotalImpressions.get(normalizedSiteId) || 0;
+      const impressionShare = siteTotalImpression > 0 
+        ? (stats.impressions / siteTotalImpression) * 100 
+        : 0;
 
       const avgPosition = stats.positions.length > 0 ? stats.positions.reduce((a, b) => a + b, 0) / stats.positions.length : 0;
       const ctr = stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0;
@@ -370,14 +378,24 @@ async function submitQueries(formData: FormData) {
   redirect(`/dev?queries=${encodeURIComponent(queries.join(','))}`);
 }
 
-export default async function DevPage({ searchParams }: { 
+// 生成靜態頁面參數
+export async function generateStaticParams() {
+  return Object.keys(PRESET_QUERIES).map((theme) => ({
+    searchParams: { theme }
+  }));
+}
+
+export default async function DevPage({ 
+  searchParams 
+}: { 
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   // 預先獲取所有主題的數據
   const allThemesData = await fetchAllThemesData();
   
   // 獲取當前選中的主題
-  const currentTheme = ((await searchParams)?.theme as keyof typeof PRESET_QUERIES) || 'beauty';
+  const resolvedParams = await searchParams;
+  const currentTheme = (resolvedParams?.theme as keyof typeof PRESET_QUERIES) || 'beauty';
   
   // 使用當前主題的數據
   const data = allThemesData[currentTheme];
@@ -390,7 +408,7 @@ export default async function DevPage({ searchParams }: {
     { key: 'rank', label: '排名' },
     { key: 'site', label: '網站' },
     { key: 'page', label: '頁面' },
-    { key: 'impressionShare', label: '單頁面展示佔比 (%)' },
+    { key: 'impressionShare', label: '單頁面全站展示佔比 (%)' },
     { key: 'topKeyword', label: '最高流量詞' }
   ];
   const mostKeywordsColumns = [
@@ -407,7 +425,7 @@ export default async function DevPage({ searchParams }: {
       { key: 'rank', label: '排名' },
       { key: 'siteId', label: '網站' },
       { key: 'totalImpressions', label: '總展示' },
-      { key: 'impressionShare', label: '各站展示佔比 (%)' },
+      { key: 'impressionShare', label: '展示佔比 (%)' },
       { key: 'avgCtr', label: '平均 CTR (%)'},
       { key: 'topKeywords', label: '主要關鍵字 (依展示排序)' }
   ];
