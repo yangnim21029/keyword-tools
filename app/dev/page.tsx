@@ -21,7 +21,6 @@ const GscDataSchema = z.object({
 type GscData = z.infer<typeof GscDataSchema>
 
 async function fetchGscData(queries: string[], minImpressions: number = 1): Promise<GscData[]> {
-  "use server"
   if (queries.length === 0) return [];
   const response = await fetch('https://gsc-weekly-analyzer-241331030537.asia-east2.run.app/analyze/all', {
     cache: 'force-cache',
@@ -113,12 +112,22 @@ function processPageData(uniqueDataItems: GscData[]) {
     uniqueKeywordData: Map<string, GscData>;
   }>>();
 
-  // 先計算每個站點的總展示次數
+  // 先計算每個站點的總展示次數和頁面數
   const siteTotalImpressions = new Map<string, number>();
+  const sitePageCount = new Map<string, Set<string>>();
   uniqueDataItems.forEach(item => {
     const normalizedSiteId = item.site_id;
     const currentTotal = siteTotalImpressions.get(normalizedSiteId) || 0;
     siteTotalImpressions.set(normalizedSiteId, currentTotal + item.total_impressions);
+    
+    // 計算頁面數
+    if (!sitePageCount.has(normalizedSiteId)) {
+      sitePageCount.set(normalizedSiteId, new Set());
+    }
+    const pageSet = sitePageCount.get(normalizedSiteId)!;
+    item.associated_pages.forEach(url => {
+      pageSet.add(getCleanUrl(url));
+    });
   });
 
   uniqueDataItems.forEach(uniqueItem => {
@@ -187,16 +196,24 @@ function processPageData(uniqueDataItems: GscData[]) {
         url,
         impressionShare,
         total_clicks: stats.clicks,
+        total_impressions: stats.impressions,
         ctr,
         avg_position: avgPosition,
         keyword_count: stats.keywords.size,
         keywords: sortedKeywords,
         top_keyword: sortedKeywords[0] || '',
         displayText,
+        total_pages: sitePageCount.get(normalizedSiteId)?.size || 0
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
-    .sort((a, b) => (b.impressionShare ?? 0) - (a.impressionShare ?? 0));
+    .sort((a, b) => {
+      // 主要按展示量排序
+      const impressionsDiff = b.total_impressions - a.total_impressions;
+      if (impressionsDiff !== 0) return impressionsDiff;
+      // 如果展示量相同，再按展示佔比排序
+      return (b.impressionShare ?? 0) - (a.impressionShare ?? 0);
+    });
 }
 
 type KeywordPerformance = {
@@ -370,39 +387,172 @@ async function fetchAllThemesData() {
   );
 }
 
-async function submitQueries(formData: FormData) {
-  'use server'
+  async function submitQueries(formData: FormData) {
+    'use server'
   const queriesStr = formData.get('queries')?.toString() || '';
   const queries = queriesStr.split(/[,\n]/).map(q => q.trim()).filter(Boolean);
   if (queries.length === 0) return;
   redirect(`/dev?queries=${encodeURIComponent(queries.join(','))}`);
 }
 
-// 生成靜態頁面參數
-export async function generateStaticParams() {
-  return Object.keys(PRESET_QUERIES).map((theme) => ({
-    searchParams: { theme }
-  }));
-}
+// 移除靜態頁面設定，改為動態頁面
+export const dynamic = 'force-dynamic';
+
+const MOCK_DATA = {
+  gscData: [
+    {
+      site_id: 'holidaysmart_io_hk',
+      keyword: '上野公園櫻花現況',
+      mean_position: 1.2,
+      min_position: 1,
+      max_position: 2,
+      total_clicks: 420,
+      total_impressions: 5482,
+      overall_ctr: 7.3,
+      associated_pages: ['https://holidaysmart.io/japan/tokyo/ueno-park-sakura']
+    },
+    {
+      site_id: 'holidaysmart_io_hk',
+      keyword: '新宿御苑櫻花現況',
+      mean_position: 1.8,
+      min_position: 1,
+      max_position: 3,
+      total_clicks: 380,
+      total_impressions: 4200,
+      overall_ctr: 9.0,
+      associated_pages: ['https://holidaysmart.io/japan/tokyo/shinjuku-gyoen-sakura']
+    },
+    {
+      site_id: 'pretty_presslogic_com',
+      keyword: '勝尾寺櫻花',
+      mean_position: 2.5,
+      min_position: 2,
+      max_position: 4,
+      total_clicks: 180,
+      total_impressions: 2620,
+      overall_ctr: 6.49,
+      associated_pages: ['https://pretty.presslogic.com/japan/osaka/katsuo-ji-temple']
+    },
+    {
+      site_id: 'girlstyle_com_tw',
+      keyword: '2025大阪櫻花預測',
+      mean_position: 1.0,
+      min_position: 1,
+      max_position: 1,
+      total_clicks: 0,
+      total_impressions: 3,
+      overall_ctr: 0,
+      associated_pages: ['https://girlstyle.com/tw/japan/osaka/sakura-forecast-2025']
+    }
+  ],
+  pageData: [
+    {
+      site_id: 'holidaysmart_io_hk',
+      url: 'https://holidaysmart.io/japan/tokyo/ueno-park-sakura',
+      impressionShare: 63.6,
+      total_clicks: 420,
+      total_impressions: 5482,
+      ctr: 7.3,
+      avg_position: 1.2,
+      keyword_count: 14,
+      keywords: ['上野公園櫻花現況', '上野公園櫻花', '上野恩賜公園櫻花', '上野公園櫻花祭', '新宿御苑櫻花現況', '新宿御苑櫻花', '新宿御苑櫻花預約', '六本木櫻花', '六本木 櫻花', '八重洲櫻花通', '飛鳥山公園 櫻花', '大川櫻花遊覽船', '昭和紀念公園櫻花', '吉野山櫻花'],
+      top_keyword: '上野公園櫻花現況',
+      displayText: 'ueno-park-sakura',
+      total_pages: 25
+    },
+    {
+      site_id: 'pretty_presslogic_com',
+      url: 'https://pretty.presslogic.com/japan/osaka/katsuo-ji-temple',
+      impressionShare: 30.4,
+      total_clicks: 180,
+      total_impressions: 2620,
+      ctr: 6.49,
+      avg_position: 2.5,
+      keyword_count: 7,
+      keywords: ['勝尾寺 櫻花', '勝尾寺櫻花', '八重洲櫻花通', '六本木櫻花', '新宿御苑櫻花現況', '六義園櫻花', '六本木 櫻花'],
+      top_keyword: '勝尾寺櫻花',
+      displayText: 'katsuo-ji-temple',
+      total_pages: 18
+    }
+  ],
+  siteData: [
+    {
+      siteId: 'holidaysmart_io_hk',
+      siteUrl: 'https://holidaysmart.io',
+      totalSiteImpressions: 5482,
+      totalSiteClicks: 420,
+      avgCtr: 7.3,
+      keywords: [
+        { keyword: '上野公園櫻花現況', impressions: 1200, clicks: 95 },
+        { keyword: '新宿御苑櫻花現況', impressions: 980, clicks: 82 },
+        { keyword: '八重洲櫻花通', impressions: 850, clicks: 65 },
+        { keyword: '六本木櫻花', impressions: 720, clicks: 48 }
+      ]
+    },
+    {
+      siteId: 'pretty_presslogic_com',
+      siteUrl: 'https://pretty.presslogic.com',
+      totalSiteImpressions: 2620,
+      totalSiteClicks: 180,
+      avgCtr: 6.49,
+      keywords: [
+        { keyword: '勝尾寺櫻花', impressions: 980, clicks: 75 },
+        { keyword: '八重洲櫻花通', impressions: 620, clicks: 42 },
+        { keyword: '六本木櫻花', impressions: 580, clicks: 35 }
+      ]
+    }
+  ]
+};
 
 export default async function DevPage({ 
   searchParams 
 }: { 
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }> 
 }) {
   // 預先獲取所有主題的數據
   const allThemesData = await fetchAllThemesData();
   
-  // 獲取當前選中的主題
+  // 獲取當前選中的主題和查詢
   const resolvedParams = await searchParams;
   const currentTheme = (resolvedParams?.theme as keyof typeof PRESET_QUERIES) || 'beauty';
+  const customQueries = resolvedParams?.queries?.toString()?.split(',').filter(Boolean);
   
-  // 使用當前主題的數據
-  const data = allThemesData[currentTheme];
+  // 使用當前主題的數據、自定義查詢的數據，或 mock 資料
+  let data;
+  let isMockData = false;
+  if (customQueries && customQueries.length > 0) {
+    data = await fetchGscData(customQueries);
+  } else if (resolvedParams?.theme) {
+    data = allThemesData[currentTheme];
+  } else {
+    data = MOCK_DATA.gscData as GscData[];
+    isMockData = true;
+  }
+
   const uniqueDataItems = deduplicateData(data);
   const sortedRawData = [...data].sort((a, b) => a.max_position - b.max_position);
-  const topPagesBySite = processPageData(uniqueDataItems);
-  const siteKeywordData = processSiteKeywordData(uniqueDataItems);
+  
+  type ProcessedPageData = {
+    site_id: string;
+    url: string;
+    impressionShare: number;
+    total_clicks: number;
+    total_impressions: number;
+    ctr: number;
+    avg_position: number;
+    keyword_count: number;
+    keywords: string[];
+    top_keyword: string;
+    displayText: string;
+    total_pages: number;
+  };
+
+  const topPagesBySite: ProcessedPageData[] = isMockData ? 
+    MOCK_DATA.pageData as ProcessedPageData[] : 
+    processPageData(uniqueDataItems);
+  const siteKeywordData = isMockData ? 
+    MOCK_DATA.siteData as SiteKeywordData[] : 
+    processSiteKeywordData(uniqueDataItems);
 
   const topPagesColumns = [
     { key: 'rank', label: '排名' },
@@ -422,9 +572,9 @@ export default async function DevPage({
       { key: 'overall_ctr', label: 'CTR (%)' }, { key: 'associated_pages', label: '關聯頁面' },
   ];
   const siteKeywordTableColumns = [
-      { key: 'rank', label: '排名' },
-      { key: 'siteId', label: '網站' },
-      { key: 'totalImpressions', label: '總展示' },
+      { key: 'rank', label: '排名' }, 
+      { key: 'siteId', label: '網站' }, 
+      { key: 'totalImpressions', label: '總展示' }, 
       { key: 'impressionShare', label: '展示佔比 (%)' },
       { key: 'avgCtr', label: '平均 CTR (%)'},
       { key: 'topKeywords', label: '主要關鍵字 (依展示排序)' }
@@ -439,7 +589,13 @@ export default async function DevPage({
   return (
     <>
       <div className="container mx-auto p-4 space-y-4 mb-16">
-        <h1 className="text-xl font-medium mb-4">GSC Data Analysis for: <span className="font-mono text-gray-700">{PRESET_QUERIES[currentTheme].queries.join(', ')}</span></h1>
+        <h1 className="text-xl font-medium mb-4">
+          {isMockData ? (
+            <span className="font-mono text-gray-700">範例資料 (輸入關鍵字開始分析)</span>
+          ) : (
+            <>GSC Data Analysis for: <span className="font-mono text-gray-700">{customQueries?.join(', ') || PRESET_QUERIES[currentTheme].queries.join(', ')}</span></>
+          )}
+        </h1>
 
         <div className="border border-gray-300 bg-white rounded-md shadow-md overflow-hidden">
           <div className="px-4 py-2 bg-gray-100 border-b border-gray-300 flex justify-between items-center">
@@ -456,30 +612,61 @@ export default async function DevPage({
               <div>
                 <label htmlFor="queriesInput" className="block text-xs font-mono text-gray-700 uppercase tracking-wider mb-2">
                   $ INPUT_SEARCH_TERMS (以逗號或換行分隔)
-                </label>
-                <input
-                  type="text"
-                  id="queriesInput"
-                  name="queries"
-                  defaultValue={PRESET_QUERIES[currentTheme].queries.join(', ')}
+         </label>
+         <input
+           type="text"
+           id="queriesInput"
+           name="queries"
+                  defaultValue={customQueries?.join(', ') || (isMockData ? '' : PRESET_QUERIES[currentTheme].queries.join(', '))}
                   className="block w-full px-4 py-2 border border-gray-300 rounded-md font-mono text-gray-700 bg-gray-50 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  placeholder="例如：面膜, 保養"
+                  placeholder="例如：護手霜, 保養品"
                 />
               </div>
               <div className="flex justify-end">
                 <SearchButton />
               </div>
-            </form>
+      </form>
           </div>
         </div>
         
         <p className="my-2 px-6 text-xs text-gray-500 font-mono">
-          <span className="text-gray-700">*</span> 使用上週數據
+          <span className="text-gray-700">*</span> '使用上週數據'
         </p>
 
         <div className='h-2'></div>
         
         <div className="">
+          {isMockData && (
+            <>
+              <div className="fixed inset-0 pointer-events-none z-10 flex items-center justify-center">
+                <div className="transform -rotate-12 text-gray-200 text-[160px] font-bold opacity-20 select-none tracking-wider">
+                  示範資料
+                </div>
+              </div>
+              <div className="my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6 relative">
+                <div className="absolute inset-0 bg-gray-50/50"></div>
+                <div className="relative z-20">
+                  <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_SAMPLE_DATA</h3>
+                  <p className="mb-3 text-sm text-gray-500 font-mono">以下為示範資料，輸入關鍵字後可查看實際分析結果</p>
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width="24" 
+                    height="24" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className="animate-bounce text-gray-500 mx-auto"
+                  >
+                    <path d="M12 5v14M5 12l7 7 7-7"/>
+                  </svg>
+                </div>
+              </div>
+            </>
+          )}
+
           <DataTable
             title="各站最高流量頁面"
             columns={topPagesColumns}
@@ -516,59 +703,77 @@ export default async function DevPage({
               </tr>
             )}
           />
+          <div className="mt-2 px-6 flex flex-wrap gap-4 items-center text-xs text-gray-500 font-mono">
+            {topPagesBySite.map((item, index) => (
+              <div key={index} className="flex items-center gap-2">
+                {getFaviconUrl(item.url) && (
+                  <Image
+                    src={getFaviconUrl(item.url)}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="w-4 h-4 flex-shrink-0"
+                    loading="lazy"
+                  />
+                )}
+                <span className="text-gray-700">{item.site_id}</span>
+                <span className="text-gray-500">({item.total_pages} 頁)</span>
+              </div>
+            ))}
+          </div>
           
           <div className="h-4"></div>
 
-          <DataTable
+        <DataTable
             title="主要流量網站與關鍵字"
-            columns={siteKeywordTableColumns}
-            data={topSitesData}
+          columns={siteKeywordTableColumns}
+          data={topSitesData}
             headerClassName="bg-gray-100"
-            renderRow={(siteInfo, index) => {
-              const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
-              const percentage = totalImpressionsInTable > 0
-                ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
-                : 0;
-              return (
+          renderRow={(siteInfo, index) => {
+            const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
+            const percentage = totalImpressionsInTable > 0
+              ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
+              : 0;
+            return (
                 <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
                   <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
-                  <td className="px-4 py-1.5">
-                    <div className="flex items-center gap-2">
-                      {faviconUrl && (
-                        <Image
-                          src={faviconUrl}
-                          alt=""
-                          width={16}
-                          height={16}
-                          className="w-4 h-4 flex-shrink-0"
-                          loading="lazy"
-                        />
-                      )}
+                <td className="px-4 py-1.5">
+                  <div className="flex items-center gap-2">
+                    {faviconUrl && (
+                      <Image
+                        src={faviconUrl}
+                        alt=""
+                        width={16}
+                        height={16}
+                        className="w-4 h-4 flex-shrink-0"
+                        loading="lazy"
+                      />
+                    )}
                       <span className="text-gray-700 font-mono">{siteInfo.siteId}</span>
-                    </div>
-                  </td>
+                  </div>
+                </td>
                   <td className="px-4 py-1.5 text-right font-mono text-gray-700">{siteInfo.totalSiteImpressions.toLocaleString()}</td>
                   <td className="px-4 py-1.5 text-right font-mono text-gray-700">{percentage.toFixed(1)}%</td>
                   <td className="px-4 py-1.5 text-right font-mono text-gray-700">{siteInfo.avgCtr.toFixed(2)}%</td>
                   <td className="px-4 py-1.5 min-w-[250px]">
-                    <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
-                  </td>
-                </tr>
-              );
-            }}
-          />
+                  <KeywordTags keywords={siteInfo.keywords.slice(0, 15).map(kw => kw.keyword)} />
+                </td>
+              </tr>
+            );
+          }}
+        />
           
         <div className='h-2'></div>
 
-          <DataTable
+        <DataTable
             title="包含最多關鍵字的頁面"
-            columns={mostKeywordsColumns}
-            data={pagesSortedByKeywordCount}
+          columns={mostKeywordsColumns}
+          data={pagesSortedByKeywordCount}
             headerClassName="bg-gray-100"
-            renderRow={(item, index) => (
+          renderRow={(item, index) => (
               <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
                 <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
-                <td className="px-4 py-1.5">
+              <td className="px-4 py-1.5">
                   <div className="flex items-center gap-2">
                     {getFaviconUrl(item.url) && (
                       <Image
@@ -599,39 +804,42 @@ export default async function DevPage({
                     }`}></span>
                     <span className="font-mono text-yellow-600">{item.keyword_count}</span>
                   </div>
-                </td>
+              </td>
                 <td className="px-4 py-1.5 min-w-[250px]">
-                  <KeywordTags keywords={item.keywords} />
-                </td>
-              </tr>
-            )}
-          />
+                <KeywordTags keywords={item.keywords} />
+              </td>
+            </tr>
+          )}
+        />
 
-          <div className="my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6">
-            <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_RAW_DATA</h3>
-            <p className="mb-3 text-sm text-gray-500 font-mono">下方顯示未經處理的原始資料，包含完整的排名與流量信息</p>
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              width="24" 
-              height="24" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              className="animate-bounce text-gray-500"
-            >
-              <path d="M12 5v14M5 12l7 7 7-7"/>
-            </svg>
+          <div className={cn("my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6", isMockData && "relative")}>
+            {isMockData && <div className="absolute inset-0 bg-gray-50/30 pointer-events-none"></div>}
+            <div className="relative z-20">
+              <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_RAW_DATA</h3>
+              <p className="mb-3 text-sm text-gray-500 font-mono">{isMockData ? '以下為示範的原始資料格式' : '下方顯示未經處理的原始資料，包含完整的排名與流量信息'}</p>
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="animate-bounce text-gray-500 mx-auto"
+              >
+                <path d="M12 5v14M5 12l7 7 7-7"/>
+              </svg>
+            </div>
           </div>
 
-          <DataTable
+        <DataTable
             title="原始 GSC 數據 (依最高排名排序)"
-            columns={rawDataColumns}
+          columns={rawDataColumns}
             data={sortedRawData}
             headerClassName="bg-gray-100"
-            renderRow={(item, index) => (
+          renderRow={(item, index) => (
               <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
                 <td className="px-4 py-1.5 font-mono text-gray-700">{item.site_id}</td>
                 <td className="px-4 py-1.5 font-mono text-gray-700">{item.keyword}</td>
@@ -682,12 +890,12 @@ export default async function DevPage({
                       )}
                     </ul>
                   ) : '無關聯頁面'}
-                </td>
-              </tr>
-            )}
-          />
-        </div>
+              </td>
+            </tr>
+          )}
+        />
       </div>
+    </div>
 
       {/* 固定在底部的預設查詢 tabs */}
       <div className="fixed bottom-0 left-0 right-0 bg-gray-100 border-t border-gray-300 shadow-lg">
