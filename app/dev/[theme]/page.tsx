@@ -1,70 +1,35 @@
 import Image from 'next/image'
 import React from 'react'
 import { cn } from '@/lib/utils'
-import { z } from 'zod'
+import { getThemeData } from '../gsc-action'
 import {
-  GscDataSchema,
-  type GscData,
   getFaviconUrl,
-  deduplicateData,
-  processPageData,
-  processSiteKeywordData,
-  fetchThemeData,
-  fetchGscData
-} from '../utils'
+  getPresetQueries
+} from '../gsc-action'
 import { DataTable } from '../components/data-table'
 import { KeywordTags } from '../components/keyword-tags'
 import { Suspense } from 'react'
+import { RawTable } from '../components/raw-table'
+import type { PresetQueryType } from '../gsc-action'
 
 // 強制使用靜態生成
 export const dynamic = 'force-static'
 export const revalidate = false
 
-const PRESET_QUERIES = {
-  beauty: {
-    label: '4月 Skincare',
-    queries: ['面膜', '保養', '精華', '化妝水', '防曬'] as string[]
-  },
-  travel: {
-    label: '4月 櫻花',
-    queries: ['櫻花'] as string[]
-  },
-  lifestyle: {
-    label: '4月 食譜',
-    queries: ['食譜'] as string[]
-  }
-} as const;
-
-// 在構建時預先獲取所有數據
-async function getThemeData(theme: keyof typeof PRESET_QUERIES) {
-  const { queries } = PRESET_QUERIES[theme];
-  const data = await fetchGscData(queries);
-  const uniqueDataItems = deduplicateData(data);
-  const sortedRawData = [...data].sort((a, b) => a.max_position - b.max_position);
-  const topPagesBySite = processPageData(uniqueDataItems);
-  const siteKeywordData = processSiteKeywordData(uniqueDataItems);
-
-  return {
-    data,
-    uniqueDataItems,
-    sortedRawData,
-    topPagesBySite,
-    siteKeywordData
-  };
-}
-
 export async function generateStaticParams() {
-  return Object.keys(PRESET_QUERIES).map((theme) => ({
+  const presetQueries = await getPresetQueries();
+  return Object.keys(presetQueries).map((theme) => ({
     theme
   }));
 }
 
 type Props = {
-  params: Promise<{ theme: keyof typeof PRESET_QUERIES }>
+  params: Promise<{ theme: string }>
 }
 
-async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES }) {
-  const { topPagesBySite, siteKeywordData, sortedRawData } = await getThemeData(theme);
+async function ThemeDataContent({ theme }: { theme: string }) {
+  const presetQueries = await getPresetQueries();
+  const { topPagesBySite, siteKeywordData } = await getThemeData(theme);
   
   const topPagesColumns = [
     { key: 'rank', label: '排名' },
@@ -77,12 +42,7 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
       { key: 'rank', label: '排名' }, { key: 'page', label: '頁面' },
       { key: 'keywordCount', label: '關鍵字數' }, { key: 'keywords', label: '關鍵字 (依展示排序)' }
   ];
-  const rawDataColumns = [
-      { key: 'site_id', label: '網站' }, { key: 'keyword', label: '關鍵字' },
-      { key: 'mean_position', label: '平均排名' }, { key: 'min_position', label: '最低排名' }, { key: 'max_position', label: '最高排名' },
-      { key: 'total_clicks', label: '點擊' }, { key: 'total_impressions', label: '展示' },
-      { key: 'overall_ctr', label: 'CTR (%)' }, { key: 'associated_pages', label: '關聯頁面' },
-  ];
+
   const siteKeywordTableColumns = [
       { key: 'rank', label: '排名' },
       { key: 'siteId', label: '網站' },
@@ -98,6 +58,20 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
   const topSitesData = siteKeywordData.slice(0, 10);
   const totalImpressionsInTable = topSitesData.reduce((sum, site) => sum + site.totalSiteImpressions, 0);
 
+  // Pre-fetch favicon URLs
+  const faviconUrlCache: Map<string, string> = new Map();
+  
+  // Pre-fetch all favicon URLs
+  for (const item of topPagesBySite) {
+    faviconUrlCache.set(item.url, await getFaviconUrl(item.url));
+  }
+  
+  for (const site of siteKeywordData) {
+    if (site.siteUrl) {
+      faviconUrlCache.set(site.siteUrl, await getFaviconUrl(site.siteUrl));
+    }
+  }
+
   return (
     <div className="space-y-4">
       <DataTable
@@ -111,9 +85,9 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
             <td className="px-4 py-1.5 text-gray-700 font-mono">{item.site_id}</td>
             <td className="px-4 py-1.5">
               <div className="flex items-center gap-2">
-                {getFaviconUrl(item.url) && (
+                {faviconUrlCache.get(item.url) && (
                   <Image
-                    src={getFaviconUrl(item.url)}
+                    src={faviconUrlCache.get(item.url) || ''}
                     alt=""
                     width={16}
                     height={16}
@@ -145,7 +119,7 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
         data={topSitesData}
         headerClassName="bg-gray-100"
         renderRow={(siteInfo, index) => {
-          const faviconUrl = getFaviconUrl(siteInfo.siteUrl);
+          const faviconUrl = siteInfo.siteUrl ? faviconUrlCache.get(siteInfo.siteUrl) : null;
           const percentage = totalImpressionsInTable > 0
             ? (siteInfo.totalSiteImpressions / totalImpressionsInTable) * 100
             : 0;
@@ -190,9 +164,9 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
             <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
             <td className="px-4 py-1.5">
               <div className="flex items-center gap-2">
-                {getFaviconUrl(item.url) && (
+                {faviconUrlCache.get(item.url) && (
                   <Image
-                    src={getFaviconUrl(item.url)}
+                    src={faviconUrlCache.get(item.url) || ''}
                     alt=""
                     width={16}
                     height={16}
@@ -227,6 +201,12 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
         )}
       />
 
+      <Suspense fallback={<div>Loading raw data...</div>}>
+        <RawTable theme={theme} queries={presetQueries[theme as keyof typeof presetQueries].queries} />
+      </Suspense>
+      
+      
+
       <div className="my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6">
         <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_RAW_DATA</h3>
         <p className="mb-3 text-sm text-gray-500 font-mono">下方顯示未經處理的原始資料，包含完整的排名與流量信息</p>
@@ -246,78 +226,19 @@ async function ThemeDataContent({ theme }: { theme: keyof typeof PRESET_QUERIES 
         </svg>
       </div>
 
-      <DataTable
-        title="原始 GSC 數據 (依最高排名排序)"
-        columns={rawDataColumns}
-        data={sortedRawData}
-        headerClassName="bg-gray-100"
-        renderRow={(item, index) => (
-          <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
-            <td className="px-4 py-1.5 font-mono text-gray-700">{item.site_id}</td>
-            <td className="px-4 py-1.5 font-mono text-gray-700">{item.keyword}</td>
-            <td className="px-4 py-1.5 text-right">
-              <span className={`px-1.5 py-0.5 rounded font-mono ${
-                item.mean_position <= 3 ? "bg-green-100 text-green-800" : 
-                item.mean_position <= 10 ? "bg-blue-100 text-blue-800" : 
-                item.mean_position <= 20 ? "bg-yellow-100 text-yellow-800" : 
-                "bg-red-100 text-red-800"
-              }`}>
-                {item.mean_position.toFixed(1)}
-              </span>
-            </td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.min_position.toFixed(1)}</td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.max_position.toFixed(1)}</td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.total_clicks.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.total_impressions.toLocaleString()}</td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{(item.overall_ctr).toFixed(2)}%</td>
-            <td className="px-4 py-1.5 text-xs max-w-[250px]">
-              {Array.isArray(item.associated_pages) && item.associated_pages.length > 0 ? (
-                <ul className="list-disc pl-4 space-y-0.5 font-mono">
-                  {item.associated_pages.slice(0, 3).map((url, i) => {
-                    let displayText;
-                    try {
-                      const pathname = decodeURIComponent(new URL(url).pathname);
-                      displayText = pathname.split('/').pop() || pathname;
-                    } catch {
-                      displayText = url.split('/').pop() || url;
-                    }
-                    
-                    return (
-                      <li key={i} className="truncate">
-                        <a 
-                          href={url} 
-                          target="_blank"
-                          rel="noopener noreferrer" 
-                          className="hover:underline text-blue-600"
-                        >
-                          {displayText}
-                        </a>
-                      </li>
-                    );
-                  })}
-                  {item.associated_pages.length > 3 && (
-                    <li className="text-gray-500 text-xs">
-                      +{item.associated_pages.length - 3} 個更多頁面
-                    </li>
-                  )}
-                </ul>
-              ) : '無關聯頁面'}
-            </td>
-          </tr>
-        )}
-      />
+    
     </div>
   );
 }
 
 export default async function DevPage({ params }: Props) {
   const { theme } = await params;
-  const { topPagesBySite, siteKeywordData, sortedRawData } = await getThemeData(theme);
+  const presetQueries = await getPresetQueries();
   
   return (
     <div className="container mx-auto p-4 space-y-4 mb-16">
       <h1 className="text-xl font-medium mb-4">
-        GSC Data Analysis for: <span className="font-mono text-gray-700">{PRESET_QUERIES[theme].queries.join(', ')}</span>
+        GSC Data Analysis for: <span className="font-mono text-gray-700">{presetQueries[theme as keyof typeof presetQueries].queries.join(', ')}</span>
       </h1>
       
       <Suspense fallback={
@@ -341,7 +262,7 @@ export default async function DevPage({ params }: Props) {
             </div>
             <span className="text-xs font-mono text-gray-500 mr-4">PRESET_QUERIES</span>
             <div className="flex gap-2">
-              {Object.entries(PRESET_QUERIES).map(([key, { label, queries }]) => (
+              {Object.entries(presetQueries).map(([key, { label, queries }]) => (
                 <a
                   key={key}
                   href={`/dev/${key}`}
