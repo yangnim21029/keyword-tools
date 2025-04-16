@@ -41,15 +41,6 @@ export const ClusterSchema = z
   .record(z.string(), z.array(z.string()))
   .describe('語義分群結果: 主題名稱映射到關鍵字數組');
 
-// Define the possible clustering statuses
-export const clusteringStatusSchema = z
-  .enum(['pending', 'processing', 'completed', 'failed'])
-  .nullable()
-  .optional();
-
-// Export the inferred type
-export type ClusteringStatus = z.infer<typeof clusteringStatusSchema>;
-
 // Base schema for keyword research data
 export const KeywordResearchBaseSchema = z.object({
   query: z.string().min(1, '主關鍵字不能為空').describe('主關鍵字'),
@@ -66,8 +57,7 @@ export const KeywordResearchBaseSchema = z.object({
   language: z.string().optional().describe('語言代碼 (例如 zh-TW)'),
   device: z.enum(['desktop', 'mobile']).optional().describe('設備類型'),
   isFavorite: z.boolean().optional().default(false),
-  tags: z.array(z.string()).optional().default([]),
-  clustering_status: clusteringStatusSchema
+  tags: z.array(z.string()).optional().default([])
 });
 
 // Schema including the ID

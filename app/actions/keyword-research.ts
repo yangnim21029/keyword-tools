@@ -6,7 +6,6 @@ import { COLLECTIONS, db } from '@/app/services/firebase/config';
 import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
 // Import types primarily from schemas
 import {
-  type ClusteringStatus,
   type CreateKeywordResearchInput, // Use inferred type from schema
   type KeywordResearchFilter,
   type KeywordResearchItem, // Use inferred type from schema
@@ -20,7 +19,6 @@ import {
 import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
-import { performSemanticClustering as performSemanticClusteringService } from './semantic-clustering';
 // --- Import the Chinese type detection utility ---
 
 interface ProcessQueryInput {
@@ -97,28 +95,34 @@ function convertTimestamps<
   return result; // Return type is inferred correctly by TS now
 }
 
-// --- Internal Cache Revalidation Helper ---
-
-async function revalidateResearch(researchId?: string) {
+// --- Exported Cache Revalidation Helper ---
+/**
+ * Revalidates cache tags and paths related to keyword research.
+ * Use this after mutations to ensure fresh data.
+ * @param researchId Optional ID to revalidate a specific item's cache.
+ */
+export async function revalidateKeywordResearchCache(researchId?: string) {
   // Always revalidate the list tag and history page path
   revalidateTag(KEYWORD_RESEARCH_TAG);
   console.log(
-    `[Internal Helper][Revalidate] Revalidated tag: ${KEYWORD_RESEARCH_TAG} and `
+    `[Cache Helper][Revalidate] Revalidated tag: ${KEYWORD_RESEARCH_TAG}`
   );
 
   // Only revalidate the specific item tag AND path if an ID is provided
   if (researchId) {
     const itemPath = `/keyword-mapping/${researchId}`;
     // Adding the specific tag for detail view cache
-    revalidateTag(`${KEYWORD_RESEARCH_TAG}_${researchId}`);
+    // Ensure detail cache uses a consistent tagging scheme if modified
+    const detailTag = `${KEYWORD_RESEARCH_TAG}_${researchId}`; // Define tag explicitly
+    revalidateTag(detailTag);
     revalidatePath(itemPath); // Add path revalidation for the specific item
     console.log(
-      `[Internal Helper][Revalidate] Also revalidated specific tag: ${KEYWORD_RESEARCH_TAG}_${researchId} and path: ${itemPath}.`
+      `[Cache Helper][Revalidate] Also revalidated specific tag: ${detailTag} and path: ${itemPath}.`
     );
   }
 }
 
-// --- Cache Revalidation Action (NEW - Keep for potential other uses?) ---
+// --- Cache Revalidation Action (Keep for potential other uses?) ---
 
 /**
  * Server action dedicated to revalidating keyword research cache tags and paths.
@@ -128,8 +132,8 @@ async function revalidateResearch(researchId?: string) {
 export async function revalidateKeywordData(
   researchId?: string
 ): Promise<void> {
-  // Simply call the internal helper
-  await revalidateResearch(researchId);
+  // Simply call the exported helper
+  await revalidateKeywordResearchCache(researchId);
 }
 
 // --- Server Actions ---
@@ -189,9 +193,6 @@ const getCachedKeywordResearchList = unstable_cache(
         device: firestoreData.device as 'desktop' | 'mobile' | undefined, // Use original data
         isFavorite: firestoreData.isFavorite as boolean, // Use original data
         tags: firestoreData.tags as string[], // Use original data
-        clustering_status: firestoreData.clustering_status as
-          | ClusteringStatus
-          | undefined, // Use original data
         createdAt: convertedTimestamps.createdAt, // Use converted timestamp
         updatedAt: convertedTimestamps.updatedAt, // Use converted timestamp
         totalVolume: totalVolume
@@ -257,7 +258,8 @@ const getCachedKeywordResearchDetail = unstable_cache(
   },
   // Key Parts: Base + researchId makes the cache key unique per item
   ['keywordResearchDetail'], // researchId argument is automatically part of the key
-  // Use a static tag for general revalidation
+  // Use specific tag for item revalidation, matching revalidateKeywordResearchCache
+  // Remove explicit type annotations from the function signature and return type
   { tags: [KEYWORD_RESEARCH_TAG] }
 );
 
@@ -269,6 +271,7 @@ export async function fetchKeywordResearchDetail(
     console.log(
       `[Server Action] Attempting to fetch detail via cache for: ${researchId}`
     );
+    // Note: We pass researchId directly. unstable_cache handles key generation.
     const detail = await getCachedKeywordResearchDetail(researchId);
     return detail;
   } catch (error) {
@@ -286,7 +289,7 @@ export async function deleteKeywordResearch(
 
   try {
     await db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId).delete();
-    await revalidateResearch(researchId); // Use helper
+    await revalidateKeywordResearchCache(researchId); // Use exported helper
     return { success: true };
   } catch (error) {
     console.error(`刪除 (${researchId}) 失敗:`, error);
@@ -325,7 +328,6 @@ export async function createKeywordResearch(
       keywords: [], // Default empty array
       clusters: {}, // Default empty object
       personas: [], // CORRECT: Initialize as empty array
-      clustering_status: 'pending' as ClusteringStatus, // <--- Add initial status
       // ---------------------------------------------------------------
       createdAt: now,
       updatedAt: now
@@ -338,7 +340,7 @@ export async function createKeywordResearch(
     // Add the generated id to the object before converting timestamps
     const newResearchData = { ...dataToSave, id: newResearchId };
 
-    await revalidateResearch(); // Revalidate list only
+    await revalidateKeywordResearchCache(); // Revalidate list only
 
     // Convert timestamps
     const convertedData = convertTimestamps(newResearchData);
@@ -358,7 +360,6 @@ export async function createKeywordResearch(
       keywords: convertedData.keywords as KeywordVolumeItem[], // Ensure keywords array is correct type
       clusters: convertedData.clusters as Record<string, string[]>, // Ensure clusters object is correct type
       personas: convertedData.personas as UserPersona[], // Ensure personas array is correct type
-      clustering_status: convertedData.clustering_status
       // Add any other fields from KeywordResearchItem if necessary
     };
 
@@ -392,7 +393,7 @@ export async function updateKeywordResearch(
       .doc(researchId)
       .update(dataToUpdate);
     // Keep revalidation here for general updates like name/description
-    await revalidateResearch(researchId);
+    await revalidateKeywordResearchCache(researchId); // Use exported helper
     return { success: true };
   } catch (error) {
     console.error(`更新 (${researchId}) 失敗:`, error);
@@ -420,8 +421,8 @@ export async function updateKeywordResearchClusters(
       .collection(COLLECTIONS.KEYWORD_RESEARCH)
       .doc(researchId)
       .update({ clusters: input.clusters, updatedAt: Timestamp.now() });
-    // Remove revalidation - will be handled by the calling action
-    // await revalidateResearch(researchId);
+    // Revalidation is now handled by the caller (requestClustering)
+    // await revalidateKeywordResearchCache(researchId);
     return { success: true };
   } catch (error) {
     console.error(`更新 Clusters (${researchId}) 失敗:`, error);
@@ -447,8 +448,8 @@ export async function updateKeywordResearchKeywords(
   try {
     const success = await updateKeywordResearchResults(researchId, keywords);
     if (success) {
-      // Remove revalidation - will be handled by the calling action
-      // await revalidateResearch(researchId);
+      // Revalidation should be handled by the calling action if needed
+      // await revalidateKeywordResearchCache(researchId);
       return { success: true };
     } else {
       return {
@@ -467,202 +468,11 @@ export async function updateKeywordResearchKeywords(
   }
 }
 
-// --- Placeholder Clustering Service ---
-// Replace this with your actual clustering implementation
-async function performClustering(
-  keywords: KeywordVolumeItem[] // Use KeywordVolumeItem
-): Promise<Record<string, string[]>> {
-  console.log(
-    `[Clustering Service] Preparing ${keywords.length} keywords for semantic clustering...`
-  );
-  if (!keywords || keywords.length === 0) {
-    console.warn('[Clustering Service] No keywords provided.');
-    return {};
-  }
-
-  // Extract just the text from the KeywordVolumeItem objects
-  const keywordTexts = keywords.map(kw => kw.text).filter(text => !!text);
-
-  if (keywordTexts.length < 5) {
-    // Match the validation in performSemanticClusteringService
-    console.warn(
-      `[Clustering Service] Not enough keywords (${keywordTexts.length}) for semantic clustering. Minimum is 5.`
-    );
-    return {};
-  }
-
-  try {
-    // Call the actual semantic clustering server action
-    // Note: We don't specify the model, letting it use the default ('gpt-4o-mini')
-    const clusteringResult = await performSemanticClusteringService({
-      keywords: keywordTexts
-    });
-
-    // The service already validates the schema and returns the clusters object
-    console.log(
-      `[Clustering Service] Semantic clustering complete. Found ${
-        Object.keys(clusteringResult.clusters).length
-      } clusters.`
-    );
-    return clusteringResult.clusters; // Return the clusters part of the result
-  } catch (error) {
-    console.error(
-      '[Clustering Service] Error calling performSemanticClusteringService:',
-      error
-    );
-    // Decide how to handle the error - return empty or re-throw?
-    // Returning empty allows the process to continue without clusters.
-    return {};
-  }
-}
-
-// --- Server Action to Trigger and Save Clustering ---
-export async function triggerKeywordClustering(
-  researchId: string
-): Promise<{ success: boolean; error?: string }> {
-  if (!researchId) return { success: false, error: 'Research ID is required' };
-
-  // Define docRef here to use in catch block
-  const docRef = db?.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
-  if (!docRef)
-    return {
-      success: false,
-      error: 'Database not initialized or invalid research ID'
-    };
-
-  try {
-    console.log(
-      `[Server Action] Triggering clustering for researchId: ${researchId}`
-    );
-    // 1. Fetch the research item to get keywords
-    const researchDetail = await fetchKeywordResearchDetail(researchId); // Uses cache
-    if (
-      !researchDetail ||
-      !researchDetail.keywords ||
-      researchDetail.keywords.length === 0
-    ) {
-      console.warn(
-        `[Server Action] No keywords found for ${researchId} to cluster.`
-      );
-      return { success: true }; // Nothing to cluster
-    }
-
-    // --- Deduplication Logic --- Use KeywordVolumeItem ---
-    const normalizedKeywordMap = new Map<string, KeywordVolumeItem>();
-    (researchDetail.keywords as KeywordVolumeItem[]).forEach(keyword => {
-      if (!keyword.text) return; // Skip if text is missing
-
-      const normalizedText = keyword.text.toLowerCase().replace(/\s+/g, '');
-      const existingKeyword = normalizedKeywordMap.get(normalizedText);
-
-      // If no keyword with this normalized text exists OR the current keyword has higher volume, add/replace it
-      if (
-        !existingKeyword ||
-        (keyword.searchVolume ?? 0) > (existingKeyword.searchVolume ?? 0)
-      ) {
-        normalizedKeywordMap.set(normalizedText, keyword); // keyword is KeywordVolumeItem
-      }
-    });
-
-    const deduplicatedKeywords: KeywordVolumeItem[] = Array.from(
-      normalizedKeywordMap.values()
-    );
-    console.log(
-      `[Server Action] Deduplicated keywords for ${researchId}: ${researchDetail.keywords.length} -> ${deduplicatedKeywords.length}`
-    );
-    // --- End Deduplication ---
-
-    // 2. Perform clustering (Uses deduplicated keywords)
-    if (deduplicatedKeywords.length < 5) {
-      // Also check here before calling clustering
-      console.warn(
-        `[Server Action] Not enough unique keywords (${deduplicatedKeywords.length}) after deduplication for ${researchId}. Minimum is 5. Skipping clustering.`
-      );
-      return { success: true }; // Not an error, just nothing to cluster
-    }
-    const clusters = await performClustering(deduplicatedKeywords);
-
-    // 3. Save the clusters
-    if (Object.keys(clusters).length > 0) {
-      console.log(
-        `[Server Action] Saving ${
-          Object.keys(clusters).length
-        } clusters for ${researchId}`
-      );
-      // Use the existing action to update clusters and handle revalidation
-      // Fix: Add updatedAt to satisfy the type checker, even if overridden internally.
-      const updateResult = await updateKeywordResearchClusters(researchId, {
-        clusters,
-        updatedAt: new Date()
-      });
-      if (!updateResult.success) {
-        throw new Error(
-          updateResult.error ||
-            'Failed to save clusters via updateKeywordResearchClusters'
-        );
-      }
-      console.log(
-        `[Server Action] Clusters saved successfully for ${researchId}`
-      );
-    } else {
-      console.log(
-        `[Server Action] No clusters generated for ${researchId}. Not updating.`
-      );
-    }
-
-    // Inside the try block, after successful cluster update:
-    // Update status to 'completed' explicitly
-    await docRef.update({
-      clustering_status: 'completed',
-      updatedAt: Timestamp.now()
-    });
-    console.log(
-      `[Server Action] Status updated to 'completed' for ${researchId}`
-    );
-
-    // Restore revalidation to ensure client gets fresh data
-    await revalidateResearch(researchId);
-    console.log(`[Server Action] Revalidated cache for ${researchId}`);
-
-    return { success: true };
-  } catch (error) {
-    console.error(
-      `[Server Action] Clustering failed for ${researchId}:`,
-      error
-    );
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'An unexpected error occurred during clustering';
-
-    // --- Update status to 'failed' on error ---
-    try {
-      await docRef.update({
-        clustering_status: 'failed',
-        updatedAt: Timestamp.now()
-      });
-      console.log(
-        `[Server Action] Status updated to 'failed' for ${researchId} due to error.`
-      );
-      
-      // Also revalidate on failure
-      await revalidateResearch(researchId);
-      console.log(`[Server Action] Revalidated cache after failure for ${researchId}`);
-    } catch (updateError) {
-      console.error(
-        `[Server Action] CRITICAL: Failed to update status to 'failed' for ${researchId} after error:`,
-        updateError
-      );
-    }
-    // --- End status update ---
-
-    return { success: false, error: message };
-  }
-}
-
+// --- Process and Save Keyword Query (remains the same for now) ---
 export async function processAndSaveKeywordQuery(
   input: ProcessQueryInput
 ): Promise<ProcessQueryResult> {
+  // ... (existing logic) ...
   // --- Keyword Generation & Processing Flow ---
   // 1. Query: Start with the user's input query.
   // 2. Generate Space Variations: Create keywords by inserting spaces.
@@ -990,6 +800,7 @@ export async function processAndSaveKeywordQuery(
           `[Server Action] Failed to update keywords for ${savedResearchId}:`,
           updateKeywordsResult.error
         );
+        // Decide if this should throw an error or just be logged
       } else {
         console.log(
           `[Server Action] Successfully updated keywords for ${savedResearchId}`
@@ -999,6 +810,12 @@ export async function processAndSaveKeywordQuery(
       console.log(
         `[Server Action] No keywords to save for record ${savedResearchId}.`
       );
+    }
+
+     // After saving keywords (or if none), revalidate the specific item cache
+    if (savedResearchId) {
+        await revalidateKeywordResearchCache(savedResearchId);
+        console.log(`[Server Action] Revalidated cache for ${savedResearchId} after keyword processing.`);
     }
 
     console.log(
@@ -1014,193 +831,17 @@ export async function processAndSaveKeywordQuery(
       error instanceof Error
         ? error.message
         : 'An unexpected error occurred during processing.';
+
+     // Attempt to revalidate cache even on failure if we have an ID
+     if (savedResearchId) {
+       try {
+         await revalidateKeywordResearchCache(savedResearchId);
+         console.log(`[Server Action] Revalidated cache for ${savedResearchId} after process error.`);
+       } catch (revalError) {
+           console.error(`[Server Action] Failed to revalidate cache for ${savedResearchId} after process error:`, revalError);
+       }
+     }
+
     return { success: false, researchId: savedResearchId, error: message };
-  }
-}
-
-// --- Action to Fetch Clustering Status (Safe for Render Path) ---
-
-/**
- * Fetches the current clustering status of a Keyword Research item.
- *
- * @param researchId The ID of the Keyword Research item.
- * @returns The current ClusteringStatus ('pending', 'processing', 'completed', 'failed', or null).
- */
-export async function fetchClusteringStatus( // Renamed
-  researchId: string
-): Promise<ClusteringStatus | null> {
-  console.log(
-    `[Server Action] fetchClusteringStatus called for researchId: ${researchId}` // Renamed log
-  );
-  if (!db) {
-    console.error(
-      '[Server Action][fetchClusteringStatus] Database not initialized'
-    ); // Renamed log
-    return null;
-  }
-  if (!researchId) {
-    console.warn(
-      '[Server Action][fetchClusteringStatus] Research ID is required'
-    ); // Renamed log
-    return null;
-  }
-
-  const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
-
-  try {
-    const docSnap = await docRef.get();
-
-    if (!docSnap.exists) {
-      console.warn(
-        `[Server Action][fetchClusteringStatus] Document not found: ${researchId}`
-      ); // Renamed log
-      return null;
-    }
-
-    const data = docSnap.data() as Omit<
-      KeywordResearchItem,
-      'clustering_status'
-    > & { clustering_status?: ClusteringStatus };
-    const currentStatus = data?.clustering_status ?? null;
-
-    console.log(
-      `[Server Action][fetchClusteringStatus] Current status for ${researchId}: ${currentStatus}`
-    ); // Renamed log
-
-    // --- Removed update, trigger, and revalidation logic ---
-
-    return currentStatus; // Return the existing status
-  } catch (error) {
-    console.error(
-      `[Server Action][fetchClusteringStatus] Error fetching clustering status for ${researchId}:`, // Renamed log
-      error
-    );
-    return null;
-  }
-}
-
-// --- Action to Request Clustering Start (Safe for Client Call) ---
-
-/**
- * Requests the clustering process to start for a specific Keyword Research item.
- * Updates the status to 'processing', triggers the background job (TODO), and revalidates cache.
- * Should be called from a client component action (e.g., button click).
- *
- * @param researchId The ID of the Keyword Research item.
- * @returns Object indicating success or failure.
- */
-export async function requestClustering(
-  researchId: string
-): Promise<{ success: boolean; error?: string }> {
-  console.log(
-    `[Server Action] requestClustering called for researchId: ${researchId}`
-  );
-  if (!db) {
-    const errorMsg =
-      '[Server Action][requestClustering] Database not initialized';
-    console.error(errorMsg);
-    return { success: false, error: errorMsg };
-  }
-  if (!researchId) {
-    const errorMsg =
-      '[Server Action][requestClustering] Research ID is required';
-    console.warn(errorMsg);
-    return { success: false, error: errorMsg };
-  }
-
-  const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
-
-  try {
-    // Fetch current status first to avoid unnecessary updates/triggers
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) {
-      const errorMsg = `[Server Action][requestClustering] Document not found: ${researchId}`;
-      console.warn(errorMsg);
-      return { success: false, error: 'Research item not found.' };
-    }
-
-    const data = docSnap.data() as Omit<
-      KeywordResearchItem,
-      'clustering_status'
-    > & { clustering_status?: ClusteringStatus };
-    const currentStatus = data?.clustering_status ?? null;
-
-    // Only proceed if status allows triggering (null, pending, or failed)
-    if (
-      currentStatus === null ||
-      currentStatus === 'pending' ||
-      currentStatus === 'failed'
-    ) {
-      console.log(
-        `[Server Action][requestClustering] Status is '${
-          currentStatus ?? 'null'
-        }'. Updating to 'processing' and triggering background task...`
-      );
-
-      // Update status to 'processing' in Firestore
-      await docRef.update({
-        clustering_status: 'processing',
-        updatedAt: Timestamp.now() // Also update the timestamp
-      });
-
-      // Trigger background task
-      triggerKeywordClustering(researchId)
-        .then(result => {
-          if (!result.success) {
-            console.error(
-              `[Server Action][requestClustering Background] Clustering failed for ${researchId}:`,
-              result.error
-            );
-            // Status should have been set to 'failed' inside triggerKeywordClustering's catch block
-          } else {
-            console.log(
-              `[Server Action][requestClustering Background] Clustering trigger completed for ${researchId}. Actual clustering runs in background.`
-            );
-            // Status should have been set to 'completed' inside triggerKeywordClustering's try block
-          }
-        })
-        .catch(error => {
-          console.error(
-            `[Server Action][requestClustering Background] Unexpected error during clustering trigger for ${researchId}:`,
-            error
-          );
-          // --- Safeguard: Update status to 'failed' if the trigger itself fails ---
-          docRef
-            .update({
-              clustering_status: 'failed',
-              updatedAt: Timestamp.now()
-            })
-            .catch(updateError => {
-              console.error(
-                `[Server Action] CRITICAL: Failed to update status to 'failed' for ${researchId} after trigger error:`,
-                updateError
-              );
-            });
-          // --- End safeguard ---
-        });
-
-      // Revalidation is handled within triggerKeywordClustering now (via revalidateResearch)
-      // console.log(`[Server Action][requestClustering] Revalidation deferred to background task.`);
-
-      return { success: true };
-    } else {
-      // Clustering already started, completed, or failed. Don't re-trigger.
-      console.log(
-        `[Server Action][requestClustering] Clustering status is '${currentStatus}'. No action taken.`
-      );
-      // Indicate success=false but maybe provide a specific message if needed
-      return {
-        success: false,
-        error: `Clustering already started or completed (status: ${currentStatus}).`
-      };
-    }
-  } catch (error) {
-    const errorMsg = `[Server Action][requestClustering] Error requesting clustering for ${researchId}:`;
-    console.error(errorMsg, error);
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : 'Failed to request clustering.'
-    };
   }
 }

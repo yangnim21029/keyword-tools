@@ -21,7 +21,6 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { ClusteringStatus } from '@/lib/schema';
 
 
 // Define structure for processed cluster data
@@ -47,7 +46,6 @@ interface KeywordClusteringProps {
   researchId: string;
   onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>;
   isSavingPersona: string | null;
-  clusteringStatus: ClusteringStatus;
 }
 
 export default function KeywordClustering({
@@ -61,7 +59,6 @@ export default function KeywordClustering({
   researchId,
   onSavePersona,
   isSavingPersona,
-  clusteringStatus
 }: KeywordClusteringProps) {
   const router = useRouter();
   // Remove setQuery from store
@@ -210,18 +207,6 @@ export default function KeywordClustering({
       <div className="text-center p-8 border rounded-lg bg-muted/30">
         <LayoutGrid className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
         <h3 className="text-xl font-medium mb-2">未找到分群結果</h3>
-        <p className="text-muted-foreground">
-          {clusteringStatus === 'processing'
-            ? '正在處理分群數據...'
-            : clusters === null
-            ? '正在等待分群數據...'
-            : '未能從關鍵詞中生成有效分群。'}
-        </p>
-        {clusteringStatus === 'failed' && (
-          <p className="text-destructive mt-2">
-            分群處理失敗，請嘗試重新執行。
-          </p>
-        )}
       </div>
     );
   }
