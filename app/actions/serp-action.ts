@@ -7,8 +7,12 @@ import {
   getUserIntentAnalysisPrompt,
   getUserIntentConversionPrompt
 } from '@/app/prompt/prompt-design';
-import { saveSerpAnalysis } from '@/app/services/firebase';
-import { sanitizeKeywordForId } from '@/lib/utils';
+import {
+  findSerpAnalysisByKeyword,
+  saveSerpAnalysis,
+  type FirebaseSerpAnalysisDoc
+} from '@/app/services/firebase';
+import { fetchKeywordData } from '@/app/services/serp.service';
 import { openai } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
@@ -88,34 +92,26 @@ export type TitleAnalysisJson = z.infer<typeof titleAnalysisOutputSchema>; // Ex
 // --- Server Actions for Analysis ---
 
 interface AnalyzeParams {
+  docId: string;
   keyword: string;
   serpString: string;
-  model?: string; // Optional model override
+  model?: string;
 }
 
 interface UserIntentParams extends AnalyzeParams {
   relatedKeywordsRaw: string;
 }
 
-// Helper to get sanitized ID
-const getSanitizedId = (keyword: string): string => {
-  const sanitizedId = sanitizeKeywordForId(keyword);
-  if (!sanitizedId) {
-    throw new Error(`無法處理關鍵字 \"${keyword}\" 以生成有效 ID。`);
-  }
-  return sanitizedId;
-};
-
 // --- Perform Content Type Analysis (Outputs Text) ---
 export async function performContentTypeAnalysis({
+  docId,
   keyword,
   serpString,
   model = 'gpt-4o'
 }: AnalyzeParams): Promise<z.infer<typeof contentTypeAnalysisTextSchema>> {
-  const sanitizedId = getSanitizedId(keyword);
   const analysisKey = 'contentTypeAnalysisText';
   console.log(
-    `[Action] Performing Content Type Analysis (Text) for ${keyword} (ID: ${sanitizedId}) using ${model}`
+    `[Action] Performing Content Type Analysis (Text) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
   try {
     const prompt = getContentTypeAnalysisPrompt(keyword, serpString);
@@ -125,17 +121,18 @@ export async function performContentTypeAnalysis({
       prompt
     });
     console.log(
-      `[Action] Content Type Analysis (Text) successful for ${keyword}. Saving raw text...`
+      `[Action] Content Type Analysis (Text) successful for Doc ID: ${docId}. Saving raw text...`
     );
     const result = { analysisText: analysisResultText };
-    const validatedResult = contentTypeAnalysisTextSchema.parse(result); // Use parse for direct validation
-    await saveSerpAnalysis(keyword, {
-      [analysisKey]: validatedResult.analysisText
-    });
+    const validatedResult = contentTypeAnalysisTextSchema.parse(result);
+    await saveSerpAnalysis(
+      { [analysisKey]: validatedResult.analysisText },
+      docId
+    );
     return validatedResult;
   } catch (error) {
     console.error(
-      `[Action] Content Type Analysis (Text) failed for ${keyword}:`,
+      `[Action] Content Type Analysis (Text) failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
@@ -148,15 +145,15 @@ export async function performContentTypeAnalysis({
 
 // --- Perform User Intent Analysis (Outputs Text) ---
 export async function performUserIntentAnalysis({
+  docId,
   keyword,
   serpString,
   relatedKeywordsRaw,
   model = 'gpt-4o'
 }: UserIntentParams): Promise<z.infer<typeof userIntentAnalysisTextSchema>> {
-  const sanitizedId = getSanitizedId(keyword);
   const analysisKey = 'userIntentAnalysisText';
   console.log(
-    `[Action] Performing User Intent Analysis (Text) for ${keyword} (ID: ${sanitizedId}) using ${model}`
+    `[Action] Performing User Intent Analysis (Text) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
   try {
     const prompt = getUserIntentAnalysisPrompt(
@@ -170,17 +167,18 @@ export async function performUserIntentAnalysis({
       prompt
     });
     console.log(
-      `[Action] User Intent Analysis (Text) successful for ${keyword}. Saving raw text...`
+      `[Action] User Intent Analysis (Text) successful for Doc ID: ${docId}. Saving raw text...`
     );
     const result = { analysisText: analysisResultText };
     const validatedResult = userIntentAnalysisTextSchema.parse(result);
-    await saveSerpAnalysis(keyword, {
-      [analysisKey]: validatedResult.analysisText
-    });
+    await saveSerpAnalysis(
+      { [analysisKey]: validatedResult.analysisText },
+      docId
+    );
     return validatedResult;
   } catch (error) {
     console.error(
-      `[Action] User Intent Analysis (Text) failed for ${keyword}:`,
+      `[Action] User Intent Analysis (Text) failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
@@ -193,14 +191,14 @@ export async function performUserIntentAnalysis({
 
 // --- Perform SERP Title Analysis (Outputs JSON) ---
 export async function performSerpTitleAnalysis({
+  docId,
   keyword,
   serpString,
   model = 'gpt-4o'
 }: AnalyzeParams): Promise<z.infer<typeof titleAnalysisOutputSchema>> {
-  const sanitizedId = getSanitizedId(keyword);
   const analysisKey = 'titleAnalysis';
   console.log(
-    `[Action] Performing Title Analysis (JSON) for ${keyword} (ID: ${sanitizedId}) using ${model}`
+    `[Action] Performing Title Analysis (JSON) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
   try {
     const prompt = getSerpTitleAnalysisPrompt(keyword, serpString);
@@ -211,13 +209,13 @@ export async function performSerpTitleAnalysis({
       prompt
     });
     console.log(
-      `[Action] Title Analysis (JSON) successful for ${keyword}. Saving...`
+      `[Action] Title Analysis (JSON) successful for Doc ID: ${docId}. Saving...`
     );
-    await saveSerpAnalysis(keyword, { [analysisKey]: analysisResult });
+    await saveSerpAnalysis({ [analysisKey]: analysisResult }, docId);
     return analysisResult;
   } catch (error) {
     console.error(
-      `[Action] Title Analysis (JSON) failed for ${keyword}:`,
+      `[Action] Title Analysis (JSON) failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
@@ -286,6 +284,138 @@ export async function convertAnalysisTextToJson({
     );
     throw new Error(
       `${analysisType} 文本轉換為 JSON 失敗: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+// --- NEW: Action to Initiate SERP Analysis (Fetch + Create Doc) ---
+
+interface InitiateParams {
+  originalKeyword: string;
+  region?: string | null;
+  language?: string | null;
+}
+
+export async function initiateSerpAnalysisAction({
+  originalKeyword,
+  region,
+  language
+}: InitiateParams): Promise<string> {
+  // Returns the new document ID
+  console.log(
+    `[Action] Initiating new SERP analysis for: ${originalKeyword} (Region: ${
+      region || 'default'
+    }, Lang: ${language || 'default'})`
+  );
+
+  if (!originalKeyword) {
+    throw new Error('Keyword cannot be empty for initiating analysis.');
+  }
+
+  try {
+    // 1. Fetch data from Apify
+    console.log(`[Action] Fetching SERP data from Apify...`);
+    const serpResults = await fetchKeywordData(
+      originalKeyword,
+      region,
+      language
+    );
+    console.log(`[Action] Fetched ${serpResults.length} results from Apify.`);
+
+    // 2. Prepare data for saving (create mode)
+    const dataToSave: Partial<
+      Omit<FirebaseSerpAnalysisDoc, 'timestamp' | 'normalizedKeyword'>
+    > & { originalKeyword: string } = {
+      originalKeyword: originalKeyword,
+      serpResults: serpResults,
+      // Initialize analysis fields to null
+      contentTypeAnalysis: null,
+      userIntentAnalysis: null,
+      titleAnalysis: null,
+      contentTypeAnalysisText: null,
+      userIntentAnalysisText: null
+    };
+
+    // 3. Save new document to Firestore using saveSerpAnalysis (create mode)
+    console.log(`[Action] Saving initial SERP data to Firestore...`);
+    const newDocId = await saveSerpAnalysis(dataToSave); // No docId passed, triggers create
+    console.log(
+      `[Action] Successfully created Firestore document with ID: ${newDocId}`
+    );
+
+    // 4. Return the new document ID
+    return newDocId;
+  } catch (error) {
+    console.error(
+      `[Action] Failed to initiate SERP analysis for ${originalKeyword}:`,
+      error
+    );
+    // Re-throw a more specific error or handle as needed
+    throw new Error(
+      `無法為關鍵字 '${originalKeyword}' 啟動 SERP 分析: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+// --- NEW: Action to Find or Create SERP Analysis ---
+
+interface FindOrCreateParams {
+  originalKeyword: string;
+  region?: string | null;
+  language?: string | null;
+}
+
+export async function findOrCreateSerpAnalysisAction({
+  originalKeyword,
+  region,
+  language
+}: FindOrCreateParams): Promise<string> {
+  // Returns the document ID (existing or new)
+  console.log(
+    `[Action] Finding or Creating SERP analysis for: ${originalKeyword}`
+  );
+
+  if (!originalKeyword) {
+    throw new Error('Keyword cannot be empty.');
+  }
+
+  try {
+    // 1. Try to find existing analysis
+    const existingAnalysis = await findSerpAnalysisByKeyword(originalKeyword);
+
+    if (existingAnalysis) {
+      // 2a. Found: return the existing ID
+      console.log(
+        `[Action] Found existing analysis with ID: ${existingAnalysis.id}`
+      );
+      return existingAnalysis.id;
+    } else {
+      // 2b. Not Found: Initiate new analysis using the other action
+      console.log(
+        `[Action] Existing analysis not found. Initiating new one...`
+      );
+      const newDocId = await initiateSerpAnalysisAction({
+        originalKeyword,
+        region,
+        language
+      });
+      console.log(
+        `[Action] New analysis initiated. Returning new ID: ${newDocId}`
+      );
+      return newDocId;
+    }
+  } catch (error) {
+    console.error(
+      `[Action] Failed to find or create SERP analysis for ${originalKeyword}:`,
+      error
+    );
+    // Re-throw or handle as needed
+    throw new Error(
+      `查找或創建關鍵字 '${originalKeyword}' 的分析時失敗: ${
         error instanceof Error ? error.message : String(error)
       }`
     );

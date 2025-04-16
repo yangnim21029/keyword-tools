@@ -12,10 +12,11 @@ export {
 
 // 導出 SERP 分析相關功能
 export {
-  getSerpAnalysisBySanitizedId,
+  findSerpAnalysisByKeyword,
+  getSerpAnalysisById,
   getSerpAnalysisList,
   saveSerpAnalysis
 } from './db-serp';
 
-// 導出 SERP 分析數據類型 (可選，如果需要在其他地方使用)
-export type { SerpAnalysisData } from './db-serp';
+// 導出 SERP 分析數據類型
+export type { FirebaseSerpAnalysisDoc, SerpAnalysisData } from './db-serp';

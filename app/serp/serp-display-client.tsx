@@ -15,18 +15,15 @@ import {
 } from '@/app/actions/serp-action';
 
 // Define the data structure expected by the Client Component
-// Store both text and JSON results for content/intent
 type ClientSerpAnalysisData = Omit<
-  FirebaseSerpAnalysisData,
-  'timestamp' | 'contentTypeAnalysis' | 'userIntentAnalysis' | 'titleAnalysis' // Omit fields we redefine
+  FirebaseSerpAnalysisData, // Contains originalKeyword, normalizedKeyword, etc.
+  'timestamp'
 > & {
+  id: string; // Explicitly include the document ID
   timestamp: Date;
-  contentTypeAnalysisText: string | null;
-  userIntentAnalysisText: string | null;
-  titleAnalysis: TitleAnalysisJson | null; // Use imported type
-  // Add fields for the converted JSON
-  contentTypeAnalysisJson: ContentTypeAnalysisJson | null; // Use imported type
-  userIntentAnalysisJson: UserIntentAnalysisJson | null; // Use imported type
+  // originalKeyword: string; // Already present via FirebaseSerpAnalysisData
+  contentTypeAnalysisJson: ContentTypeAnalysisJson | null;
+  userIntentAnalysisJson: UserIntentAnalysisJson | null;
 };
 
 // Update props type to use the client-specific data structure
@@ -61,8 +58,10 @@ export function SerpDisplayClient({
     title: null
   });
 
-  const keyword = analysisData.keyword;
+  // Access originalKeyword from analysisData
+  const keyword = analysisData.originalKeyword;
   const serpResults = analysisData.serpResults;
+  const docId = analysisData.id; // Access id
 
   const formatSerpForPrompt = useCallback(
     (data: typeof serpResults): string => {
@@ -83,10 +82,19 @@ export function SerpDisplayClient({
       setIsLoading(prev => ({ ...prev, [type]: true }));
       setAnalysisError(prev => ({ ...prev, [type]: null }));
 
+      if (!docId) {
+        setAnalysisError(prev => ({
+          ...prev,
+          [type]: '缺少文檔 ID，無法執行分析。'
+        }));
+        setIsLoading(prev => ({ ...prev, [type]: false }));
+        return;
+      }
+
       try {
         const serpString = formatSerpForPrompt(serpResults);
         console.log(
-          `[Client] Requesting ${type} analysis for keyword: ${keyword}`
+          `[Client] Requesting ${type} analysis for Doc ID: ${docId} (Keyword: ${keyword})`
         );
 
         if (type === 'contentType' || type === 'userIntent') {
@@ -95,16 +103,15 @@ export function SerpDisplayClient({
             type === 'contentType'
               ? performContentTypeAnalysis
               : performUserIntentAnalysis;
-          const params: any = { keyword, serpString };
+          // Pass docId, keyword, serpString to the action
+          const params: any = { docId, keyword, serpString };
           if (type === 'userIntent') {
-            // TODO: Replace mock data with actual logic to fetch/provide relatedKeywordsRaw
-            // For example, fetch from an API or pass down as a prop.
-            // const realRelatedKeywords = await fetchRelatedKeywords(keyword);
-            params.relatedKeywordsRaw = ''; // Pass empty string for now
+            // TODO: Replace mock data
+            params.relatedKeywordsRaw = '';
           }
 
           console.log(`[Client] Performing ${type} text analysis...`);
-          const textResult: { analysisText: string } = await analysisFn(params);
+          const textResult = await analysisFn(params);
           const rawText = textResult.analysisText;
 
           // Update state with raw text immediately (optional, but can show intermediate step)
@@ -123,7 +130,6 @@ export function SerpDisplayClient({
             analysisType: type,
             analysisText: rawText,
             keyword: keyword
-            // model: 'gpt-4o-mini' // Optionally use a cheaper model for conversion
           });
 
           console.log(
@@ -143,7 +149,9 @@ export function SerpDisplayClient({
         } else if (type === 'title') {
           // --- Direct JSON Analysis (Title) ---
           console.log(`[Client] Performing title JSON analysis...`);
+          // Pass docId, keyword, serpString to the action
           const result = await performSerpTitleAnalysis({
+            docId,
             keyword,
             serpString
           });
@@ -164,8 +172,8 @@ export function SerpDisplayClient({
         setIsLoading(prev => ({ ...prev, [type]: false }));
       }
     },
-    [keyword, serpResults, formatSerpForPrompt]
-  ); // Dependencies for useCallback
+    [docId, keyword, serpResults, formatSerpForPrompt]
+  ); // Update dependencies
 
   // Memoize analysis results for passing to sections
   const results = useMemo(

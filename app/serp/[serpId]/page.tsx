@@ -1,11 +1,8 @@
 import { SerpDisplayClient } from '@/app/serp/serp-display-client'; // Reuse the client component
 import {
-  getSerpAnalysisBySanitizedId,
-  saveSerpAnalysis,
+  getSerpAnalysisById, // Use the new function
   type SerpAnalysisData
 } from '@/app/services/firebase'; // Import Firebase service
-import { fetchKeywordData } from '@/app/services/serp.service'; // Need fetchKeywordData
-import { Timestamp } from 'firebase-admin/firestore'; // Need Timestamp for constructing data
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
@@ -42,103 +39,32 @@ function ErrorDisplay({ message }: { message: string }) {
 
 // Server Component to fetch and display the specific analysis
 async function SerpResultContent({
-  serpId,
-  searchParams // Receive the resolved searchParams object
+  serpId // This is now the Firestore auto-ID
 }: {
   serpId: string;
-  searchParams: { [key: string]: string | string[] | undefined };
 }) {
   let analysisData: SerpAnalysisData | null = null;
   let error: string | null = null;
-  const sanitizedId = serpId;
 
-  console.log(`[SERP Result Page] Processing sanitized ID: ${sanitizedId}`);
+  console.log(`[SERP Result Page] Processing document ID: ${serpId}`);
 
   try {
-    analysisData = await getSerpAnalysisBySanitizedId(sanitizedId);
+    // Fetch directly by Firestore document ID
+    analysisData = await getSerpAnalysisById(serpId);
 
+    // If data is not found for a valid ID navigation, something is wrong
     if (!analysisData) {
-      console.log(
-        `[SERP Result Page] Data not found for ID ${sanitizedId}. Fetching from API...`
+      console.error(
+        `[SERP Result Page] Data not found for valid ID: ${serpId}. This should not happen.`
       );
-
-      // Get original keyword, region, and language from searchParams
-      const originalKeywordParam = searchParams?.q;
-      const regionParam = searchParams?.region;
-      const langParam = searchParams?.lang;
-
-      const originalKeyword = decodeURIComponent(
-        Array.isArray(originalKeywordParam)
-          ? originalKeywordParam[0] ?? ''
-          : originalKeywordParam ?? ''
-      );
-      // Use provided region/lang or fall back to defaults if necessary
-      const region = Array.isArray(regionParam) ? regionParam[0] : regionParam;
-      const language = Array.isArray(langParam) ? langParam[0] : langParam;
-
-      if (!originalKeyword) {
-        console.error(
-          `[SERP Result Page] Original keyword missing in searchParams (q) for ID ${sanitizedId}.`
-        );
-        return (
-          <ErrorDisplay message={`無法獲取 ID ${sanitizedId} 的原始關鍵字。`} />
-        );
-      }
-
-      console.log(
-        `[SERP Result Page] Fetching API for: kw=${originalKeyword}, region=${
-          region || 'default'
-        }, lang=${language || 'default'}`
-      );
-
-      // Fetch fresh data using original keyword AND region/language if available
-      // NOTE: Need to update fetchKeywordData to accept region/language
-      const freshSerpData = await fetchKeywordData(
-        originalKeyword,
-        region,
-        language
-      ); // Pass region and language
-      console.log(
-        `[SERP Result Page] Fetched ${freshSerpData.length} results from API for ${originalKeyword}.`
-      );
-
-      const dataToSave: Partial<
-        Omit<SerpAnalysisData, 'id' | 'timestamp' | 'keyword'>
-      > = {
-        serpResults: freshSerpData,
-        contentTypeAnalysis: null,
-        userIntentAnalysis: null,
-        titleAnalysis: null
-      };
-
-      // Save using ORIGINAL keyword
-      void saveSerpAnalysis(originalKeyword, dataToSave).catch(saveError => {
-        console.error(
-          `[SERP Result Page] Error saving initial SERP data for ${originalKeyword} (ID: ${sanitizedId}):`,
-          saveError
-        );
-      });
-
-      analysisData = {
-        id: sanitizedId,
-        keyword: originalKeyword,
-        timestamp: new Timestamp(Math.floor(Date.now() / 1000), 0),
-        serpResults: freshSerpData,
-        contentTypeAnalysis: null,
-        userIntentAnalysis: null,
-        titleAnalysis: null
-      };
-      console.log(
-        `[SERP Result Page] Constructed initial data for ID ${sanitizedId}.`
-      );
-    } else {
-      console.log(
-        `[SERP Result Page] Found data in Firestore for ID ${sanitizedId}.`
-      );
+      // Render error or use notFound()
+      return <ErrorDisplay message={`無法找到 ID 為 ${serpId} 的分析數據。`} />;
     }
+
+    console.log(`[SERP Result Page] Found data in Firestore for ID ${serpId}.`);
   } catch (err) {
     console.error(
-      `[SERP Result Page] Error processing analysis data for ID ${sanitizedId}:`,
+      `[SERP Result Page] Error processing analysis data for ID ${serpId}:`,
       err
     );
     error = err instanceof Error ? err.message : '處理分析數據時發生未知錯誤';
@@ -148,44 +74,44 @@ async function SerpResultContent({
     return <ErrorDisplay message={error} />;
   }
 
-  // Should have analysisData here unless original keyword was missing
+  // This check should theoretically be redundant now if the above check handles null
   if (!analysisData) {
-    // This case should ideally be handled by the original keyword check now
     console.error(
-      `[SERP Result Page] Analysis data is unexpectedly null for ID ${sanitizedId}.`
+      `[SERP Result Page] Analysis data is unexpectedly null for ID ${serpId}.`
     );
-    return <ErrorDisplay message={`無法加載 ID ${sanitizedId} 的分析數據。`} />;
+    return <ErrorDisplay message={`無法加載 ID ${serpId} 的分析數據。`} />;
   }
 
-  // --- Convert Firestore Timestamp to standard Date ---
-  // Also ensure the object matches the ClientSerpAnalysisData type
+  // --- Prepare data for Client Component ---
+  // Ensure the object matches the ClientSerpAnalysisData type
+  // The 'id' field is already part of SerpAnalysisData from the converter
   const serializableAnalysisData = {
-    ...analysisData,
-    timestamp: analysisData.timestamp.toDate(), // Convert to JS Date object
+    ...analysisData, // Spread the data which includes the id
+    timestamp: analysisData.timestamp.toDate(), // Convert Timestamp
+    // Initialize JSON fields required by client component
     contentTypeAnalysisJson: null,
     userIntentAnalysisJson: null,
+    // Ensure text fields exist
     contentTypeAnalysisText: analysisData.contentTypeAnalysisText ?? null,
     userIntentAnalysisText: analysisData.userIntentAnalysisText ?? null,
-    // Ensure titleAnalysis exists, defaulting to null if undefined/null in analysisData
+    // Ensure title analysis exists
     titleAnalysis: analysisData.titleAnalysis ?? null
   };
-  // --- End Conversion and Type Alignment ---
+  // --- End Data Preparation ---
 
   console.log(
-    `[SERP Result Page] Rendering analysis data for ID ${sanitizedId} (Keyword: ${analysisData.keyword}).`
+    `[SERP Result Page] Rendering analysis data for ID ${serpId} (Keyword: ${analysisData.originalKeyword}).`
   );
+  // Pass the prepared data, including the id, to the client
   return <SerpDisplayClient initialAnalysisData={serializableAnalysisData} />;
 }
 
 // The main Page component - async
-export default async function SerpResultPage({
-  params,
-  searchParams
-}: SerpResultPageProps) {
+export default async function SerpResultPage({ params }: SerpResultPageProps) {
   const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams; // Await searchParams as well
-  const serpId = resolvedParams.serpId;
+  const serpId = resolvedParams.serpId; // This is the auto-ID
 
+  // No need to decode anymore
   if (!serpId) {
     console.log('[SERP Result Page] Missing serpId in params.');
     notFound();
@@ -193,7 +119,8 @@ export default async function SerpResultPage({
 
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      <SerpResultContent serpId={serpId} searchParams={resolvedSearchParams} />
+      {/* Pass the auto-ID directly */}
+      <SerpResultContent serpId={serpId} />
     </Suspense>
   );
 }

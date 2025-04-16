@@ -11,11 +11,11 @@ function ListLoadingFallback() {
 
 // Component to render the list fetching and display
 async function ExistingKeywordsList() {
-  let keywords: string[] = [];
+  let keywordsList: { id: string; keyword: string }[] = []; // Expect array of objects
   let error: string | null = null;
 
   try {
-    keywords = await getSerpAnalysisList();
+    keywordsList = await getSerpAnalysisList(); // Call the updated function
   } catch (err) {
     console.error('[SERP Input Page] Error fetching keyword list:', err);
     error = '無法載入已分析列表。';
@@ -25,8 +25,8 @@ async function ExistingKeywordsList() {
     return <p className="text-center text-red-500 mt-4">{error}</p>;
   }
 
-  // Pass the list to the client component
-  return <KeywordInputForm existingKeywords={keywords} />;
+  // Pass the list of {id, keyword} objects to the client component
+  return <KeywordInputForm existingKeywords={keywordsList} />;
 }
 
 // This page now primarily serves as the entry point for keyword input.

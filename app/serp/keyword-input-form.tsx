@@ -1,6 +1,10 @@
 'use client';
 
 import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Import existing constants
+// Remove direct Firebase import
+// import { findSerpAnalysisByKeyword } from '@/app/services/firebase';
+// Import the Server Action instead
+import { findOrCreateSerpAnalysisAction } from '@/app/actions/serp-action';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,14 +14,13 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'; // Import Select components
-import { sanitizeKeywordForId } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
-// Props now contains sanitized IDs
+// Update props to accept {id, keyword} objects
 type KeywordInputFormProps = {
-  existingKeywords: string[]; // This list now contains SANITIZED IDs
+  existingKeywords: { id: string; keyword: string }[];
 };
 
 export function KeywordInputForm({ existingKeywords }: KeywordInputFormProps) {
@@ -33,7 +36,7 @@ export function KeywordInputForm({ existingKeywords }: KeywordInputFormProps) {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     const trimmedKeyword = keyword.trim();
@@ -46,28 +49,33 @@ export function KeywordInputForm({ existingKeywords }: KeywordInputFormProps) {
     setIsLoading(true);
 
     try {
-      const sanitizedId = sanitizeKeywordForId(trimmedKeyword);
-      if (!sanitizedId) {
-        setError('無法處理此關鍵字以生成有效 ID。');
-        setIsLoading(false);
-        return;
+      console.log(
+        `[Keyword Input] Calling findOrCreate action for: ${trimmedKeyword}`
+      );
+      // Call the Server Action to find or create
+      const docId = await findOrCreateSerpAnalysisAction({
+        originalKeyword: trimmedKeyword,
+        region: selectedRegion,
+        language: selectedLanguage
+      });
+
+      // Redirect using the returned ID (either existing or new)
+      if (docId) {
+        console.log(
+          `[Keyword Input] Action returned ID: ${docId}. Redirecting...`
+        );
+        router.push(`/serp/${docId}`);
+        // No need to set loading false here as navigation occurs
+      } else {
+        // Should not happen if action is implemented correctly, but handle defensively
+        throw new Error('Server action did not return a valid document ID.');
       }
-
-      const encodedOriginalKeyword = encodeURIComponent(trimmedKeyword);
-      const encodedRegion = encodeURIComponent(selectedRegion);
-      const encodedLanguage = encodeURIComponent(selectedLanguage);
-
-      // Construct the target URL with sanitized ID and query params
-      const targetUrl = `/serp/${sanitizedId}?q=${encodedOriginalKeyword}&region=${encodedRegion}&lang=${encodedLanguage}`;
-
-      console.log(`[Keyword Input] Redirecting to: ${targetUrl}`);
-
-      router.push(targetUrl);
     } catch (e) {
-      console.error('[Keyword Input] Error during redirection:', e);
-      setError('重定向時發生錯誤，請重試。');
+      console.error('[Keyword Input] Error during submit:', e);
+      setError(e instanceof Error ? e.message : '提交時發生錯誤，請重試。');
       setIsLoading(false);
     }
+    // No finally block needed as loading is handled
   };
 
   return (
@@ -87,7 +95,7 @@ export function KeywordInputForm({ existingKeywords }: KeywordInputFormProps) {
             aria-label="Keyword for SERP analysis"
           />
           <Button type="submit" disabled={isLoading || !keyword.trim()}>
-            {isLoading ? '處理中...' : '分析 SERP'}
+            {isLoading ? '查詢/分析中...' : '查詢或開始分析'}
           </Button>
         </div>
 
@@ -137,16 +145,16 @@ export function KeywordInputForm({ existingKeywords }: KeywordInputFormProps) {
       {existingKeywords && existingKeywords.length > 0 && (
         <div className="w-full border-t pt-6">
           <h2 className="text-lg font-semibold mb-4 text-center">
-            已分析的記錄 (ID)
+            已分析的關鍵字
           </h2>
-          <ul className="space-y-2 max-h-60 overflow-y-auto text-center text-sm font-mono">
-            {existingKeywords.map(sanitizedId => (
-              <li key={sanitizedId}>
+          <ul className="space-y-2 max-h-60 overflow-y-auto text-center text-sm">
+            {existingKeywords.map(({ id, keyword }) => (
+              <li key={id}>
                 <Link
-                  href={`/serp/${sanitizedId}`}
+                  href={`/serp/${id}`}
                   className="text-blue-600 hover:underline hover:text-blue-800 break-all"
                 >
-                  {sanitizedId} {/* Display the sanitized ID */}
+                  {keyword}
                 </Link>
               </li>
             ))}

@@ -15,21 +15,33 @@ export const formatVolume = (volume: number): string => {
   return volume.toLocaleString();
 };
 
-/**
- * Converts a keyword into a safe string suitable for Firestore document ID.
- * Replaces spaces and non-alphanumeric characters (excluding hyphens) with hyphens,
- * converts to lowercase, and limits length.
- * @param keyword The raw keyword string.
- * @returns A sanitized string suitable for use as a Firestore document ID.
- */
+/* // No longer needed for generating Firestore IDs
 export function sanitizeKeywordForId(keyword: string): string {
-  if (!keyword) return ''; // Handle empty input
-  return keyword
+  if (!keyword || typeof keyword !== 'string') return ''; // Handle empty/invalid input
+
+  const sanitized = keyword
+    .trim() // Trim leading/trailing whitespace first
     .toLowerCase() // Convert to lowercase
-    .replace(/[^a-z0-9\-\s]/g, '') // Remove non-alphanumeric (allow space, hyphen)
-    .trim() // Trim leading/trailing whitespace
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .slice(0, 150); // Limit length (adjust as needed, Firestore limit is 1500 bytes)
+    // Replace forward slashes (invalid in Firestore IDs) with underscores
+    .replace(/\//g, '_')
+    // Replace multiple consecutive whitespace characters with a single hyphen
+    .replace(/\s+/g, '-')
+    // Remove characters explicitly disallowed or problematic in IDs (if any beyond slash needed)
+    // For now, we focus on slashes. We keep most unicode characters.
+    // .replace(/[<>*?"|]/g, '') // Example: remove other potentially problematic chars
+    .slice(0, 500); // Limit length (Firestore limit is 1500 bytes, 500 chars is safer)
+
+  // Ensure the result is not empty or just '.' or '..'
+  if (!sanitized || sanitized === '.' || sanitized === '..') {
+    console.warn(
+      `Sanitization resulted in an invalid ID for keyword: "${keyword}". Returning empty string.`
+    );
+    // Consider alternative handling, like hashing the original keyword if empty
+    return ''; // Return empty, let the calling function handle the error
+  }
+
+  return sanitized;
 }
+*/
 
 // Add other client-safe utility functions here if needed

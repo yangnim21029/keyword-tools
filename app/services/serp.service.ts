@@ -21,6 +21,33 @@ type ApiResponse = z.infer<typeof apiResponseSchema>;
 // Type alias for a single search result, inferred from the schema
 export type SearchResult = z.infer<typeof searchResultSchema>;
 
+// --- NEW: Zod schema for the Apify payload ---
+const apifyPayloadSchema = z.object({
+  countryCode: z
+    .string()
+    .min(2)
+    .max(2)
+    .toLowerCase()
+    .describe('Apify country code (e.g., hk, tw)'),
+  forceExactMatch: z.boolean().optional().default(false),
+  includeIcons: z.boolean().optional().default(false),
+  includeUnfilteredResults: z.boolean().optional().default(false),
+  maxPagesPerQuery: z.number().int().positive().optional().default(1),
+  mobileResults: z.boolean().optional().default(false),
+  queries: z
+    .string()
+    .min(1)
+    .describe('Search queries as a single string (can contain newlines)'),
+  resultsPerPage: z.number().int().positive().max(100).optional().default(100),
+  saveHtml: z.boolean().optional().default(false),
+  saveHtmlToKeyValueStore: z.boolean().optional().default(true),
+  searchLanguage: z
+    .string()
+    .optional()
+    .describe('Apify search language (e.g., zh-TW)')
+});
+// --- End Apify payload schema ---
+
 /**
  * Fetches keyword search results from Google via Apify API
  * @param query The search query string or array of queries
@@ -37,27 +64,64 @@ export async function fetchKeywordData(
     'https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3';
 
   // Use provided region/language or defaults
-  // Note: Apify might have different defaults or requirements
-  const countryCode = region || 'tw'; // Default to Taiwan
-  const searchLanguage = language || 'zh-TW'; // Default to Traditional Chinese
+  const countryCode = (region || 'tw').toLowerCase(); // Ensure lowercase
+  const searchLanguage = language || 'zh-TW';
 
   console.log(
-    `[fetchKeywordData] Calling Apify with: query=${query}, region=${countryCode}, language=${searchLanguage}`
+    `[fetchKeywordData] Calling Apify with: query=${JSON.stringify(
+      query
+    )}, region=${countryCode}, language=${searchLanguage}`
   );
 
+  // Prepare the queries as a single string
+  let queriesString: string;
+  if (typeof query === 'string') {
+    queriesString = query.trim();
+  } else {
+    // Join array elements with newline, trim each, filter empty, then join
+    queriesString = query
+      .map(q => q.trim())
+      .filter(q => q.length > 0)
+      .join('\n');
+  }
+
+  // Check if queries string is empty after processing
+  if (queriesString.length === 0) {
+    console.error(
+      '[fetchKeywordData] No valid queries provided after processing input.'
+    );
+    throw new Error('未提供有效的搜索查詢。');
+  }
+
   const payload = {
-    countryCode: countryCode, // Use variable
+    countryCode: countryCode, // Already lowercase
     forceExactMatch: false,
     includeIcons: false,
     includeUnfilteredResults: false,
     maxPagesPerQuery: 1,
     mobileResults: false,
-    queries: typeof query === 'string' ? [query] : query, // Ensure queries is an array
+    queries: queriesString, // Use the processed single string
     resultsPerPage: 100,
     saveHtml: false,
     saveHtmlToKeyValueStore: true,
-    searchLanguage: searchLanguage // Use variable
+    searchLanguage: searchLanguage
   };
+
+  // --- Validate the payload before sending ---
+  const validatedPayload = apifyPayloadSchema.safeParse(payload);
+  if (!validatedPayload.success) {
+    console.error(
+      '[fetchKeywordData] Payload validation failed:',
+      validatedPayload.error.flatten(),
+      'Original Payload:',
+      payload
+    );
+    const errorMessages = validatedPayload.error.errors
+      .map(e => `${e.path.join('.')}: ${e.message}`)
+      .join(', ');
+    throw new Error(`內部 Payload 格式無效: ${errorMessages}`);
+  }
+  // --- End payload validation ---
 
   try {
     const response = await fetch(apiUrl, {
@@ -65,7 +129,7 @@ export async function fetchKeywordData(
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(validatedPayload.data) // Send the validated payload data
     });
 
     if (!response.ok) {
