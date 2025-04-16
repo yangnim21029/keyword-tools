@@ -1,5 +1,6 @@
 import { processAndSaveKeywordQuery } from '@/app/actions/keyword-research';
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 // 定義API請求參數的模式
@@ -31,8 +32,8 @@ export async function GET(request: NextRequest) {
       query: searchParams.get('query') || '',
       region: searchParams.get('region') || 'TW',
       language: searchParams.get('language') || 'zh-TW',
-      useAlphabet: searchParams.get('useAlphabet'),
-      useSymbols: searchParams.get('useSymbols'),
+      useAlphabet: searchParams.get('useAlphabet') ?? 'false',
+      useSymbols: searchParams.get('useSymbols') ?? 'false',
       minSearchVolume: searchParams.get('minSearchVolume')
     });
 
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 返回結果
+    // revalidatePath('/keyword-mapping');
     return NextResponse.json(researchResult);
   } catch (error) {
     console.error('API路由錯誤:', error);
@@ -131,6 +133,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 返回結果
+    // revalidatePath('/keyword-mapping');
     return NextResponse.json(researchResult);
   } catch (error) {
     console.error('API路由錯誤:', error);
