@@ -1,92 +1,153 @@
-'use server'
+'use server';
 
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 
 // Define input schema for a SINGLE cluster
-const inputSchema = z.object({
+const personaInputSchema = z.object({
   clusterName: z.string().describe('要生成畫像的分群主題名稱'),
   keywords: z.array(z.string()).min(1).describe('該分群包含的關鍵字列表'),
-  model: z.enum(['gpt-4o', 'gpt-4o-mini']).default('gpt-4o-mini').optional(),
+  model: z.enum(['gpt-4.1-mini', 'gpt-4o']).default('gpt-4.1-mini').optional()
 });
 
 // Define output schema for a SINGLE persona string
-const outputSchema = z.object({
-  userPersona: z.string().describe('AI 基於單一關鍵字分群生成的使用者畫像描述'),
+const personaOutputSchema = z.object({
+  userPersona: z.string().describe('AI 基於單一關鍵字分群生成的使用者畫像描述')
 });
 
 /**
- * 使用 AI 根據單一關鍵字分群生成用戶畫像
- * @param input 包含 clusterName, keywords 和可选 model 的对象
- * @returns 返回包含 userPersona 的对象或抛出错误
+ * Generates the prompt for the initial persona text generation.
+ */
+const getPersonaTextPrompt = (
+  clusterName: string,
+  keywords: string[],
+  modelName: string
+) => `You are a highly specialized AI assistant acting as an expert market analyst and user researcher. Your sole task is to meticulously analyze the provided cluster data based *only* on the instructions that follow and generate output in the *exact* format specified.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Role:** Assume the persona of an expert market analyst specializing in user persona generation.
+2.  **Input Data:** Base your entire analysis strictly on the provided cluster name and keywords. Do NOT use external knowledge or assumptions.
+3.  **Output Format:** Generate your response *exclusively* as a plain text description (around 100-150 words) of the user persona.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, titles, or self-references.
+    *   Do NOT engage in conversation or ask clarifying questions.
+    *   Do NOT use markdown formatting (like \`\`\`).
+    *   Focus on the points listed below.
+
+--- START OF TASK-SPECIFIC INSTRUCTIONS ---
+
+Based *only* on the provided keyword cluster theme and its keywords, analyze and describe the likely user persona behind these searches.
+
+**Cluster Theme:** ${clusterName}
+**Keywords:** ${keywords.join(', ')}
+
+Provide a concise user persona description (around 100-150 words) covering:
+1.  **Primary Intent:** What goal might the user searching these keywords want to achieve?
+2.  **Knowledge Level:** How familiar are they likely to be with this specific topic?
+3.  **Potential Needs/Pain Points:** What needs or pain points related to the topic might they have?
+4.  **Possible Background:** Briefly speculate on the user's potential profession, interests, or identity.
+
+Respond ONLY with the persona description text.`;
+
+/**
+ * Generates the prompt for converting the persona text description to JSON.
+ */
+const getPersonaConversionPrompt = (
+  personaText: string
+) => `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided plain text user persona description into the *exact* JSON format specified, using *only* the information present in the input text.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Role:** Act as a data conversion bot.
+2.  **Input Data:** Use *only* the provided persona description text.
+3.  **Output Format:** Generate *only* a valid JSON object matching the structure: { "userPersona": "string" }.
+4.  **Behavior:**
+    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.
+    *   Place the entire input text into the "userPersona" field of the JSON object.
+
+--- START OF TASK-SPECIFIC INSTRUCTIONS ---
+
+Input Persona Description Text:
+${personaText}
+
+Convert this text into the following JSON structure:
+{
+  "userPersona": "<The entire input persona description text>"
+}
+
+Respond ONLY with the valid JSON object.`;
+
+/**
+ * Uses a two-step AI process: generate text (persona description), then convert text to JSON.
+ * @param input Contains clusterName, keywords, and optional model.
+ * @returns The validated JSON persona object.
  */
 export async function generateUserPersonaFromClusters(
-  input: z.infer<typeof inputSchema>
-): Promise<z.infer<typeof outputSchema>> { // Return type updated
+  input: z.infer<typeof personaInputSchema>
+): Promise<z.infer<typeof personaOutputSchema>> {
   try {
-    const validatedInput = inputSchema.safeParse(input);
-    if (!validatedInput.success) {
-      console.error('[Server Action] ClusteringToUserPersona 輸入驗證失敗:', validatedInput.error.flatten());
-      throw new Error(validatedInput.error.errors[0]?.message || '輸入參數無效');
+    const validatedInput = personaInputSchema.parse(input);
+    const { clusterName, keywords, model } = validatedInput;
+    const openaiModel = model ?? 'gpt-4.1-mini';
+
+    console.log(
+      `[Server Action] Persona Gen Step 1: Requesting Text. Cluster='${clusterName}', Model=${openaiModel}`
+    );
+
+    // --- Step 1: Generate Text (Persona Description) ---
+    const textPrompt = getPersonaTextPrompt(clusterName, keywords, openaiModel);
+    console.log('[AI Call] Calling AI for Persona Text Generation...');
+    const { text: rawPersonaText } = await generateText({
+      model: openai(openaiModel),
+      prompt: textPrompt
+    });
+    console.log(
+      `[Server Action] Persona Gen Step 1: Received raw text for cluster '${clusterName}'.`
+    );
+
+    const trimmedPersonaText = rawPersonaText.trim();
+    if (!trimmedPersonaText) {
+      console.error(
+        '[Server Action] AI returned empty persona description for cluster:',
+        clusterName
+      );
+      throw new Error('AI failed to generate a valid persona description.');
     }
 
-    // Destructure validated data for a single cluster
-    const { clusterName, keywords, model } = validatedInput.data;
-    const openaiModel = model ?? 'gpt-4o-mini';
-
-    console.log(`[Server Action] 收到生成用戶畫像請求: 分群='${clusterName}', 模型=${openaiModel}`);
-
-    // Format keywords for the prompt
-    const keywordString = keywords.join(', ');
-
-    // Reverted Prompt to generate persona for the SINGLE provided cluster
-    const prompt = `你是一位市場分析專家和用戶研究員。請根據以下提供的 **單一** 關鍵字分群主題及其包含的關鍵字，分析並描述這些搜索背後可能的用戶畫像。
-
-分群主題: ${clusterName}
-關鍵字: ${keywordString}
-
-請提供一個簡潔（約 100-150 字）的用戶畫像描述，涵蓋以下幾點：
-1.  **主要意圖**: 搜索該主題關鍵字的用戶可能想達成什麼目標？
-2.  **知識水平**: 他們對該特定主題的了解程度大概如何？
-3.  **潛在需求/痛點**: 與該主題相關，他們可能有什麼需求或痛點？
-4.  **可能的背景**: 簡單推測用戶可能的職業、興趣或身份。
-
-請直接返回用戶畫像的描述文字，不要包含任何前綴、標題或額外說明。`;
-
-    console.log(`[Server Action] 正在發送請求到 OpenAI，模型: ${openaiModel}`);
-
-    const { text } = await generateText({
+    // --- Step 2: Convert Text to JSON ---
+    console.log(
+      `[Server Action] Persona Gen Step 2: Requesting JSON Conversion. Cluster='${clusterName}', Model=${openaiModel}`
+    );
+    const conversionPrompt = getPersonaConversionPrompt(trimmedPersonaText);
+    console.log('[AI Call] Calling AI for Persona JSON Conversion...');
+    const { object: jsonResult } = await generateObject({
       model: openai(openaiModel),
-      prompt: prompt,
-      // No need for json_object response format anymore
+      schema: personaOutputSchema,
+      prompt: conversionPrompt
     });
 
-    console.log(`[Server Action] 收到 OpenAI 生成的用戶畫像`);
+    console.log(
+      `[Server Action] Persona Gen Step 2: Received and validated JSON for cluster '${clusterName}'.`
+    );
 
-    const userPersonaText = text.trim();
-
-    if (!userPersonaText) {
-        console.error('[Server Action] AI 返回了空的用戶畫像描述');
-        throw new Error('AI未能生成有效的用戶畫像');
-    }
-
-    // Validate the single persona string output
-    const validatedOutput = outputSchema.parse({ userPersona: userPersonaText });
-
-    console.log(`[Server Action] 單一用戶畫像生成成功 for cluster '${clusterName}'`);
-    return validatedOutput; // Return the object containing the single userPersona string
-
+    return jsonResult;
   } catch (error) {
-    console.error('[Server Action] 生成用戶畫像錯誤:', error);
+    // Enhanced error logging
+    const clusterName = (input as any)?.clusterName || 'unknown';
+    console.error(
+      `[Server Action] Error generating persona for cluster '${clusterName}':`,
+      error
+    );
     if (error instanceof z.ZodError) {
       console.error('Zod validation error details:', error.flatten());
-      throw new Error(`輸出格式驗證失敗: ${error.errors[0]?.message}`);
+      throw new Error(
+        `Persona data validation failed: ${error.errors[0]?.message}`
+      );
     }
     if (error instanceof Error) {
-       throw error;
+      throw error;
     } else {
-       throw new Error('執行用戶畫像生成時發生未知錯誤');
+      throw new Error('Unknown error during user persona generation process.');
     }
   }
-} 
+}

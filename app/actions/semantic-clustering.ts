@@ -1,7 +1,7 @@
 'use server';
 
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 
 // Import necessary actions and types from keyword-research
@@ -28,61 +28,84 @@ const inputSchema = z.object({
   // historyId: z.string().optional(), // 暂时不需要 historyId
 });
 
+// Input for the main AI function
+const aiInputSchema = z.object({
+  keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
+  model: z.enum(['gpt-4.1-mini', 'gpt-4o']).default('gpt-4.1-mini').optional() // Updated model list
+});
+
+// Schema for the final JSON output (clusters)
+const clusterOutputSchema = z.object({
+  clusters: z
+    .record(z.string(), z.array(z.string()))
+    .describe('主題名稱映射到關鍵字數組的分群結果')
+});
+
+// --- Prompts ---
+
 /**
- * 使用 AI 执行语义聚类
- * @param input 包含 keywords 和可选 model 的对象
- * @returns 返回聚类结果或抛出错误
+ * Generates the prompt for the initial text generation step (Markdown output).
  */
-export async function performSemanticClusteringAI(input: {
-  keywords: string[];
-  model?: 'gpt-4o' | 'gpt-4o-mini';
-}) {
-  try {
-    // 验证输入
-    const validatedInput = inputSchema.safeParse(input);
-    if (!validatedInput.success) {
-      console.error(
-        '[Server Action] 輸入驗證失敗:',
-        validatedInput.error.flatten()
-      );
-      // 将 Zod 错误转换为更友好的消息或直接抛出第一个错误
-      throw new Error(
-        validatedInput.error.errors[0]?.message || '輸入參數無效'
-      );
-    }
+const getClusteringTextPrompt = (
+  keywords: string[],
+  modelName: string // Pass model name for logging/context if needed
+) => `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided keywords based *only* on the instructions that follow and generate output in the *exact* format specified.
 
-    const { keywords, model } = validatedInput.data;
-    // 即使有 default，類型推斷仍可能為 undefined，在此明確處理
-    const openaiModel = model ?? 'gpt-4o-mini'; // 如果 model 是 undefined，使ㄏ用預設值
+**CRITICAL INSTRUCTIONS:**
+1.  **Role:** Assume the persona of an expert keyword clustering specialist.
+2.  **Input Data:** Base your entire analysis strictly on the provided keyword list. Do NOT use external knowledge or assumptions.
+3.  **Output Format:** Generate your response *exclusively* in the Markdown format specified below. Each cluster should start with '## Cluster: [主題名稱]' followed by a bulleted list of keywords.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.
+    *   Do NOT engage in conversation or ask clarifying questions.
+    *   Do NOT use markdown formatting (like \`\`\`) around the final output block.
+    *   Group keywords semantically based on whether they could be targetted by the same listicle-style article.
+    *   Avoid overly generic cluster names like "基本知識".
+    *   Each cluster must contain at least 2 keywords.
 
-    console.log(
-      `[Server Action] 收到語意分群請求: 模型=${openaiModel}, 關鍵字數量=${keywords.length}`
-    );
+--- START OF TASK-SPECIFIC INSTRUCTIONS ---
 
-    // Limit number of keywords to prevent large requests
-    const MAX_CLUSTERING_KEYWORDS = 80; // 与原 API Route 保持一致
-    const limitedKeywords = keywords.slice(0, MAX_CLUSTERING_KEYWORDS);
-    if (limitedKeywords.length < keywords.length) {
-      console.log(
-        `[Server Action] 關鍵字數量已限制: ${keywords.length} → ${limitedKeywords.length}`
-      );
-    }
+Based *only* on the keywords provided below, perform semantic clustering. 
 
-    console.log(
-      `[Server Action] 前幾個關鍵字: "${limitedKeywords
-        .slice(0, 3)
-        .join('", "')}", ...`
-    );
+Keywords:
+${keywords.join(', ')}
 
-    // 使用更明確的提示 (与原 API Route 保持一致)
-    const prompt = `你是一個專業的關鍵字分群專家。請根據以下關鍵字進行語意分群，將相關的關鍵字歸類到合適的主題中。
+Output Format Example:
+## Cluster: 主題名稱1
+- 關鍵字1
+- 關鍵字2
 
-語意辨識的方法是根據能否放到同一篇文章作為列表文章(listicle)的依據，不是以 SEO 為主。避免使用"基本知識"這種過於概括的詞分群。
+## Cluster: 主題名稱2
+- 關鍵字3
+- 關鍵字4
 
-關鍵字列表：
-${limitedKeywords.join(', ')}
+Respond ONLY with the Markdown content following the specified format.`;
 
-請將關鍵字分群並返回一個 JSON 對象，格式如下：
+/**
+ * Generates the prompt for converting the Markdown text output to JSON.
+ */
+const getClusteringConversionPrompt = (
+  markdownText: string
+) => `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text, which represents keyword clusters, into the *exact* JSON format specified, using *only* the information present in the input Markdown.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Role:** Act as a data conversion bot.
+2.  **Input Data:** Use *only* the provided Markdown text.
+3.  **Output Format:** Generate *only* a valid JSON object matching the structure: { "clusters": { "主題名稱": ["關鍵字1", ...] } }
+4.  **Behavior:**
+    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.
+    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.
+    *   Extract the cluster name from the '## Cluster: ' lines.
+    *   Extract the keywords from the bullet points under each cluster name.
+
+--- START OF TASK-SPECIFIC INSTRUCTIONS ---
+
+Input Markdown Text:
+\`\`\`markdown
+${markdownText}
+\`\`\`
+
+Convert this Markdown into the following JSON structure:
 {
   "clusters": {
     "主題名稱1": ["關鍵字1", "關鍵字2", ...],
@@ -90,65 +113,77 @@ ${limitedKeywords.join(', ')}
   }
 }
 
-注意事項：
-1. 每個主題名稱應該簡潔明確
-2. 每個分群至少包含 2 個關鍵字
-3. 確保返回的是有效的 JSON 格式
-4. 不要添加任何額外的說明文字，只返回 JSON 對象`;
+Respond ONLY with the valid JSON object.`;
+
+/**
+ * Uses a two-step AI process: generate text (Markdown), then convert text to JSON.
+ * @param input Contains keywords and optional model.
+ * @returns The validated JSON clustering result.
+ */
+export async function performSemanticClusteringAI(
+  input: z.infer<typeof aiInputSchema>
+): Promise<z.infer<typeof clusterOutputSchema>> {
+  try {
+    const validatedInput = aiInputSchema.parse(input); // Use parse, throws on error
+    const { keywords, model } = validatedInput;
+    const openaiModel = model ?? 'gpt-4.1-mini';
 
     console.log(
-      `[Server Action] 正在發送請求到 OpenAI，模型: ${openaiModel}, 關鍵字數量: ${limitedKeywords.length}`
+      `[Server Action] Clustering Step 1: Requesting Text Generation. Model=${openaiModel}, Keywords=${keywords.length}`
     );
 
-    // 使用 generateText 获取完整结果
-    const { text } = await generateText({
-      model: openai(openaiModel), // 使用确保非 undefined 的模型名称
-      messages: [{ role: 'system', content: prompt }]
-      // 注意：Server Action 中没有直接的 maxDuration 配置，执行时间依赖 Vercel 平台限制
+    const MAX_CLUSTERING_KEYWORDS = 80;
+    const limitedKeywords = keywords.slice(0, MAX_CLUSTERING_KEYWORDS);
+    if (limitedKeywords.length < keywords.length) {
+      console.log(
+        `[Server Action] Keyword count limited: ${keywords.length} -> ${limitedKeywords.length}`
+      );
+    }
+
+    // --- Step 1: Generate Text (Markdown) ---
+    const textPrompt = getClusteringTextPrompt(limitedKeywords, openaiModel);
+    console.log('[AI Call] Calling AI for Clustering Text Generation...');
+    const { text: rawMarkdown } = await generateText({
+      model: openai(openaiModel),
+      prompt: textPrompt
+    });
+    console.log('[Server Action] Clustering Step 1: Received raw text result.');
+
+    if (!rawMarkdown || rawMarkdown.trim().length === 0) {
+      console.error(
+        '[Server Action] AI returned empty or whitespace-only text for clustering.'
+      );
+      throw new Error('AI failed to generate clustering text.');
+    }
+
+    // --- Step 2: Convert Text to JSON ---
+    console.log(
+      `[Server Action] Clustering Step 2: Requesting JSON Conversion. Model=${openaiModel}`
+    );
+    const conversionPrompt = getClusteringConversionPrompt(rawMarkdown.trim());
+    console.log('[AI Call] Calling AI for Clustering JSON Conversion...');
+    const { object: jsonResult } = await generateObject({
+      model: openai(openaiModel),
+      schema: clusterOutputSchema, // Use the defined Zod schema
+      prompt: conversionPrompt
     });
 
-    console.log(`[Server Action] 收到 OpenAI 完整結果`); // 避免打印可能很大的 text
+    console.log(
+      '[Server Action] Clustering Step 2: Received and validated JSON result.'
+    );
 
-    // 清理 AI 返回的文本，移除可能的 Markdown 代码块标记
-    let cleanedText = text.trim();
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.substring(7).trim(); // 移除 ```json 并再次 trim
-    } else if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.substring(3).trim(); // 移除 ``` 并再次 trim
-    }
-    if (cleanedText.endsWith('```')) {
-      cleanedText = cleanedText.substring(0, cleanedText.length - 3).trim(); // 移除末尾的 ``` 并再次 trim
-    }
-
-    try {
-      // 尝试解析清理后的 JSON
-      const result = JSON.parse(cleanedText);
-      // console.log(`[Server Action] 解析後的結果:`, JSON.stringify(result, null, 2)); // 调试时可取消注释
-
-      // 验证结果格式
-      const validatedResult = clusterSchema.parse(result);
-      console.log(`[Server Action] 分群結果驗證成功`);
-
-      // 返回验证后的结果
-      return validatedResult;
-    } catch (parseError) {
-      console.error(
-        '[Server Action] JSON 解析錯誤:',
-        parseError,
-        '清理前的原始文本:',
-        text,
-        '清理後的文本:',
-        cleanedText
-      ); // 记录原始和清理后的文本
-      throw new Error('無法解析 AI 返回的 JSON 格式');
-    }
+    // The result from generateObject is already validated against the schema
+    return jsonResult;
   } catch (error) {
-    console.error('[Server Action] 語意分群錯誤:', error);
-    // 抛出原始错误或更具体的错误类型
+    console.error('[Server Action] Semantic Clustering AI Error:', error);
+    if (error instanceof z.ZodError) {
+      console.error('Zod validation error details:', error.flatten());
+      throw new Error(`Data validation failed: ${error.errors[0]?.message}`);
+    }
     if (error instanceof Error) {
-      throw error; // 重新抛出原始错误，保留堆栈信息
+      throw error; // Re-throw original error
     } else {
-      throw new Error('執行語意分群時發生未知錯誤');
+      throw new Error('Unknown error during semantic clustering AI process.');
     }
   }
 }
@@ -334,9 +369,8 @@ export async function requestClustering(
     }
 
     // 2. Perform Clustering (Call AI)
-    let clusteringResult;
+    let clusteringResult: z.infer<typeof clusterOutputSchema>;
     try {
-      // Logging for AI call start/end is inside performSemanticClusteringAI
       clusteringResult = await performSemanticClusteringAI({
         keywords: prepResult.keywords
       });
@@ -345,7 +379,7 @@ export async function requestClustering(
         `[Clustering Action] AI Clustering failed for ${researchId}:`,
         aiError
       );
-      await _attemptRevalidationOnError(researchId, 'AI failure'); // Attempt revalidation on AI error
+      await _attemptRevalidationOnError(researchId, 'AI failure');
       const message =
         aiError instanceof Error ? aiError.message : 'AI clustering failed.';
       return { success: false, error: message };
@@ -372,7 +406,7 @@ export async function requestClustering(
       `[Clustering Action] Unexpected error during clustering process for ${researchId}:`,
       error
     );
-    await _attemptRevalidationOnError(researchId, 'unexpected error'); // Attempt revalidation
+    await _attemptRevalidationOnError(researchId, 'unexpected error');
     const message =
       error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, error: message };
