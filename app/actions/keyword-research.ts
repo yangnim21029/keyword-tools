@@ -2,7 +2,7 @@
 
 import { getKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
 import { generateRelatedKeywordsAI } from '@/app/services/ai-keyword-patch';
-import { COLLECTIONS, db } from '@/app/services/firebase/config';
+import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
 // Import types primarily from schemas
 import {
@@ -16,7 +16,7 @@ import {
   type UserPersona // <-- Import UserPersona type
 } from '@/lib/schema'; // Adjusted import path
 // Import the extended list item and potentially Keyword from our specific types file
-import { updateKeywordResearchResults } from '@/app/services/firebase/keyword-research';
+import { updateKeywordResearchResults } from '@/app/services/firebase/db-keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 // --- Import the Chinese type detection utility ---
@@ -359,7 +359,7 @@ export async function createKeywordResearch(
       tags: convertedData.tags,
       keywords: convertedData.keywords as KeywordVolumeItem[], // Ensure keywords array is correct type
       clusters: convertedData.clusters as Record<string, string[]>, // Ensure clusters object is correct type
-      personas: convertedData.personas as UserPersona[], // Ensure personas array is correct type
+      personas: convertedData.personas as UserPersona[] // Ensure personas array is correct type
       // Add any other fields from KeywordResearchItem if necessary
     };
 
@@ -812,10 +812,12 @@ export async function processAndSaveKeywordQuery(
       );
     }
 
-     // After saving keywords (or if none), revalidate the specific item cache
+    // After saving keywords (or if none), revalidate the specific item cache
     if (savedResearchId) {
-        await revalidateKeywordResearchCache(savedResearchId);
-        console.log(`[Server Action] Revalidated cache for ${savedResearchId} after keyword processing.`);
+      await revalidateKeywordResearchCache(savedResearchId);
+      console.log(
+        `[Server Action] Revalidated cache for ${savedResearchId} after keyword processing.`
+      );
     }
 
     console.log(
@@ -832,15 +834,20 @@ export async function processAndSaveKeywordQuery(
         ? error.message
         : 'An unexpected error occurred during processing.';
 
-     // Attempt to revalidate cache even on failure if we have an ID
-     if (savedResearchId) {
-       try {
-         await revalidateKeywordResearchCache(savedResearchId);
-         console.log(`[Server Action] Revalidated cache for ${savedResearchId} after process error.`);
-       } catch (revalError) {
-           console.error(`[Server Action] Failed to revalidate cache for ${savedResearchId} after process error:`, revalError);
-       }
-     }
+    // Attempt to revalidate cache even on failure if we have an ID
+    if (savedResearchId) {
+      try {
+        await revalidateKeywordResearchCache(savedResearchId);
+        console.log(
+          `[Server Action] Revalidated cache for ${savedResearchId} after process error.`
+        );
+      } catch (revalError) {
+        console.error(
+          `[Server Action] Failed to revalidate cache for ${savedResearchId} after process error:`,
+          revalError
+        );
+      }
+    }
 
     return { success: false, researchId: savedResearchId, error: message };
   }

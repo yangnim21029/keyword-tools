@@ -4,7 +4,7 @@ import {
   type KeywordVolumeItem
 } from '@/lib/schema'; // Use correct types
 import { Timestamp } from 'firebase-admin/firestore';
-import { COLLECTIONS, db } from './config';
+import { COLLECTIONS, db } from './db-config';
 
 /**
  * 保存 Keyword Research 到 Firebase

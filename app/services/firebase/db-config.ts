@@ -67,7 +67,8 @@ if (!getApps().length) {
 // 只保留實際使用的集合
 export const COLLECTIONS = {
   KEYWORD_RESEARCH: 'keyword-research',
-  SERP: 'serp'
+  SERP: 'serp',
+  SERP_ANALYSIS: 'serp-analysis'
 } as const;
 
 // 導出 Firebase 實例
