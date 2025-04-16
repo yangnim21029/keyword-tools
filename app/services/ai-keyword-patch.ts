@@ -116,12 +116,13 @@ export async function identifyParentKeywordsFromAI(
 
 /**
  * Uses AI to generate related keyword suggestions based on an initial query.
+ * Focuses on generating related search phrases, not just sub-terms.
  *
- * @param query The initial search query.
+ * @param query The initial search query (e.g., "韓國 首爾 小吃").
  * @param region The target region (e.g., 'TW').
  * @param language The target language (e.g., 'zh-TW').
  * @param count The desired number of suggestions (default: 10).
- * @returns A promise that resolves to an array of suggested keywords.
+ * @returns A promise that resolves to an array of suggested related search phrases.
  */
 export async function generateRelatedKeywordsAI(
   query: string,
@@ -138,20 +139,21 @@ export async function generateRelatedKeywordsAI(
     `[AI Service] generateRelatedKeywordsAI called for query: "${query}", Region: ${region}, Lang: ${language}, Count: ${count}`
   );
 
-  // --- Updated Prompt ---
+  // --- Updated Prompt (Focus on Related Phrases) ---
   const prompt = `你是一位專業的關鍵字研究專家，專注於 ${region} 地區、使用 ${language} 語言的市場。
-針對以下核心查詢：「${query}」
+核心查詢概念：「${query}」
 
-請生成大約 ${count} 個與其高度相關的補充關鍵字建議。這些建議應該包含：
-1.  **核心主題/品牌詞**：如果原始查詢包含明確的核心主題或品牌（例如 "香奈兒手錶" 中的 "香奈兒"），請務必包含該核心詞本身。
-2.  **相關類別/主題詞**：與核心查詢相關的、更廣泛的類別或主題（例如 "精品手錶", "奢侈品牌", "時尚配件"）。
-3.  **具體補充詞**：
-    *   可能的同義詞或替代說法。
-    *   與核心查詢相關的具體產品、服務、型號、問題（例如 "J12", "價格", "維修"）。
-    *   潛在的長尾關鍵字組合（例如 "香奈兒手錶推薦款", "如何保養香奈兒手錶"）。
-4.  目標是混合生成不同層次的關鍵字，找出較有可能具有搜尋量、且能擴展原始查詢涵蓋範圍的字詞。
+任務：請將以上「核心查詢概念」視為一個**整體**來分析。
+生成大約 ${count} 個用戶在搜索「${query}」之後，**可能也會感興趣並搜索的其他相關查詢短語或主題**。
 
-請將生成的關鍵字建議以 JSON 數組的格式返回，例如：["香奈兒", "精品手錶", "香奈兒手錶價格", ...]
+**重要指示：**
+1.  **關注相關性**：生成的短語需要與「${query}」這個**完整概念**高度相關。
+2.  **生成完整短語**：優先生成具有獨立搜索意義的短語或主題，而不僅僅是同義詞。
+3.  **禁止提取子詞**：**絕對不要**僅僅提取「${query}」中的某個單詞作為結果。例如，如果輸入是「韓國 首爾 小吃」，你不應該只輸出「小吃」或「首爾」。
+4.  **目標搜索詞**：想像一個用戶搜了「${query}」，他接下來還可能搜什麼？例如，對於「韓國 首爾 小吃」，好的相關查詢可能是「明洞 美食推薦」、「廣藏市場 必吃」、「首爾 街頭小吃」。
+5.  **多樣性**：如果可能，提供不同角度的相關查詢（例如地點、具體食物種類、體驗類型）。
+
+請將生成的相關查詢短語以 JSON 數組的格式返回，例如：["明洞 美食推薦", "廣藏市場 必吃", "首爾 街頭小吃", ...]
 不要包含任何其他文字或解釋，僅返回 JSON 數組。`;
   // --- End Updated Prompt ---
 
@@ -159,7 +161,6 @@ export async function generateRelatedKeywordsAI(
     const { text } = await generateText({
       model: openai(RELATED_KEYWORDS_MODEL),
       messages: [{ role: 'user', content: prompt }]
-      // Add temperature or other parameters if needed
     });
 
     console.log(

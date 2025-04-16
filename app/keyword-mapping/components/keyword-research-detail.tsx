@@ -1,6 +1,5 @@
 'use client';
 
-import { useSettingsStore } from '@/store/settings-store';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,45 +12,84 @@ import {
 } from '@/app/actions';
 import { generateUserPersonaFromClusters } from '@/app/actions/generate-persona';
 
-// Internal Components
+// UI Components
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/LoadingButton';
-import { EmptyState } from './empty-state';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table';
+import { formatVolume } from '@/lib/utils';
+import { Clock, Globe, Languages, ListTree, Tag } from 'lucide-react';
+
+// Internal Components
 import KeywordClustering from './keyword-clustering';
-import KeywordDistribute from './keyword-distribute';
+import KeywordVolumeVisualization, {
+  type VolumeFilterType
+} from './keyword-volume-visualization';
 
 import {
-  UpdateKeywordResearchInput,
   type KeywordResearchItem,
+  type KeywordVolumeItem,
   type UserPersona
 } from '@/lib/schema';
 
-
-// Updated for Fixed Volume Ranges
-interface VolumeDistributionStats {
-  min: number; // Overall min volume (>= 0)
-  max: number; // Overall max volume
-  count: number; // Total count of keywords with volume >= 1
-  countZero: number; // Count of keywords with volume 0
-  countRange1: number; // Count in [1, 10]
-  countRange2: number; // Count in [11, 1000]
-  countRange3: number; // Count in [1001, 10000]
-  countRange4: number; // Count in [10001, 100000]
-  countRange5: number; // Count in >= 100001
+interface KeywordResearchDetailProps {
+  initialResearchDetail: KeywordResearchItem & {
+    clusters?: Record<string, string[]> | null;
+    personas?: Partial<UserPersona>[];
+    clusteringStatus?: string;
+  };
+  researchId: string;
 }
 
-interface KeywordResearchDetailProps {
-  initialResearchDetail: KeywordResearchItem & { clusteringStatus?: string };
-  researchId: string;
-  volumeDistribution: VolumeDistributionStats;
+// Helper function to format date/time
+function formatDateTime(
+  date: Date | { seconds: number; nanoseconds: number } | string | undefined
+): string {
+  if (!date) return 'N/A';
+  let dateObj: Date;
+  if (
+    typeof date === 'object' &&
+    date !== null &&
+    'seconds' in date &&
+    'nanoseconds' in date
+  ) {
+    dateObj = new Date(date.seconds * 1000 + date.nanoseconds / 1000000);
+  } else if (date instanceof Date) {
+    dateObj = date;
+  } else {
+    try {
+      dateObj = new Date(date);
+      if (isNaN(dateObj.getTime())) {
+        return 'Invalid Date';
+      }
+    } catch (error) {
+      return 'Invalid Date Format';
+    }
+  }
+  return dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 }
 
 export default function KeywordResearchDetail({
   initialResearchDetail,
-  researchId,
-  volumeDistribution
+  researchId
 }: KeywordResearchDetailProps) {
   const router = useRouter();
-  const settingsState = useSettingsStore(store => store.state);
+
+  // --- Pagination State (Re-added) ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage] = useState(12);
+
+  // --- Volume Filter State ---
+  const [volumeFilter, setVolumeFilter] = useState<VolumeFilterType>('all');
+  const [highVolumeThreshold] = useState(10000);
+  const [mediumVolumeThreshold] = useState(1000);
 
   // Local State
   const [isRequestingClustering, setIsRequestingClustering] = useState(false);
@@ -59,401 +97,405 @@ export default function KeywordResearchDetail({
   const [localError, setLocalError] = useState<string | null>(null);
 
   // --- Data Processing Memos ---
+  const sortedUniqueKeywords = useMemo(() => {
+    const uniqueKeywords = new Map<string, KeywordVolumeItem>();
+    (initialResearchDetail?.keywords || []).forEach((kw: KeywordVolumeItem) => {
+      const text = kw.text?.trim().toLowerCase();
+      if (text && !uniqueKeywords.has(text)) {
+        uniqueKeywords.set(text, kw);
+      }
+    });
+    const keywordsArray = Array.from(uniqueKeywords.values());
+    keywordsArray.sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
+    return keywordsArray;
+  }, [initialResearchDetail?.keywords]);
 
-  // 1. Get Sorted Unique Keywords
-  const sortedUniqueKeywords =
-    useMemo((): KeywordResearchItem['keywords'] extends (infer K)[] | undefined
-      ? K[]
-      : never => {
-      console.log(
-        '[KeywordResearchDetail] Recalculating sortedUniqueKeywords...'
-      );
-      const uniqueKeywords = new Map<
-        string,
-        KeywordResearchItem['keywords'] extends (infer K)[] | undefined
-          ? K
-          : never
-      >();
-      (initialResearchDetail?.keywords || []).forEach(kw => {
-        const keywordData = kw as KeywordResearchItem['keywords'] extends
-          | (infer K)[]
-          | undefined
-          ? K
-          : never;
-        const text = keywordData.text?.trim().toLowerCase();
-        if (text && !uniqueKeywords.has(text)) {
-          uniqueKeywords.set(text, keywordData);
-        }
-      });
-      const keywordsArray: KeywordResearchItem['keywords'] extends
-        | (infer K)[]
-        | undefined
-        ? K[]
-        : never[] = Array.from(uniqueKeywords.values());
-      // Sort by volume descending
-      keywordsArray.sort(
-        (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
-      );
-      return keywordsArray;
-    }, [initialResearchDetail?.keywords]);
+  const filteredKeywords = useMemo(() => {
+    if (volumeFilter === 'all') {
+      return sortedUniqueKeywords;
+    }
+    return sortedUniqueKeywords.filter(kw => {
+      const volume = kw.searchVolume;
+      switch (volumeFilter) {
+        case 'high':
+          return (
+            volume !== null &&
+            volume !== undefined &&
+            volume >= highVolumeThreshold
+          );
+        case 'medium':
+          return (
+            volume !== null &&
+            volume !== undefined &&
+            volume >= mediumVolumeThreshold &&
+            volume < highVolumeThreshold
+          );
+        case 'low':
+          return (
+            volume !== null &&
+            volume !== undefined &&
+            volume > 0 &&
+            volume < mediumVolumeThreshold
+          );
+        case 'na':
+          return volume === null || volume === undefined;
+        default:
+          return true;
+      }
+    });
+  }, [
+    sortedUniqueKeywords,
+    volumeFilter,
+    highVolumeThreshold,
+    mediumVolumeThreshold
+  ]);
 
-  // 2. Memoize raw clusters from prop
+  // --- Pagination Calculation (based on filteredKeywords) ---
+  const totalFilteredKeywords = filteredKeywords.length;
+  const totalPages = Math.ceil(totalFilteredKeywords / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const keywordsForCurrentPage = filteredKeywords.slice(startIndex, endIndex);
+
+  // --- Effect to adjust currentPage when filters change totalPages ---
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    } else if (currentPage < 1 && totalPages > 0) {
+      setCurrentPage(1);
+    } else if (totalPages === 0) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  // --- Memos for Clustering (Re-added) ---
   const currentClusters = useMemo(() => {
-    console.log('[KeywordResearchDetail] Recalculating currentClusters...');
-    // Additional validation to make sure clusters are non-empty and well-formed
     const clusters = initialResearchDetail?.clusters || null;
-    
-    // Check if clusters object exists and has at least one non-empty cluster
     if (clusters && typeof clusters === 'object') {
       const validClusters: Record<string, string[]> = {};
       let hasValidCluster = false;
-      
-      // Validate each cluster and only keep valid ones
       Object.entries(clusters).forEach(([clusterName, keywords]) => {
-        // Ensure cluster has a name and non-empty keywords array
         if (clusterName && Array.isArray(keywords) && keywords.length > 0) {
           validClusters[clusterName] = keywords;
           hasValidCluster = true;
         }
       });
-      
-      console.log(`[KeywordResearchDetail] Valid clusters found: ${hasValidCluster}, count: ${Object.keys(validClusters).length}`);
       return hasValidCluster ? validClusters : null;
     }
-    
-    console.log('[KeywordResearchDetail] No valid clusters object found');
     return null;
-  }, [initialResearchDetail]);
-  
-  // Advanced validation for clusters
-  const hasValidClusters = useMemo(() => {
-    if (!currentClusters) return false;
-    
-    // Make sure at least one cluster has keywords
-    const isValid = Object.entries(currentClusters).some(
-      ([name, keywords]) => name && Array.isArray(keywords) && keywords.length > 0
-    );
-    
-    console.log(`[KeywordResearchDetail] hasValidClusters evaluation result: ${isValid}`);
-    return isValid;
-  }, [currentClusters]);
+  }, [initialResearchDetail?.clusters]);
 
-  // 3. Memoize raw personas from prop
+  const hasValidClusters = useMemo(
+    () => !!currentClusters && Object.keys(currentClusters).length > 0,
+    [currentClusters]
+  );
+
+  // Note: Personas are passed down but not displayed/generated here currently
   const currentPersonas = useMemo(() => {
-    console.log('[KeywordResearchDetail] Recalculating currentPersonas...');
     const personasFromProp = initialResearchDetail?.personas;
-    // Ensure it's an array, default to empty array otherwise
     if (Array.isArray(personasFromProp)) {
-      return personasFromProp as UserPersona[];
+      return personasFromProp.map((p: Partial<UserPersona>) => ({
+        name: p.name || '未命名畫像',
+        description: p.description || '無描述',
+        keywords: p.keywords || [],
+        characteristics: p.characteristics || [],
+        interests: p.interests || [],
+        painPoints: p.painPoints || [],
+        goals: p.goals || []
+      })) as UserPersona[];
     }
-    console.warn('[KeywordResearchDetail] initialResearchDetail.personas was not an array, defaulting to []. Value:', personasFromProp);
     return [] as UserPersona[];
-  }, [initialResearchDetail]);
+  }, [initialResearchDetail?.personas]);
 
-  // 4. Create a map for quick persona lookup by cluster name
   const personasMapForClustering = useMemo(() => {
-    console.log('[KeywordResearchDetail] Recalculating personasMapForClustering...');
     const map: Record<string, string> = {};
-    // Iterate over the array of personas
-    if (Array.isArray(currentPersonas)) {
-      currentPersonas.forEach((persona: UserPersona) => {
-        // Store the description string instead of the full object
-        if (persona && persona.name && persona.description) {
-          map[persona.name] = persona.description;
-        } else {
-          console.warn(
-            '[KeywordResearchDetail] Persona object missing name or description:',
-            persona
-          );
-        }
-      });
-    }
+    currentPersonas.forEach(persona => {
+      if (persona && persona.name && persona.description) {
+        map[persona.name] = persona.description;
+      }
+    });
     return map;
   }, [currentPersonas]);
 
-  // 5. Create Keyword Volume Map for quick lookup
-  const keywordVolumeMap = useMemo(() => {
-    console.log('[KeywordResearchDetail] Recalculating keywordVolumeMap...');
+  const keywordVolumeRecord: Record<string, number> = useMemo(() => {
     const map = new Map<string, number>();
-    sortedUniqueKeywords.forEach(kw => {
+    filteredKeywords.forEach(kw => {
       if (kw.text) {
         map.set(kw.text.toLowerCase(), kw.searchVolume ?? 0);
       }
     });
-    return map;
-  }, [sortedUniqueKeywords]);
+    return Object.fromEntries(map.entries());
+  }, [filteredKeywords]);
 
-  // --- Clustering Logic ---
+  // --- Filter Handler ---
+  const handleVolumeFilterChange = useCallback(
+    (newFilter: VolumeFilterType) => {
+      setVolumeFilter(newFilter);
+      setCurrentPage(1); // Reset to first page when filter changes
+    },
+    []
+  );
+
+  // Re-add handlePageChange
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Action Handlers
   const handleRequestClustering = useCallback(async () => {
-    console.log('[KeywordResearchDetail] handleRequestClustering called.');
-
-    // Basic guards
     if (!researchId) {
-      console.warn(
-        '[KeywordResearchDetail] handleRequestClustering aborted: Missing researchId.'
-      );
       setLocalError('Cannot start clustering: Missing research ID.');
       return;
     }
-
-    console.log(
-      '[KeywordResearchDetail] Setting isRequestingClustering = true'
-    );
     setIsRequestingClustering(true);
     setLocalError(null);
-    toast.info('請求開始分群... (Requesting clustering start...)');
-
+    toast.info('請求開始分群...');
     try {
-      console.log(
-        `[KeywordResearchDetail] Calling requestClustering server action for ${researchId}...`
-      );
-      // Call the server action
       const result = await requestClustering(researchId);
-
       if (result.success) {
-        console.log(
-          '[KeywordResearchDetail] Server action requestClustering successful.'
-        );
-        toast.success(
-          '分群請求已發送! 頁面將在處理後刷新。(Clustering requested! Page will refresh after processing.)'
-        );
-
-        // Revalidate cache BEFORE refreshing, as polling is removed
-        try {
-          console.log(
-            `[KeywordResearchDetail] Revalidating data after clustering request for ${researchId}...`
-          );
-          await revalidateKeywordData(researchId); // Call the server action
-          console.log(
-            `[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`
-          );
-          router.refresh(); // Refresh to get potentially updated data
-        } catch (revalError) {
-          console.error(
-            `[KeywordResearchDetail] Failed to request revalidation via action:`,
-            revalError
-          );
-           // Also force reload if revalidation fails
-          router.refresh(); // Still refresh even if revalidation fails
-           // Optional: Force reload if refresh isn't enough
-           // setTimeout(() => window.location.reload(), 500);
-        }
+        toast.success('分群請求已發送! 頁面將在處理後刷新。');
+        await revalidateKeywordData(researchId);
+        router.refresh();
       } else {
-        console.error(
-          '[KeywordResearchDetail] Server action requestClustering failed:',
-          result.error
-        );
-        // Show specific error from action or generic one
-        const errorMsg =
-          result.error || '請求分群失敗 (Failed to request clustering).';
-        toast.error(errorMsg);
-        setLocalError(errorMsg);
+        throw new Error(result.error || '請求分群失敗');
       }
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Unknown clustering request error';
-      console.error(
-        '[KeywordResearchDetail] Error calling requestClustering server action:',
-        message,
-        error
-      );
-      toast.error(`請求分群時發生錯誤: ${message}`);
-      setLocalError(`請求分群時發生錯誤: ${message}`);
+    } catch (err) {
+      const errorMsg =
+        err instanceof Error ? err.message : '請求分群時發生未知錯誤';
+      toast.error(errorMsg);
+      setLocalError(errorMsg);
     } finally {
-      console.log(
-        '[KeywordResearchDetail] Setting isRequestingClustering = false'
-      );
       setIsRequestingClustering(false);
     }
   }, [researchId, router]);
 
-  // --- Persona Generation Logic (remains largely the same) ---
-  const handleSavePersona = useCallback(
+  const handleSavePersonaForCluster = useCallback(
     async (clusterName: string, keywords: string[]) => {
-      console.log(
-        `[KeywordResearchDetail] handleSavePersona called for cluster: ${clusterName}`
-      );
-      if (!researchId || !clusterName || keywords.length === 0) {
-        toast.error('Cannot generate persona: Missing required data.');
+      if (!researchId || !clusterName || !keywords || keywords.length === 0) {
+        toast.error('無法生成用戶畫像：缺少必要數據。 ');
         return;
       }
       setIsSavingPersona(clusterName);
       setLocalError(null);
+      toast.info(`正在為分群 "${clusterName}" 生成用戶畫像...`);
+
       try {
-        toast.info(`Generating persona for "${clusterName}"...`);
-        const personaResult = await generateUserPersonaFromClusters({
+        const result = await generateUserPersonaFromClusters({
           clusterName,
-          keywords,
-          model: settingsState.personaModel || 'gpt-4o-mini'
+          keywords
         });
-        const personaText = personaResult.userPersona;
 
-        const existingPersonas = currentPersonas || [];
-        const personaIndex = existingPersonas.findIndex(
-          p => p.name === clusterName
-        );
-
-        let updatedPersonas: UserPersona[];
-
-        if (personaIndex > -1) {
-          // Update existing persona description
-          updatedPersonas = existingPersonas.map((p, index) =>
-            index === personaIndex ? { ...p, description: personaText } : p
-          );
-        } else {
-          // Add new persona object
-          const newPersona: UserPersona = {
-            name: clusterName,
-            description: personaText,
-            keywords: keywords,
-            characteristics: [],
-            interests: [],
-            painPoints: [],
-            goals: []
-          };
-          updatedPersonas = [...existingPersonas, newPersona];
+        if (!result || !result.userPersona) {
+          throw new Error('AI未能返回有效的用戶畫像文本。');
         }
 
-        toast.info(`Saving persona for "${clusterName}"...`);
-        const updateInput: UpdateKeywordResearchInput = {
-          personas: updatedPersonas,
-          updatedAt: new Date()
+        const newPersonaData = {
+          name: clusterName,
+          description: result.userPersona,
+          keywords: keywords,
+          characteristics: [],
+          interests: [],
+          painPoints: [],
+          goals: []
         };
-        const updateResult = await updateKeywordResearch(
-          researchId,
-          updateInput
+
+        const currentPersonasFromProp = initialResearchDetail.personas || [];
+        const existingIndex = currentPersonasFromProp.findIndex(
+          (p: Partial<UserPersona>) => p.name === clusterName
         );
 
-        if (updateResult.success) {
-          toast.success(`Persona for "${clusterName}" saved successfully!`);
-          // Revalidate cache BEFORE refreshing
-          try {
-            console.log(
-              `[KeywordResearchDetail] Revalidating data after persona save for ${researchId}...`
-            );
-            await revalidateKeywordData(researchId); // Call the server action
-            console.log(
-              `[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`
-            );
-          } catch (revalError) {
-            console.error(
-              `[KeywordResearchDetail] Failed to request revalidation via action:`,
-              revalError
-            );
-            // Decide if you still want to refresh even if revalidation fails
-          }
-          router.refresh(); // Refresh after revalidation attempt
+        let updatedPersonas: Partial<UserPersona>[];
+        if (existingIndex !== -1) {
+          updatedPersonas = [...currentPersonasFromProp];
+          updatedPersonas[existingIndex] = {
+            ...currentPersonasFromProp[existingIndex],
+            ...newPersonaData
+          };
         } else {
-          throw new Error(
-            updateResult.error || 'Failed to save the generated persona.'
-          );
+          updatedPersonas = [...currentPersonasFromProp, newPersonaData];
         }
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Unknown error generating/saving persona';
-        toast.error(`Failed for cluster "${clusterName}": ${message}`);
-        setLocalError(`Failed to generate/save persona for "${clusterName}".`);
+
+        // Use the dedicated action for updating
+        await updateKeywordResearch(researchId, {
+          personas: updatedPersonas as UserPersona[],
+          updatedAt: new Date() // Let action handle timestamp if possible, or set here
+        });
+
+        toast.success(`用戶畫像 "${clusterName}" 已生成並保存！`);
+        await revalidateKeywordData(researchId);
+        router.refresh();
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : '生成或保存用戶畫像時發生錯誤';
+        toast.error(errorMsg);
+        setLocalError(`處理 "${clusterName}" 時出錯: ${errorMsg}`);
       } finally {
         setIsSavingPersona(null);
       }
     },
-    [researchId, currentPersonas, router, settingsState.personaModel]
+    [researchId, router, initialResearchDetail]
   );
 
-  // --- RENDER LOGIC ---
-
-  if (localError && !hasValidClusters) { // Show full error state only if no clusters
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-center h-[calc(100vh-150px)]">
-          <EmptyState
-            title="無法加載數據或處理失敗"
-            description={localError || "提供的研究數據無效或不完整。"}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (!initialResearchDetail || !initialResearchDetail.query) {
-    console.warn(
-      '[Render] Missing essential initial data.',
-      initialResearchDetail
-    );
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-center h-[calc(100vh-150px)]">
-          <EmptyState
-            title="無法加載數據"
-            description="提供的研究數據無效或不完整。"
-          />
-        </div>
-      </div>
-    );
-  }
-
+  // Render Logic
   return (
-    <div className="flex h-full flex-col">
-      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {/* Conditional Rendering based on 'view' state */}
-
-        {/* Always show Volume Distribution */}
-        <KeywordDistribute keywords={sortedUniqueKeywords} />
-
-        {/* --- Integrated Clustering Section --- */}
-
-        {/* Render the Clustering Card ONLY when clusters exist */}
-        {hasValidClusters && initialResearchDetail && (
-          <div className="mt-6 w-full">
-            <KeywordClustering
-              clusters={currentClusters}
-              personasMap={personasMapForClustering}
-              keywordVolumeMap={Object.fromEntries(keywordVolumeMap.entries())}
-              onSavePersona={handleSavePersona}
-              isSavingPersona={isSavingPersona}
-              researchId={researchId}
-              researchRegion={initialResearchDetail.region || ''}
-              researchLanguage={initialResearchDetail.language || ''}
-              currentKeywords={sortedUniqueKeywords
-                .map(k => k.text || '')
-                .filter(Boolean)}
-              selectedResearchDetail={{
-                query: initialResearchDetail.query
-              }}
-            />
+    <div className="space-y-6 p-4 md:p-6">
+      {localError && (
+        <div className="bg-destructive/10 text-destructive border border-destructive/30 p-3 rounded-md text-sm mb-4">
+          操作錯誤: {localError}
+        </div>
+      )}
+      {/* Section 1: Metadata and Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        {/* Metadata */}
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+          <div className="flex items-center">
+            <Globe className="mr-1.5 h-4 w-4" />
+            地區: {initialResearchDetail.region || '未指定'}
           </div>
-        )}
-
-        {/* Render the standalone button when clusters are not ready/valid */}
-        {!hasValidClusters && (
-          <div className="mt-6 flex flex-col items-center">
-            <LoadingButton
-              onClick={handleRequestClustering}
-              isLoading={isRequestingClustering}
-              disabled={isRequestingClustering}
-              variant={'outline'}
-            >
-              查看關鍵字分群 (View Keyword Clusters)
-            </LoadingButton>
-
-            {/* Display error from the last request if no clusters are shown */}
-            {localError && (
-              <p className="mt-2 text-sm text-destructive">{localError}</p>
+          <div className="flex items-center">
+            <Languages className="mr-1.5 h-4 w-4" />
+            語言: {initialResearchDetail.language || '未指定'}
+          </div>
+          <div className="flex items-center">
+            <Clock className="mr-1.5 h-4 w-4" />
+            最後更新: {formatDateTime(initialResearchDetail.updatedAt)}
+          </div>
+          {initialResearchDetail.tags &&
+            initialResearchDetail.tags.length > 0 && (
+              <div className="flex items-center gap-1">
+                <Tag className="mr-1 h-4 w-4" />
+                {initialResearchDetail.tags.map((tag: string) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
             )}
-          </div>
-        )}
-
-        {/* Display local errors if any (redundant? kept for now) */}
-        {localError && hasValidClusters && ( // Only show if clusters are also shown
-          <div className="mt-4 text-center text-sm text-red-500">
-            {localError}
-          </div>
-        )}
+        </div>
+        {/* Action Button */}
+        <LoadingButton
+          onClick={handleRequestClustering}
+          isLoading={isRequestingClustering}
+          disabled={isRequestingClustering || sortedUniqueKeywords.length < 5}
+          size="sm"
+        >
+          <ListTree className="mr-2 h-4 w-4" />
+          {hasValidClusters ? '重新分群' : '請求分群'}
+        </LoadingButton>
       </div>
+      {/* Section 2: Volume Visualization */}
+      <KeywordVolumeVisualization
+        keywords={sortedUniqueKeywords}
+        highVolumeThreshold={highVolumeThreshold}
+        mediumVolumeThreshold={mediumVolumeThreshold}
+        currentFilter={volumeFilter}
+        onFilterChange={handleVolumeFilterChange}
+      />
+      {/* Section 3 & 4 Combined: Two-column layout */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Left Column (1/3 width): Keywords Table with Pagination */}
+        <div className="md:col-span-1 space-y-3">
+          {totalFilteredKeywords > 0 ? (
+            <>
+              <Table className="w-full">
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="font-medium">關鍵字</TableHead>
+                    <TableHead className="text-right pr-4 font-medium">
+                      月搜索量
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {keywordsForCurrentPage.map((kw, index) => (
+                    <TableRow key={`${kw.text}-${startIndex + index}`}>
+                      <TableCell className="font-medium truncate pr-2">
+                        {kw.text}
+                      </TableCell>
+                      <TableCell className="text-right pr-4">
+                        {formatVolume(kw.searchVolume ?? 0)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    第 {currentPage} / {totalPages} 頁
+                  </span>
+                  <div className="space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      上一頁
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      下一頁
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-muted-foreground text-center py-4">
+              {/* Use a more generic message now that the helper is removed */}
+              {volumeFilter === 'all'
+                ? '沒有找到關鍵字數據。'
+                : '沒有找到符合當前條件的關鍵字。'}
+            </p>
+          )}
+        </div>
+
+        {/* Right Column (2/3 width): Clustering Results - Replace Card with Div */}
+        <div className="md:col-span-2">
+          {hasValidClusters && currentClusters && (
+            <div className="h-full space-y-3">
+              <div>
+                <h3 className="text-lg font-semibold leading-none tracking-tight flex items-center">
+                  <ListTree className="mr-2 h-5 w-5" /> 語義分群結果
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  根據語義相關性對關鍵字進行的分組。
+                </p>
+              </div>
+              <KeywordClustering
+                clusters={currentClusters}
+                keywordVolumeMap={keywordVolumeRecord}
+                personasMap={personasMapForClustering}
+                researchRegion={initialResearchDetail.region || 'us'}
+                researchLanguage={initialResearchDetail.language || 'en'}
+                currentKeywords={filteredKeywords.map(kw => kw.text || '')}
+                selectedResearchDetail={{ query: initialResearchDetail.query }}
+                researchId={researchId}
+                onSavePersona={handleSavePersonaForCluster}
+                isSavingPersona={isSavingPersona}
+              />
+            </div>
+          )}
+          {!hasValidClusters && !isRequestingClustering && (
+            <div className="text-center text-muted-foreground text-sm p-4 h-full flex items-center justify-center">
+              尚未進行分群，或分群結果不可用。點擊上方的「請求分群」按鈕開始。
+            </div>
+          )}
+          {isRequestingClustering && (
+            <div className="text-center text-muted-foreground text-sm p-4 h-full flex items-center justify-center">
+              正在請求或處理分群...
+            </div>
+          )}
+        </div>
+      </div>{' '}
+      {/* End Grid */}
     </div>
   );
 }

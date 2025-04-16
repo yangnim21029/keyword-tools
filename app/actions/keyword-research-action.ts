@@ -9,7 +9,6 @@ import {
   type CreateKeywordResearchInput, // Use inferred type from schema
   type KeywordResearchFilter,
   type KeywordResearchItem, // Use inferred type from schema
-  type KeywordResearchListItem, // Use inferred type from schema
   type KeywordVolumeItem, // Assuming this comes from keyword.schema?
   type UpdateClustersInput, // Use inferred type from schema
   type UpdateKeywordResearchInput,
@@ -20,6 +19,13 @@ import { updateKeywordResearchResults } from '@/app/services/firebase/db-keyword
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 // --- Import the Chinese type detection utility ---
+import {
+  getKeywordResearchSummaryList, // <-- Import NEW DB function
+  type KeywordResearchSummaryItem // <-- Import NEW DB type
+} from '@/app/services/firebase/db-keyword-research';
+import { openai } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 
 interface ProcessQueryInput {
   query: string;
@@ -43,7 +49,7 @@ const MAX_VOLUME_CHECK_KEYWORDS = 60;
 const KEYWORD_RESEARCH_TAG = 'KeywordResearch';
 
 // Define the extended type locally
-export type KeywordResearchListItemWithTotalVolume = KeywordResearchListItem & {
+export type KeywordResearchListItemWithTotalVolume = KeywordResearchItem & {
   totalVolume: number;
 };
 
@@ -138,96 +144,53 @@ export async function revalidateKeywordData(
 
 // --- Server Actions ---
 
-// Cached function to fetch the list
-const getCachedKeywordResearchList = unstable_cache(
+// --- NEW: Cached function to fetch the summary list ---
+const getCachedKeywordResearchSummaryList = unstable_cache(
   async (
     userId?: string,
-    filters?: KeywordResearchFilter,
+    filters?: KeywordResearchFilter, // Keep filters param for future use
     limit = 50
-  ): Promise<KeywordResearchListItemWithTotalVolume[]> => {
+  ): Promise<KeywordResearchSummaryItem[]> => {
     console.log(
-      `[Cache Miss] Fetching keyword research list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(
+      `[Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(
         filters
       )}`
     );
-    if (!db) throw new Error('Database not initialized');
-
-    const query = db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
-
-    // TODO: Apply userId and filters to the query
-    // if (userId) { query = query.where('userId', '==', userId); }
-    // Apply other filters...
-
-    const snapshot = await query.get();
-
-    return snapshot.docs.map(doc => {
-      // 1. Get raw data from Firestore
-      const firestoreData = doc.data();
-
-      // 2. Calculate totalVolume using the raw data
-      let totalVolume = 0;
-      const dataWithPotentialKeywords =
-        firestoreData as Partial<KeywordResearchItem>;
-      if (
-        dataWithPotentialKeywords.keywords &&
-        Array.isArray(dataWithPotentialKeywords.keywords)
-      ) {
-        totalVolume = (
-          dataWithPotentialKeywords.keywords as KeywordVolumeItem[]
-        ).reduce((sum: number, kw) => sum + (kw.searchVolume ?? 0), 0);
-      }
-
-      // 3. Convert timestamps separately to get Date objects
-      const convertedTimestamps = convertTimestamps(firestoreData);
-
-      // 4. Construct the final list item object using original data + converted timestamps
-      return {
-        id: doc.id, // Use doc.id directly
-        query: firestoreData.query as string, // Use original data
-        region: firestoreData.region as string | undefined, // Use original data
-        language: firestoreData.language as string | undefined, // Use original data
-        searchEngine: firestoreData.searchEngine as string | undefined, // Use original data
-        device: firestoreData.device as 'desktop' | 'mobile' | undefined, // Use original data
-        isFavorite: firestoreData.isFavorite as boolean, // Use original data
-        tags: firestoreData.tags as string[], // Use original data
-        createdAt: convertedTimestamps.createdAt, // Use converted timestamp
-        updatedAt: convertedTimestamps.updatedAt, // Use converted timestamp
-        totalVolume: totalVolume
-      } as KeywordResearchListItemWithTotalVolume; // Final assertion
-    });
+    // Directly call the DB function
+    // TODO: Apply filters if/when implemented in getKeywordResearchSummaryList or here
+    const summaryList = await getKeywordResearchSummaryList(limit, userId);
+    return summaryList;
   },
   // Base key parts. Arguments (userId, filters, limit) differentiate cache entries.
-  ['keywordResearchList'],
-  { tags: [KEYWORD_RESEARCH_TAG] }
+  ['keywordResearchSummaryList'], // Use a new base key
+  { tags: [KEYWORD_RESEARCH_TAG] } // Use the same tag for revalidation
 );
 
-// 获取 Keyword Research 列表 (使用 cached function)
-export async function fetchKeywordResearchList(
+// --- NEW: Action to fetch the summary list (replaces old fetchKeywordResearchList) ---
+export async function fetchKeywordResearchSummaryAction(
   userId?: string,
   filters?: KeywordResearchFilter,
   limit = 50
 ): Promise<{
-  data: KeywordResearchListItemWithTotalVolume[];
+  data: KeywordResearchSummaryItem[] | null;
   error: string | null;
 }> {
   try {
-    const researches = await getCachedKeywordResearchList(
+    const researches = await getCachedKeywordResearchSummaryList(
       userId,
       filters,
       limit
     );
     console.log(
-      `[Server Action] Fetched ${researches.length} items (potentially cached).`
+      `[Server Action] Fetched ${researches.length} summary items (potentially cached).`
     );
     return { data: researches, error: null };
   } catch (error) {
-    console.error('獲取 Keyword Research 列表失敗:', error);
+    console.error('獲取 Keyword Research Summary 列表失敗:', error);
     return {
-      data: [],
-      error: error instanceof Error ? error.message : 'Failed to fetch list'
+      data: null, // Return null on error
+      error:
+        error instanceof Error ? error.message : 'Failed to fetch summary list'
     };
   }
 }
@@ -468,6 +431,84 @@ export async function updateKeywordResearchKeywords(
   }
 }
 
+// --- NEW: Server Action to Find Relevant Research Queries using AI ---
+
+// Define the expected output schema from the AI
+const RelevantQueriesSchema = z.object({
+  relevantQueries: z
+    .array(z.string())
+    .describe('An array containing only the query strings deemed relevant.')
+});
+
+interface FindRelevantQueriesInput {
+  currentSerpQuery: string;
+  recentQueries: string[];
+  model?: string;
+}
+
+export async function findRelevantResearchQueries({
+  currentSerpQuery,
+  recentQueries,
+  model = 'gpt-4.1-mini' // Or your preferred model
+}: FindRelevantQueriesInput): Promise<{
+  data: string[] | null;
+  error: string | null;
+}> {
+  console.log(
+    `[Server Action] Finding relevant queries for "${currentSerpQuery}" from ${recentQueries.length} recent items using ${model}.`
+  );
+
+  if (!currentSerpQuery || recentQueries.length === 0) {
+    console.log(
+      '[Server Action] Missing current query or recent queries list.'
+    );
+    return { data: [], error: null }; // Return empty if no input
+  }
+
+  // Construct the prompt for the AI
+  const recentQueriesListString = recentQueries.map(q => `- ${q}`).join('\n');
+
+  const prompt = `
+Current SERP Query: "${currentSerpQuery}"
+
+Recent Keyword Research Queries:
+${recentQueriesListString}
+
+Task: Analyze the list of "Recent Keyword Research Queries". Identify which of these recent queries are semantically relevant or closely related to the "Current SERP Query". Consider synonyms, related concepts, and user intent.
+
+Output Format: Return ONLY a JSON object containing a single key "relevantQueries" which holds an array of strings. This array should contain ONLY the query strings from the "Recent Keyword Research Queries" list that you identified as relevant. If none are relevant, the array should be empty [].
+
+Example Output:
+{ "relevantQueries": ["relevant query string 1", "relevant query string 3"] }
+{ "relevantQueries": [] }
+`;
+
+  try {
+    console.log('[AI Call] Requesting relevance analysis...');
+    const { object: aiResult } = await generateObject({
+      model: openai(model),
+      schema: RelevantQueriesSchema,
+      prompt: prompt,
+      mode: 'json' // Ensure JSON output mode
+    });
+
+    console.log(
+      `[Server Action] AI analysis successful. Found ${aiResult.relevantQueries.length} relevant queries.`
+    );
+    // console.log('[Server Action] Relevant queries:', aiResult.relevantQueries);
+
+    return { data: aiResult.relevantQueries, error: null };
+  } catch (error) {
+    console.error('[Server Action] AI relevance analysis failed:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to get relevance analysis from AI.';
+    return { data: null, error: message };
+  }
+}
+// --- End NEW Server Action ---
+
 // --- Process and Save Keyword Query (remains the same for now) ---
 export async function processAndSaveKeywordQuery(
   input: ProcessQueryInput
@@ -485,59 +526,21 @@ export async function processAndSaveKeywordQuery(
   // 9. Save: Save the final list of KeywordVolumeItems to Firestore.
   // -------------------------------------------
 
-  const {
-    query,
-    region,
-    language,
-    useAlphabet, // Still needed for getKeywordSuggestions
-    useSymbols, // Still needed for getKeywordSuggestions
-    // maxKeywords, // No longer used directly for slicing here
-    minSearchVolume
-  } = input;
+  const { query, region, language, useAlphabet, useSymbols, minSearchVolume } =
+    input;
 
-  let spaceVariations: string[] = [];
   let aiSuggestList: string[] = [];
-  let googleSuggestList: string[] = []; // Will contain base, alphabet, symbols etc.
+  let googleSuggestList: string[] = [];
   let volumeDataList: KeywordVolumeItem[] = [];
   let savedResearchId: string | null = null;
   const isUrl = query.startsWith('http');
   const currentInputType = isUrl ? 'url' : 'keyword';
 
   try {
-    // --- Step 2: Generate Space Variations ---
-    console.log('[Server Action] Starting Step 2: Generate Space Variations');
-    // Check if the query consists ONLY of CJK characters and spaces
-    if (/^[\u4e00-\u9fa5\s]+$/.test(query)) {
-      console.log(
-        '[Server Action] Query is CJK-only, generating space variations...'
-      );
-      // Add the original query itself
-      spaceVariations.push(query.trim()); // Trim whitespace just in case
-
-      // Loop through the original CJK query to insert spaces
-      // Ensure we don't add leading/trailing spaces if query wasn't trimmed initially
-      const trimmedQuery = query.trim();
-      if (trimmedQuery.length > 1) {
-        for (let i = 1; i < trimmedQuery.length; i++) {
-          const spacedKeyword =
-            trimmedQuery.slice(0, i) + ' ' + trimmedQuery.slice(i);
-          spaceVariations.push(spacedKeyword);
-        }
-      }
-    } else {
-      console.log(
-        '[Server Action] Query contains non-CJK characters, skipping space variations.'
-      );
-      // If query is not purely CJK/space, spaceVariations remains empty for this step
-      // We might still add the original query later if needed, but not spaced variations.
-    }
-
-    // Deduplicate any generated variations (including the original if added)
-    spaceVariations = [...new Set(spaceVariations)];
+    // --- Step 2: Generate Space Variations (REMOVED) ---
     console.log(
-      `[Server Action] Generated ${spaceVariations.length} space variations.`
+      '[Server Action] Step 2: Space Variations Generation Disabled.'
     );
-    // console.log("[Server Action] Space Variations:", spaceVariations);
 
     // --- Step 3: Get AI Suggestions ---
     console.log(
@@ -553,15 +556,12 @@ export async function processAndSaveKeywordQuery(
       console.log(
         `[Server Action] Got ${aiSuggestList.length} suggestions from AI.`
       );
-      console.log('[Server Action] AI Suggestions List:', aiSuggestList);
     } catch (aiError) {
       console.error(`[Server Action] Failed to get AI suggestions:`, aiError);
       aiSuggestList = [];
     }
 
     // --- Step 4: Get Google Suggestions ---
-    // Note: getKeywordSuggestions internally combines base, alphabet, symbols, and *its own* space variations.
-    // We will use its output but prioritize our own generated space variations above.
     console.log(
       `[Server Action] Starting Step 4: Get Google Suggestions for: ${query}`
     );
@@ -589,31 +589,25 @@ export async function processAndSaveKeywordQuery(
       );
       googleSuggestList = [];
     } else {
-      // Exclude space variations already generated in Step 2 from the google list to avoid double prioritization later
-      const spaceVariationSet = new Set(spaceVariations);
-      googleSuggestList = suggestionsResult.suggestions.filter(
-        s => !spaceVariationSet.has(s)
-      );
+      googleSuggestList = suggestionsResult.suggestions;
       console.log(
-        `[Server Action] Got ${googleSuggestList.length} suggestions from Google (excluding duplicates from Step 2).`
+        `[Server Action] Got ${googleSuggestList.length} suggestions from Google.`
       );
-      // console.log("[Server Action] Google Suggestions List (filtered):", googleSuggestList);
     }
 
     // --- Step 5: Combine All & Deduplicate ---
     console.log('[Server Action] Starting Step 5: Combine All & Deduplicate');
-    const allCombinedSources = [
-      ...spaceVariations,
-      ...aiSuggestList,
-      ...googleSuggestList
-    ];
+    const allCombinedSources = [...aiSuggestList, ...googleSuggestList];
+    // Ensure original query is included if not generated/suggested elsewhere
+    if (query.trim() && !allCombinedSources.includes(query.trim())) {
+      allCombinedSources.unshift(query.trim()); // Add original query to the beginning
+    }
 
     const initialUniqueKeywords = [...new Set(allCombinedSources)].filter(
       kw => kw && kw.trim()
-    ); // Ensure not empty/whitespace
-
+    );
     console.log(
-      `[Server Action] Total unique keywords from all sources (after potential filtering): ${initialUniqueKeywords.length}`
+      `[Server Action] Total unique keywords from all sources: ${initialUniqueKeywords.length}`
     );
 
     if (initialUniqueKeywords.length === 0) {
@@ -655,12 +649,7 @@ export async function processAndSaveKeywordQuery(
       return false;
     };
 
-    console.log('[Server Action] Prioritizing Space Variations...');
-    spaceVariations.forEach(addPrioritized);
-    console.log(
-      `[Server Action] Added ${keywordsForVolumeCheck.length} keywords after space variations.`
-    );
-
+    // Start prioritization directly with AI Suggestions, then Google Suggestions
     console.log('[Server Action] Prioritizing AI Suggestions...');
     aiSuggestList.forEach(addPrioritized);
     console.log(
@@ -668,12 +657,12 @@ export async function processAndSaveKeywordQuery(
     );
 
     console.log('[Server Action] Prioritizing Google Suggestions...');
-    googleSuggestList.forEach(addPrioritized); // Add remaining Google suggestions
+    googleSuggestList.forEach(addPrioritized);
     console.log(
       `[Server Action] Added ${keywordsForVolumeCheck.length} keywords after Google suggestions.`
     );
 
-    // If still under limit, fill with remaining unique keywords (less likely with combined sources)
+    // If still under limit, fill with remaining unique keywords
     if (keywordsForVolumeCheck.length < MAX_VOLUME_CHECK_KEYWORDS) {
       console.log(
         '[Server Action] Filling remaining slots with other unique keywords...'
@@ -684,7 +673,7 @@ export async function processAndSaveKeywordQuery(
     console.log(
       `[Server Action] Final list for volume check (${keywordsForVolumeCheck.length} keywords):`
     );
-    console.log(keywordsForVolumeCheck);
+    // console.log(keywordsForVolumeCheck); // Keep commented out for brevity
 
     // --- Step 7: Get Search Volume ---
     console.log('[Server Action] Starting Step 7: Get Search Volume');

@@ -1,10 +1,17 @@
-import {
-  type KeywordResearchItem,
-  type KeywordResearchListItem,
-  type KeywordVolumeItem
-} from '@/lib/schema'; // Use correct types
+import { type KeywordResearchItem, type KeywordVolumeItem } from '@/lib/schema'; // Use correct types
 import { Timestamp } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from './db-config';
+
+// --- NEW: Define the type for the summary list item ---
+export type KeywordResearchSummaryItem = {
+  id: string;
+  query: string;
+  totalVolume: number; // Calculated total search volume
+  createdAt: Date; // Use Date object
+  region: string | undefined;
+  language: string | undefined;
+};
+// --- End NEW Type ---
 
 /**
  * 保存 Keyword Research 到 Firebase
@@ -59,19 +66,27 @@ export async function saveKeywordResearch(
 }
 
 /**
- * 獲取 Keyword Research 列表，按更新時間倒序排列
- * Returns simplified list items (KeywordResearchListItem)
+ * 獲取包含總搜尋量的 Keyword Research 摘要列表，按創建時間倒序排列
+ * @param limit 最大返回數量
+ * @param userId 可選的用戶 ID 過濾
+ * @returns 返回包含 id, query, totalVolume, createdAt, region, language 的列表
  */
-export async function getKeywordResearchList(
+export async function getKeywordResearchSummaryList(
   limit: number = 50,
   userId?: string
-): Promise<KeywordResearchListItem[]> {
+): Promise<KeywordResearchSummaryItem[]> {
   if (!db) return [];
+
+  console.log(
+    `[DB] Fetching keyword research summary list (limit: ${limit}, userId: ${
+      userId || 'N/A'
+    })`
+  );
 
   try {
     let queryBuilder = db
       .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .orderBy('updatedAt', 'desc') // Order by updatedAt
+      .orderBy('createdAt', 'desc') // Order by creation date
       .limit(limit);
 
     // Optional: Filter by userId if provided
@@ -79,37 +94,48 @@ export async function getKeywordResearchList(
       queryBuilder = queryBuilder.where('userId', '==', userId);
     }
 
+    // Fetch the full documents including the 'keywords' field
     const querySnapshot = await queryBuilder.get();
 
     if (querySnapshot.empty) {
+      console.log(`[DB] No keyword research found matching criteria.`);
       return [];
     }
 
-    // Map Firestore docs to KeywordResearchListItem structure
-    const researchList: KeywordResearchListItem[] = querySnapshot.docs.map(
+    // Map Firestore docs to KeywordResearchSummaryItem structure
+    const summaryList: KeywordResearchSummaryItem[] = querySnapshot.docs.map(
       doc => {
         const data = doc.data();
-        // Map Firestore fields to KeywordResearchListItem fields
+
+        // Calculate totalVolume
+        let totalVolume = 0;
+        // Ensure keywords is an array before reducing
+        if (data.keywords && Array.isArray(data.keywords)) {
+          totalVolume = (data.keywords as KeywordVolumeItem[]).reduce(
+            (sum: number, kw) => sum + (kw.searchVolume ?? 0), // Safely add volume
+            0
+          );
+        }
+
+        // Map fields
         return {
           id: doc.id,
           query: data.query || '',
-          userId: data.userId || '', // Assuming userId is stored
-          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
+          totalVolume: totalVolume,
+          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(), // Convert Timestamp to Date
           region: data.region,
-          language: data.language,
-          device: data.device,
-          isFavorite: data.isFavorite || false,
-          tags: data.tags
-          // Omit large fields like keywords, clusters, userPersona for list view
+          language: data.language
         };
       }
     );
 
-    return researchList;
+    console.log(
+      `[DB] Successfully fetched ${summaryList.length} summary items.`
+    );
+    return summaryList;
   } catch (error) {
-    console.error('獲取 Keyword Research 列表失敗:', error);
-    throw error;
+    console.error('[DB] Error fetching keyword research summary list:', error);
+    throw error; // Re-throw the error for the caller to handle
   }
 }
 

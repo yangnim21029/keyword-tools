@@ -88,14 +88,35 @@ async function SerpResultContent({
   const serializableAnalysisData = {
     ...analysisData, // Spread the data which includes the id
     timestamp: analysisData.timestamp.toDate(), // Convert Timestamp
-    // Initialize JSON fields required by client component
-    contentTypeAnalysisJson: null,
-    userIntentAnalysisJson: null,
-    // Ensure text fields exist
+
+    // Ensure all fields required by ClientSerpAnalysisData exist, providing defaults
+    // Map top-level fields (provide defaults if needed based on ClientSerpAnalysisData)
+    searchQuery: analysisData.searchQuery ?? null,
+    resultsTotal: analysisData.resultsTotal ?? null,
+    relatedQueries: analysisData.relatedQueries ?? [],
+    aiOverview: analysisData.aiOverview ?? null,
+    paidResults: analysisData.paidResults ?? [],
+    paidProducts: analysisData.paidProducts ?? [],
+    peopleAlsoAsk: analysisData.peopleAlsoAsk ?? [],
+
+    // Ensure organicResults is always an array AND map description: undefined -> null
+    organicResults: (analysisData.organicResults ?? []).map(result => ({
+      ...result,
+      description: result.description ?? null, // Ensure description is string | null
+      displayedUrl: result.displayedUrl ?? null,
+      emphasizedKeywords: result.emphasizedKeywords ?? []
+    })),
+
+    // Ensure analysis fields exist (defaults to null)
+    contentTypeAnalysis: analysisData.contentTypeAnalysis ?? null,
+    userIntentAnalysis: analysisData.userIntentAnalysis ?? null,
+    titleAnalysis: analysisData.titleAnalysis ?? null,
     contentTypeAnalysisText: analysisData.contentTypeAnalysisText ?? null,
     userIntentAnalysisText: analysisData.userIntentAnalysisText ?? null,
-    // Ensure title analysis exists
-    titleAnalysis: analysisData.titleAnalysis ?? null
+
+    // Initialize JSON fields required by client component if not already present
+    contentTypeAnalysisJson: null, // These are typically generated on client-side
+    userIntentAnalysisJson: null // These are typically generated on client-side
   };
   // --- End Data Preparation ---
 
@@ -103,6 +124,7 @@ async function SerpResultContent({
     `[SERP Result Page] Rendering analysis data for ID ${serpId} (Keyword: ${analysisData.originalKeyword}).`
   );
   // Pass the prepared data, including the id, to the client
+  // The structure should now match ClientSerpAnalysisData
   return <SerpDisplayClient initialAnalysisData={serializableAnalysisData} />;
 }
 

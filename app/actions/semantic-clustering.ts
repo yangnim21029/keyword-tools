@@ -10,7 +10,7 @@ import {
   fetchKeywordResearchDetail,
   revalidateKeywordResearchCache, // Renamed from revalidateResearch
   updateKeywordResearchClusters
-} from '@/app/actions/keyword-research'; // Adjust path if needed
+} from '@/app/actions/keyword-research-action'; // Adjust path if needed
 import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import type { KeywordVolumeItem } from '@/lib/schema';
 

@@ -111,15 +111,6 @@ export const UpdateClustersSchema = z.object({
 export const keywordResearchItemSchema = KeywordResearchSchema;
 
 /**
- * Schema for a list item (potentially omitting large fields)
- */
-export const keywordResearchListItemSchema = keywordResearchItemSchema.omit({
-  keywords: true,
-  clusters: true,
-  personas: true
-});
-
-/**
  * Schema for filtering keyword research queries
  */
 export const keywordResearchFilterSchema = z
@@ -145,9 +136,6 @@ export const keywordResearchStatsSchema = z.object({
 // Exported types inferred from schemas
 export type KeywordResearchBase = z.infer<typeof KeywordResearchBaseSchema>;
 export type KeywordResearchItem = z.infer<typeof keywordResearchItemSchema>;
-export type KeywordResearchListItem = z.infer<
-  typeof keywordResearchListItemSchema
->;
 export type KeywordResearchFilter = z.infer<typeof keywordResearchFilterSchema>;
 export type KeywordResearchStats = z.infer<typeof keywordResearchStatsSchema>;
 export type CreateKeywordResearchInput = z.infer<

@@ -8,10 +8,11 @@ import {
   getUserIntentConversionPrompt
 } from '@/app/prompt/prompt-design';
 import {
+  deleteSerpAnalysisById,
   findSerpAnalysisByKeyword,
   saveSerpAnalysis,
   type FirebaseSerpAnalysisDoc
-} from '@/app/services/firebase';
+} from '@/app/services/firebase/db-serp';
 import { fetchKeywordData } from '@/app/services/serp.service';
 import { openai } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
@@ -227,13 +228,15 @@ export async function performSerpTitleAnalysis({
 // --- NEW: Convert Analysis Text to JSON ---
 
 interface ConvertParams {
+  docId: string;
   analysisType: 'contentType' | 'userIntent';
   analysisText: string;
-  keyword: string; // Needed for context in the conversion prompt
+  keyword: string;
   model?: string;
 }
 
 export async function convertAnalysisTextToJson({
+  docId,
   analysisType,
   analysisText,
   keyword,
@@ -243,19 +246,26 @@ export async function convertAnalysisTextToJson({
   | z.infer<typeof userIntentAnalysisJsonSchema>
 > {
   console.log(
-    `[Action] Converting ${analysisType} text to JSON for keyword: ${keyword}`
+    `[Action] Converting ${analysisType} text to JSON for Doc ID: ${docId} (Keyword: ${keyword})`
   );
+
+  if (!docId) {
+    throw new Error('缺少文檔 ID，無法儲存轉換結果。');
+  }
 
   try {
     let prompt: string;
     let schema: z.ZodSchema<any>;
+    let saveKey: 'contentTypeAnalysis' | 'userIntentAnalysis';
 
     if (analysisType === 'contentType') {
       prompt = getContentTypeConversionPrompt(analysisText, keyword);
       schema = contentTypeAnalysisJsonSchema;
+      saveKey = 'contentTypeAnalysis';
     } else if (analysisType === 'userIntent') {
       prompt = getUserIntentConversionPrompt(analysisText, keyword);
       schema = userIntentAnalysisJsonSchema;
+      saveKey = 'userIntentAnalysis';
     } else {
       throw new Error('無效的分析類型');
     }
@@ -268,22 +278,22 @@ export async function convertAnalysisTextToJson({
     });
 
     console.log(
-      `[Action] Conversion to JSON successful for ${analysisType} of ${keyword}.`
+      `[Action] Conversion to JSON successful for ${analysisType} of ${keyword}. Saving...`
     );
 
-    // Note: We are NOT saving the converted JSON back to Firestore here.
-    // The client receives it directly.
-    // If saving is desired, add a saveSerpAnalysis call here.
-    // e.g., await saveSerpAnalysis(keyword, { [analysisType === 'contentType' ? 'contentTypeAnalysis' : 'userIntentAnalysis']: convertedResult });
+    await saveSerpAnalysis({ [saveKey]: convertedResult }, docId);
+    console.log(
+      `[Action] Successfully saved ${saveKey} JSON to Doc ID: ${docId}`
+    );
 
     return convertedResult;
   } catch (error) {
     console.error(
-      `[Action] Conversion to JSON failed for ${analysisType} of ${keyword}:`,
+      `[Action] Conversion to JSON failed for ${analysisType} of Doc ID: ${docId}:`,
       error
     );
     throw new Error(
-      `${analysisType} 文本轉換為 JSON 失敗: ${
+      `${analysisType} 文本轉換為 JSON 或儲存時失敗: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
@@ -315,21 +325,35 @@ export async function initiateSerpAnalysisAction({
   }
 
   try {
-    // 1. Fetch data from Apify
+    // 1. Fetch data from Apify (Assume fetchKeywordData returns the full structure)
+    // IMPORTANT: Ensure fetchKeywordData in serp.service.ts returns an object
+    // matching the structure defined by FirebaseSerpAnalysisDoc in db-serp.ts
+    // (e.g., { searchQuery: {...}, resultsTotal: ..., organicResults: [...] })
     console.log(`[Action] Fetching SERP data from Apify...`);
-    const serpResults = await fetchKeywordData(
+    const fullSerpData = await fetchKeywordData(
       originalKeyword,
       region,
       language
     );
-    console.log(`[Action] Fetched ${serpResults.length} results from Apify.`);
+    console.log(`[Action] Fetched full SERP data from Apify.`);
 
-    // 2. Prepare data for saving (create mode)
-    const dataToSave: Partial<
-      Omit<FirebaseSerpAnalysisDoc, 'timestamp' | 'normalizedKeyword'>
-    > & { originalKeyword: string } = {
+    // 2. Prepare data for saving (create mode) - map the full structure
+    // The type here should ideally match what fetchKeywordData returns
+    // Assuming it largely matches FirebaseSerpAnalysisDoc structure
+    const dataToSave: Partial<FirebaseSerpAnalysisDoc> & {
+      originalKeyword: string;
+    } = {
       originalKeyword: originalKeyword,
-      serpResults: serpResults,
+      // Map all relevant fields from the fetched data
+      searchQuery: fullSerpData.searchQuery ?? null,
+      resultsTotal: fullSerpData.resultsTotal ?? null,
+      relatedQueries: fullSerpData.relatedQueries ?? [],
+      aiOverview: fullSerpData.aiOverview ?? null,
+      paidResults: fullSerpData.paidResults ?? [],
+      paidProducts: fullSerpData.paidProducts ?? [],
+      peopleAlsoAsk: fullSerpData.peopleAlsoAsk ?? [],
+      organicResults: fullSerpData.organicResults ?? [], // Ensure organicResults includes all details
+
       // Initialize analysis fields to null
       contentTypeAnalysis: null,
       userIntentAnalysis: null,
@@ -340,7 +364,8 @@ export async function initiateSerpAnalysisAction({
 
     // 3. Save new document to Firestore using saveSerpAnalysis (create mode)
     console.log(`[Action] Saving initial SERP data to Firestore...`);
-    const newDocId = await saveSerpAnalysis(dataToSave); // No docId passed, triggers create
+    // Pass the more complete dataToSave object
+    const newDocId = await saveSerpAnalysis(dataToSave);
     console.log(
       `[Action] Successfully created Firestore document with ID: ${newDocId}`
     );
@@ -422,6 +447,39 @@ export async function findOrCreateSerpAnalysisAction({
   }
 }
 
-/*
-// Removed old functions
-*/
+// --- NEW: Action to Delete SERP Analysis ---
+
+interface DeleteParams {
+  docId: string;
+}
+
+export async function deleteSerpAnalysisAction({
+  docId
+}: DeleteParams): Promise<{ success: boolean; message?: string }> {
+  console.log(`[Action] Attempting to delete SERP analysis with ID: ${docId}`);
+
+  if (!docId) {
+    console.error('[Action] Delete failed: Document ID is missing.');
+    return { success: false, message: '缺少文檔 ID，無法刪除。' };
+  }
+
+  try {
+    await deleteSerpAnalysisById(docId);
+    console.log(
+      `[Action] Successfully requested deletion for document ID: ${docId}`
+    );
+    // Revalidate the path for the input page if needed, so the list updates
+    // revalidatePath('/serp');
+    return { success: true };
+  } catch (error) {
+    console.error(
+      `[Action] Failed to delete SERP analysis for ID ${docId}:`,
+      error
+    );
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `刪除分析失敗: ${message}`
+    };
+  }
+}

@@ -1,10 +1,11 @@
 import {
   fetchKeywordResearchDetail,
-  fetchKeywordResearchList
+  fetchKeywordResearchSummaryAction
 } from '@/app/actions';
-import type { KeywordVolumeItem, KeywordResearchItem } from '@/lib/schema'; // Added KeywordResearchItem import
-import { notFound } from 'next/navigation'; // Ensure notFound is imported
-import React from 'react'; // Import React
+import type { KeywordResearchItem, UserPersona } from '@/lib/schema'; // Keep types
+import { convertTimestampToDate } from '@/lib/utils'; // Correct import now
+import { notFound } from 'next/navigation';
+import React from 'react';
 import KeywordResearchDetail from '../components/keyword-research-detail';
 
 // Define the params type as a Promise
@@ -17,109 +18,34 @@ type Props = {
   searchParams?: SearchParams;
 };
 
-// Define the structure for distribution data
-// Updated for Fixed Volume Ranges
-interface VolumeDistributionData {
-  min: number; // Overall min volume (>= 0)
-  max: number; // Overall max volume
-  count: number; // Total count of keywords with volume >= 1
-  countZero: number; // Count of keywords with volume 0
-  countRange1: number; // Count in [1, 10]
-  countRange2: number; // Count in [11, 1000]
-  countRange3: number; // Count in [1001, 10000]
-  countRange4: number; // Count in [10001, 100000]
-  countRange5: number; // Count in >= 100001
-}
-
-// Helper function to calculate distribution (can be moved to a utils file)
-function calculateVolumeDistribution(
-  keywords: KeywordVolumeItem[] | null | undefined
-): VolumeDistributionData {
-  // Get all volumes, including 0
-  const allVolumes = (keywords || []).map(kw => kw.searchVolume ?? 0);
-
-  let minVal = 0;
-  let maxVal = 0;
-  const countTotal = allVolumes.length;
-  let countGtZero = 0;
-  let countZero = 0;
-  let countRange1 = 0;
-  let countRange2 = 0;
-  let countRange3 = 0;
-  let countRange4 = 0;
-  let countRange5 = 0;
-
-  if (countTotal > 0) {
-    // Calculate min/max from all volumes
-    minVal = Math.min(...allVolumes);
-    maxVal = Math.max(...allVolumes);
-
-    allVolumes.forEach(vol => {
-      if (vol === 0) {
-        countZero++;
-      } else if (vol >= 1) {
-        countGtZero++; // Count keywords with volume >= 1
-        if (vol <= 10) {
-          countRange1++;
-        } else if (vol <= 1000) {
-          countRange2++;
-        } else if (vol <= 10000) {
-          countRange3++;
-        } else if (vol <= 100000) {
-          countRange4++;
-        } else {
-          countRange5++;
-        }
-      }
-      // Volumes < 0 are ignored by default
-    });
-  } else {
-    // Handle case with no keywords
-    minVal = 0;
-    maxVal = 0;
-  }
-
-  return {
-    min: minVal,
-    max: maxVal,
-    count: countGtZero, // Return count of keywords with volume >= 1
-    countZero: countZero,
-    countRange1: countRange1,
-    countRange2: countRange2,
-    countRange3: countRange3,
-    countRange4: countRange4,
-    countRange5: countRange5
-  };
-}
-
 // Function to generate static paths at build time
 export async function generateStaticParams() {
-  // Fetch all research items (consider fetching only IDs if performance becomes an issue)
-  const { data: researches } = await fetchKeywordResearchList(
+  const { data: researches, error } = await fetchKeywordResearchSummaryAction(
     undefined,
     undefined,
     1000
-  ); // Fetch a large number or implement pagination if needed
+  );
 
-  // Map the data to the format required by generateStaticParams
+  if (error || !researches) {
+    console.error('Failed to fetch researches for static params:', error);
+    return [];
+  }
+
   return researches.map(research => ({
     researchId: research.id
   }));
 }
 
 export default async function KeywordResultPage({ params }: Props) {
-  // Resolve the Promise to get params
   const { researchId } = await params;
 
-  // --- Fetch detail ONCE here in the parent Server Component ---
-  const researchDetail = await fetchKeywordResearchDetail(researchId);
+  const researchDetailData = await fetchKeywordResearchDetail(researchId);
 
-  // --- Handle not found early ---
-  if (!researchDetail) {
+  if (!researchDetailData) {
     notFound();
   }
 
-  // Define a simple loading fallback component for the detail view
+  // Define a simple loading fallback component
   const DetailLoadingFallback = () => {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -128,46 +54,54 @@ export default async function KeywordResultPage({ params }: Props) {
     );
   };
 
+  // Convert Timestamps to Dates for client-side serialization
+  // Use a temporary variable to satisfy TypeScript's non-null assertion
+  const fetchedData = researchDetailData;
+  const serializableResearchDetail: KeywordResearchItem = {
+    ...fetchedData,
+    // Use the new utility function and provide a fallback (e.g., current date or epoch)
+    createdAt: convertTimestampToDate(fetchedData.createdAt) || new Date(0),
+    updatedAt: convertTimestampToDate(fetchedData.updatedAt) || new Date(),
+    // Remove relatedKeywords processing as it doesn't exist on the schema
+    // relatedKeywords: fetchedData.relatedKeywords?.map(rk => ({ ... })), // REMOVED
+    // Remove timestamp conversion from personas as they don't have timestamps in the schema
+    personas: Array.isArray(fetchedData.personas) // Explicitly check if it's an array
+      ? fetchedData.personas.map((p: UserPersona) => ({
+          ...p // Keep the persona data as is
+        }))
+      : [], // Default to empty array if not an array or null/undefined
+    // Keep other properties as is (keywords, clusters, etc.)
+    keywords: fetchedData.keywords || [], // Ensure keywords is always an array
+    clusters: fetchedData.clusters || undefined // Keep clusters as is or undefined
+  };
+
   return (
-    // Use a Fragment or main container div if needed
     <>
-      {/* --- Add H1 Title Here --- */}
-      <h1 className="text-2xl font-semibold mb-4 sm:mb-6 text-center">
-        {researchDetail.query}
+      <h1 className="text-2xl font-semibold mb-4 sm:mb-6 text-left">
+        {serializableResearchDetail.query}
       </h1>
 
       <React.Suspense fallback={<DetailLoadingFallback />}>
-        {/* --- Pass fetched data down --- */}
-        <KeywordResearchDetailLoader researchDetail={researchDetail} />
+        {/* Pass the processed data to the loader/client component */}
+        <KeywordResearchDetailLoader
+          researchDetail={serializableResearchDetail} // Pass the correctly typed and processed data
+        />
       </React.Suspense>
     </>
   );
 }
 
-// --- Modify Loader to accept the detail prop ---
+// Loader component now directly receives the processed serializable data
 async function KeywordResearchDetailLoader({
-  researchDetail, // Accept the fetched detail
+  researchDetail
 }: {
-  researchDetail: KeywordResearchItem; // Use the correct type
+  researchDetail: KeywordResearchItem;
 }) {
-  // --- No need to fetch again! ---
-  // const researchDetail = await fetchKeywordResearchDetail(researchId);
-
-  // --- No need for notFound() check here anymore ---
-  // if (!researchDetail) {
-  //   notFound();
-  // }
-
-  // --- Calculate volume distribution from the prop ---
-  const volumeDistribution = calculateVolumeDistribution(
-    researchDetail.keywords
-  );
-
+  // No further conversion needed here as it's done in the parent
   return (
     <KeywordResearchDetail
-      initialResearchDetail={researchDetail} // Pass the full detail object
-      researchId={researchDetail.id} // Get ID from the object
-      volumeDistribution={volumeDistribution}
+      initialResearchDetail={researchDetail} // Pass data directly
+      researchId={researchDetail.id}
     />
   );
 }

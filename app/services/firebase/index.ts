@@ -3,15 +3,18 @@ export { COLLECTIONS, db } from './db-config';
 
 // 導出關鍵字研究相關功能
 export {
+  deleteKeywordResearch,
   getKeywordResearchDetail,
-  getKeywordResearchList,
+  getKeywordResearchSummaryList,
   saveKeywordResearch,
   updateKeywordResearchClusters,
+  updateKeywordResearchPersonas,
   updateKeywordResearchResults
 } from './db-keyword-research';
 
 // 導出 SERP 分析相關功能
 export {
+  deleteSerpAnalysisById,
   findSerpAnalysisByKeyword,
   getSerpAnalysisById,
   getSerpAnalysisList,

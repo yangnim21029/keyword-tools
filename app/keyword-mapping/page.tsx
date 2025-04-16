@@ -1,4 +1,4 @@
-import { fetchKeywordResearchList } from '@/app/actions';
+import { fetchKeywordResearchSummaryAction } from '@/app/actions';
 import React from 'react';
 import KeywordResearchList from './components/keyword-research-list';
 import KeywordSearchForm from './components/keyword-search-form';
@@ -13,8 +13,16 @@ const LoadingFallback = () => {
 };
 
 export default async function KeywordToolPage() {
-  // Fetch history data on the server
-  const { data: initialResearches } = await fetchKeywordResearchList();
+  // Fetch history data on the server using the new action
+  // The returned data is now KeywordResearchSummaryItem[] or null
+  const { data: initialResearches, error } =
+    await fetchKeywordResearchSummaryAction();
+
+  // Optional: Handle error state, e.g., display an error message
+  if (error) {
+    console.error('Failed to fetch initial keyword research data:', error);
+    // You might want to render an error component or message here
+  }
 
   return (
     <div className="flex flex-col items-center justify-start pt-10 px-4 space-y-8 min-h-screen">
@@ -25,8 +33,9 @@ export default async function KeywordToolPage() {
       <div className="w-full max-w-md">
         <h2 className="text-lg font-semibold mb-3 text-center">最近的搜索</h2>
         <div className="bg-card border rounded-lg p-2">
+          {/* Pass the potentially null data, ensure component handles it */}
           <KeywordResearchList
-            initialResearches={initialResearches}
+            initialResearches={initialResearches ?? []} // Pass empty array if null
             hideRefreshButton={true}
           />
         </div>

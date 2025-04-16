@@ -33,7 +33,8 @@ const getPersonaTextPrompt = (
     *   Do NOT add any introductory text, concluding remarks, summaries, explanations, titles, or self-references.
     *   Do NOT engage in conversation or ask clarifying questions.
     *   Do NOT use markdown formatting (like \`\`\`).
-    *   Focus on the points listed below.
+    *   Focus *only* on the points listed under "Task-Specific Instructions".
+    *   **Crucially: If you speculate on the user's potential background, profession, interests, or identity (Point 4 below), you MUST briefly justify it based on specific keywords provided.** For example, if suggesting they are students, mention which keywords suggest this (e.g., "textbook", "assignment help"). Avoid unsupported generalizations.
 
 --- START OF TASK-SPECIFIC INSTRUCTIONS ---
 
@@ -42,11 +43,11 @@ Based *only* on the provided keyword cluster theme and its keywords, analyze and
 **Cluster Theme:** ${clusterName}
 **Keywords:** ${keywords.join(', ')}
 
-Provide a concise user persona description (around 100-150 words) covering:
-1.  **Primary Intent:** What goal might the user searching these keywords want to achieve?
-2.  **Knowledge Level:** How familiar are they likely to be with this specific topic?
-3.  **Potential Needs/Pain Points:** What needs or pain points related to the topic might they have?
-4.  **Possible Background:** Briefly speculate on the user's potential profession, interests, or identity.
+Provide a concise user persona description (around 100-150 words) covering the following points:
+1.  **Primary Intent:** What specific goal or information is the user likely seeking with these keywords?
+2.  **Knowledge Level:** Based on the specificity or technicality of the keywords, how familiar are they likely to be with this topic (e.g., beginner, intermediate, expert)?
+3.  **Potential Needs/Pain Points:** What problems, needs, or challenges related *directly* to the keywords might the user be trying to address?
+4.  **Possible Background/Identity:** Briefly speculate on the user's potential profession, interests, or identity, **but only if supported by the keywords, and state your reasoning based on those keywords.** If no strong evidence exists in the keywords, state that the background is unclear or omit this point.
 
 Respond ONLY with the persona description text.`;
 

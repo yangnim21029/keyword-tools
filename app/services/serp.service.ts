@@ -1,27 +1,99 @@
 import { z } from 'zod';
+// Import the detailed schemas from db-serp if possible, or redefine necessary parts here
+// Assuming schemas like organicResultSchema, searchQuerySchema, etc. are available or defined
+// For simplicity here, we might redefine or import them.
+// Let's assume FirebaseSerpAnalysisDoc is importable or we define a similar structure.
 
-// Zod schemas for API response validation
-const searchResultSchema = z.object({
-  title: z.string().min(1, '標題不能為空'),
-  url: z.string().url('URL 格式無效')
+// --- Re-defining necessary Zod schemas based on db-serp.ts structure ---
+// (Ideally, export these from db-serp.ts and import here)
+
+const searchQuerySchema = z
+  .object({
+    term: z.string().optional().nullable(),
+    url: z.string().url().optional().nullable(),
+    device: z.string().optional().nullable(),
+    page: z.number().int().optional().nullable(),
+    type: z.string().optional().nullable(),
+    domain: z.string().optional().nullable(),
+    countryCode: z.string().optional().nullable(),
+    languageCode: z.string().optional().nullable(),
+    locationUule: z.string().optional().nullable(),
+    resultsPerPage: z.string().optional().nullable()
+  })
+  .optional()
+  .nullable();
+
+const relatedQuerySchema = z.object({
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable()
 });
 
-const organicResultsSchema = z.object({
-  organicResults: z.array(searchResultSchema).optional() // Mark as optional to handle cases where it might be missing initially
+const aiOverviewSourceSchema = z.object({
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable()
 });
 
-// The API returns an array containing one object with organicResults
-const apiResponseSchema = z
-  .array(organicResultsSchema)
-  .min(1, 'API 回應陣列不能為空');
+const aiOverviewSchema = z
+  .object({
+    type: z.string().optional().nullable(),
+    content: z.string().optional().nullable(),
+    sources: z.array(aiOverviewSourceSchema).optional().nullable()
+  })
+  .optional()
+  .nullable();
 
-// Type alias inferred from the schema
-type ApiResponse = z.infer<typeof apiResponseSchema>;
+const paidResultSchema = z.record(z.any()).optional().nullable();
+const paidProductSchema = z.record(z.any()).optional().nullable();
+const peopleAlsoAskSchema = z.record(z.any()).optional().nullable();
 
-// Type alias for a single search result, inferred from the schema
-export type SearchResult = z.infer<typeof searchResultSchema>;
+const siteLinkSchema = z.object({
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable(),
+  description: z.string().optional().nullable()
+});
 
-// --- NEW: Zod schema for the Apify payload ---
+const productInfoSchema = z.record(z.any()).optional().nullable();
+
+const organicResultSchema = z.object({
+  position: z.number().int().positive(),
+  title: z.string().min(1),
+  url: z.string().url(),
+  description: z.string().optional().nullable(),
+  displayedUrl: z.string().optional().nullable(),
+  emphasizedKeywords: z.array(z.string()).optional().nullable(),
+  siteLinks: z.array(siteLinkSchema).optional().nullable(),
+  productInfo: productInfoSchema,
+  type: z.string().optional().nullable(),
+  date: z.string().optional().nullable(),
+  views: z.string().optional().nullable(),
+  lastUpdated: z.string().optional().nullable(),
+  commentsAmount: z.string().optional().nullable(),
+  followersAmount: z.string().optional().nullable(),
+  likes: z.string().optional().nullable(),
+  channelName: z.string().optional().nullable()
+});
+
+// --- Updated Zod schema for the full Apify API response structure ---
+// Apify returns an array, usually with one item for a single query run
+const fullApiResponseItemSchema = z.object({
+  searchQuery: searchQuerySchema,
+  resultsTotal: z.number().int().optional().nullable(),
+  relatedQueries: z.array(relatedQuerySchema).optional().nullable(),
+  aiOverview: aiOverviewSchema,
+  paidResults: z.array(paidResultSchema).optional().nullable(),
+  paidProducts: z.array(paidProductSchema).optional().nullable(),
+  peopleAlsoAsk: z.array(peopleAlsoAskSchema).optional().nullable(),
+  organicResults: z.array(organicResultSchema).optional().nullable()
+  // Include other potential top-level fields if known
+});
+
+const apiResponseSchema = z.array(fullApiResponseItemSchema).min(1);
+
+// Define the return type based on the expected structure (similar to FirebaseSerpAnalysisDoc but without timestamp etc.)
+// Using Partial because not all fields are guaranteed in every response.
+type FullSerpApiResponse = Partial<z.infer<typeof fullApiResponseItemSchema>>;
+
+// --- Apify payload schema (no change needed) ---
 const apifyPayloadSchema = z.object({
   countryCode: z
     .string()
@@ -46,20 +118,20 @@ const apifyPayloadSchema = z.object({
     .optional()
     .describe('Apify search language (e.g., zh-TW)')
 });
-// --- End Apify payload schema ---
 
 /**
- * Fetches keyword search results from Google via Apify API
+ * Fetches the full SERP data structure from Google via Apify API
  * @param query The search query string or array of queries
  * @param region Optional Apify country code (e.g., 'tw', 'us')
  * @param language Optional Apify search language code (e.g., 'zh-TW', 'en')
- * @returns An array of validated search results or throws an error
+ * @returns An object containing the full SERP data structure or throws an error
  */
 export async function fetchKeywordData(
   query: string | string[],
-  region?: string | null, // Add optional region
-  language?: string | null // Add optional language
-): Promise<SearchResult[]> {
+  region?: string | null,
+  language?: string | null
+): Promise<FullSerpApiResponse> {
+  // Update return type
   const apiUrl =
     'https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3';
 
@@ -159,9 +231,8 @@ export async function fetchKeywordData(
       throw new Error(`無法驗證 API 回應格式: ${errorMessages}`);
     }
 
-    const validatedData = validationResult.data;
-    const organicResults = validatedData[0]?.organicResults;
-    return organicResults || [];
+    const validatedData = validationResult.data[0];
+    return validatedData;
   } catch (error) {
     console.error(`[fetchKeywordData] Error fetching keyword data:`, error);
     throw new Error(

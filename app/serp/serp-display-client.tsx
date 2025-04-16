@@ -1,10 +1,11 @@
 'use client';
 
-import type { SerpAnalysisData as FirebaseSerpAnalysisData } from '@/app/services/firebase'; // Rename imported type
-import React, { useCallback, useMemo, useState } from 'react'; // Ensure React is imported
+import type { SerpAnalysisData as FirebaseSerpAnalysisData } from '@/app/services/firebase/db-serp'; // Use the type from db-serp
+import React, { useCallback, useState, useTransition } from 'react';
 // Import Server Actions
 import {
   convertAnalysisTextToJson,
+  deleteSerpAnalysisAction,
   performContentTypeAnalysis,
   performSerpTitleAnalysis,
   performUserIntentAnalysis,
@@ -13,15 +14,64 @@ import {
   type TitleAnalysisJson,
   type UserIntentAnalysisJson
 } from '@/app/actions/serp-action';
+// --- NEW: Import keyword research action and type ---
+import {
+  fetchKeywordResearchSummaryAction,
+  findRelevantResearchQueries
+} from '@/app/actions/keyword-research-action';
+// --- Import NEW summary type from DB layer ---
+import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
+import { Button } from '@/components/ui/button'; // Import Button component
+// --- NEW: Import Dialog and Table components ---
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table';
+import { formatVolume } from '@/lib/utils'; // Import formatVolume
+import { Clock, Globe, Languages, Loader2, Sigma, Trash2 } from 'lucide-react'; // Import icon
+import Link from 'next/link'; // <-- Correct import for Link
+import { useRouter } from 'next/navigation'; // Import router
 
 // Define the data structure expected by the Client Component
+// This should mirror SerpAnalysisData from db-serp.ts, converting Timestamp to Date
 type ClientSerpAnalysisData = Omit<
-  FirebaseSerpAnalysisData, // Contains originalKeyword, normalizedKeyword, etc.
-  'timestamp'
+  FirebaseSerpAnalysisData,
+  'timestamp' | 'organicResults'
 > & {
-  id: string; // Explicitly include the document ID
-  timestamp: Date;
-  // originalKeyword: string; // Already present via FirebaseSerpAnalysisData
+  timestamp: Date; // Convert timestamp to Date for client
+  // Explicitly type organicResults to match client needs (may differ slightly from DB schema if needed)
+  organicResults: Array<{
+    position: number;
+    title: string;
+    url: string;
+    description: string | null;
+    displayedUrl?: string | null;
+    emphasizedKeywords?: string[] | null;
+    // Add other fields from organicResultSchema if needed for display
+    // siteLinks?: Array<{ title?: string | null; url?: string | null; description?: string | null }> | null;
+    // type?: string | null;
+    // ... etc
+  }>;
+  // Include other top-level fields from FirebaseSerpAnalysisData
+  searchQuery?: FirebaseSerpAnalysisData['searchQuery'];
+  resultsTotal?: FirebaseSerpAnalysisData['resultsTotal'];
+  relatedQueries?: FirebaseSerpAnalysisData['relatedQueries'];
+  aiOverview?: FirebaseSerpAnalysisData['aiOverview'];
+  // paidResults, paidProducts, peopleAlsoAsk can be added if needed for display
+
+  // Existing analysis fields
   contentTypeAnalysisJson: ContentTypeAnalysisJson | null;
   userIntentAnalysisJson: UserIntentAnalysisJson | null;
 };
@@ -39,6 +89,7 @@ export function SerpDisplayClient({
 }: SerpDisplayClientProps) {
   const [analysisData, setAnalysisData] =
     useState<ClientSerpAnalysisData>(initialAnalysisData);
+  const router = useRouter(); // Get router instance
 
   // Combined loading state for Text Generation + JSON Conversion
   const [isLoading, setIsLoading] = useState<
@@ -58,23 +109,51 @@ export function SerpDisplayClient({
     title: null
   });
 
-  // Access originalKeyword from analysisData
-  const keyword = analysisData.originalKeyword;
-  const serpResults = analysisData.serpResults;
-  const docId = analysisData.id; // Access id
+  // Separate state for page-level delete action
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // --- NEW: State for recent keyword research ---
+  const [isRecentDialogOpen, setIsRecentDialogOpen] = useState(false);
+  // --- UPDATED: State types use KeywordResearchSummaryItem ---
+  const [fullRecentResearchList, setFullRecentResearchList] = useState<
+    KeywordResearchSummaryItem[]
+  >([]);
+  const [filteredResearchList, setFilteredResearchList] = useState<
+    KeywordResearchSummaryItem[]
+  >([]);
+  const [isFetchingRecent, setIsFetchingRecent] = useState(false);
+  const [fetchRecentError, setFetchRecentError] = useState<string | null>(null);
+  const [isFindingRelevant, setIsFindingRelevant] = useState(false);
+  const [findRelevantError, setFindRelevantError] = useState<string | null>(
+    null
+  );
+  // --- End NEW State ---
+
+  // Access data using new structure
+  const keyword = analysisData.originalKeyword;
+  const organicResults = analysisData.organicResults; // Use organicResults
+  const docId = analysisData.id;
+
+  // Update formatSerpForPrompt
   const formatSerpForPrompt = useCallback(
-    (data: typeof serpResults): string => {
+    (data: typeof organicResults): string => {
+      // Use organicResults type
       return data
         .slice(0, 10)
         .map(
-          (item, index) =>
-            `Position: ${index + 1}\nTitle: ${item.title}\nURL: ${item.url}\n\n`
+          item =>
+            // Use item.position and include description/displayedUrl if helpful
+            `Position: ${item.position}\nTitle: ${item.title}\nURL: ${
+              item.url
+            }\nDisplayed URL: ${item.displayedUrl ?? 'N/A'}\nDescription: ${
+              item.description ?? 'N/A'
+            }\n\n`
         )
         .join('');
     },
     []
-  ); // Memoize this helper
+  );
 
   // --- Main analysis handler function ---
   const handleAnalyze = useCallback(
@@ -92,7 +171,8 @@ export function SerpDisplayClient({
       }
 
       try {
-        const serpString = formatSerpForPrompt(serpResults);
+        // Use organicResults here
+        const serpString = formatSerpForPrompt(organicResults);
         console.log(
           `[Client] Requesting ${type} analysis for Doc ID: ${docId} (Keyword: ${keyword})`
         );
@@ -103,11 +183,14 @@ export function SerpDisplayClient({
             type === 'contentType'
               ? performContentTypeAnalysis
               : performUserIntentAnalysis;
-          // Pass docId, keyword, serpString to the action
           const params: any = { docId, keyword, serpString };
           if (type === 'userIntent') {
-            // TODO: Replace mock data
-            params.relatedKeywordsRaw = '';
+            // Pass actual related queries if available and needed by prompt
+            // For now, assuming prompt uses serpString or dedicated logic
+            params.relatedKeywordsRaw =
+              analysisData.relatedQueries
+                ?.map(q => `${q.title}, N/A`)
+                .join('\n') ?? '';
           }
 
           console.log(`[Client] Performing ${type} text analysis...`);
@@ -127,6 +210,7 @@ export function SerpDisplayClient({
 
           // --- Step 2: Convert Text to JSON ---
           const conversionResult = await convertAnalysisTextToJson({
+            docId: docId,
             analysisType: type,
             analysisText: rawText,
             keyword: keyword
@@ -172,90 +256,414 @@ export function SerpDisplayClient({
         setIsLoading(prev => ({ ...prev, [type]: false }));
       }
     },
-    [docId, keyword, serpResults, formatSerpForPrompt]
-  ); // Update dependencies
-
-  // Memoize analysis results for passing to sections
-  const results = useMemo(
-    () => ({
-      contentType: analysisData.contentTypeAnalysisJson,
-      userIntent: analysisData.userIntentAnalysisJson,
-      title: analysisData.titleAnalysis
-    }),
-    [analysisData]
+    // Update dependencies
+    [
+      docId,
+      keyword,
+      organicResults,
+      formatSerpForPrompt,
+      analysisData.relatedQueries
+    ]
   );
 
+  // --- Delete Handler for this page ---
+  const handleDeletePage = async () => {
+    setDeleteError(null);
+    if (!docId) {
+      setDeleteError('缺少文檔 ID，無法刪除。');
+      return;
+    }
+    if (
+      !confirm(
+        `確定要刪除關鍵字 "${keyword}" 的所有分析結果嗎？此操作無法復原。`
+      )
+    ) {
+      return;
+    }
+
+    startDeleteTransition(async () => {
+      try {
+        console.log(`[Display Client] Calling delete action for ID: ${docId}`);
+        const result = await deleteSerpAnalysisAction({ docId: docId });
+        if (result.success) {
+          console.log(
+            `[Display Client] Deletion successful for ID: ${docId}. Redirecting to input page...`
+          );
+          // Redirect to the main input page after successful deletion
+          router.push('/serp');
+          router.refresh(); // Refresh the input page to update the list there too
+        } else {
+          console.error(
+            `[Display Client] Deletion failed for ID: ${docId}: ${result.message}`
+          );
+          setDeleteError(result.message || '刪除失敗，請重試。');
+        }
+      } catch (error) {
+        console.error(
+          `[Display Client] Error during deletion action for ID: ${docId}:`,
+          error
+        );
+        const message =
+          error instanceof Error ? error.message : '執行刪除時發生未知錯誤';
+        setDeleteError(message);
+      }
+    });
+  };
+
+  // --- UPDATED: Handler for fetching and filtering recent keyword research ---
+  const handleViewRecentResearch = useCallback(async () => {
+    setIsRecentDialogOpen(true);
+    setIsFetchingRecent(true);
+    setIsFindingRelevant(false);
+    setFetchRecentError(null);
+    setFindRelevantError(null);
+    setFullRecentResearchList([]);
+    setFilteredResearchList([]);
+
+    try {
+      console.log(
+        '[Display Client] Fetching recent keyword research summary list...'
+      );
+      // --- UPDATED: Call the new summary action ---
+      const listResult = await fetchKeywordResearchSummaryAction(
+        undefined,
+        undefined,
+        10
+      );
+      // --- End Update ---
+
+      if (listResult.error || !listResult.data) {
+        // Check for null data too
+        throw new Error(
+          `獲取列表失敗: ${listResult.error || 'No data returned'}`
+        );
+      }
+      const fetchedList = listResult.data;
+      setFullRecentResearchList(fetchedList);
+      console.log(
+        `[Display Client] Fetched ${fetchedList.length} recent research summary items.`
+      );
+      setIsFetchingRecent(false);
+
+      if (fetchedList.length > 0 && keyword) {
+        setIsFindingRelevant(true);
+        const recentQueryStrings = fetchedList.map(item => item.query);
+
+        console.log(
+          `[Display Client] Requesting AI relevance check for "${keyword}"...`
+        );
+        const relevanceResult = await findRelevantResearchQueries({
+          currentSerpQuery: keyword,
+          recentQueries: recentQueryStrings
+        });
+
+        if (relevanceResult.error) {
+          throw new Error(`AI 相關性分析失敗: ${relevanceResult.error}`);
+        }
+
+        const relevantQueries = relevanceResult.data ?? [];
+        console.log(
+          `[Display Client] AI found ${relevantQueries.length} relevant queries.`
+        );
+
+        // Filter the full list based on relevant query strings
+        const filtered = fetchedList.filter(item =>
+          relevantQueries.includes(item.query)
+        );
+        setFilteredResearchList(filtered);
+        console.log(
+          `[Display Client] Filtered list contains ${filtered.length} items.`
+        );
+      } else {
+        setFilteredResearchList([]);
+      }
+    } catch (error) {
+      console.error(
+        '[Display Client] Error during recent research process:',
+        error
+      );
+      const message =
+        error instanceof Error ? error.message : '處理最近研究時發生未知錯誤';
+      if (isFetchingRecent) {
+        setFetchRecentError(message);
+      } else {
+        setFindRelevantError(message);
+      }
+    } finally {
+      setIsFetchingRecent(false);
+      setIsFindingRelevant(false);
+    }
+  }, [keyword]);
+  // --- End UPDATED Handler ---
+
+  // --- Display Logic ---
+
+  // Helper to format date/time nicely
+  const formatDateTime = (
+    date: Date | string | { seconds: number; nanoseconds: number } | undefined
+  ): string => {
+    if (!date) return 'N/A';
+    try {
+      let dateObj: Date;
+      if (
+        typeof date === 'object' &&
+        'seconds' in date &&
+        'nanoseconds' in date
+      ) {
+        // Handle Firestore Timestamp object
+        dateObj = new Date(date.seconds * 1000 + date.nanoseconds / 1000000);
+      } else {
+        // Handle Date object or string
+        dateObj = new Date(date);
+      }
+
+      if (isNaN(dateObj.getTime())) {
+        return 'Invalid Date';
+      }
+
+      return dateObj.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
   return (
-    <div className="container mx-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-8">
-      {/* Left Column: SERP Results */}
-      <div className="border rounded-lg p-4 shadow-sm">
-        <h2 className="text-xl font-semibold mb-4">
-          Google SERP 結果 - {keyword}
-        </h2>
-        {serpResults.length > 0 ? (
-          <ul className="space-y-4">
-            {serpResults.map((item, index) => (
-              <li
-                key={item.url + index}
-                className="border-b pb-4 last:border-b-0"
+    <div className="container mx-auto p-4 md:p-6 lg:p-8">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold mb-1">SERP 分析結果</h1>
+          <p className="text-lg text-gray-600">
+            關鍵字:{' '}
+            <span className="font-semibold text-blue-700">{keyword}</span>
+          </p>
+          <p className="text-sm text-gray-500">
+            分析時間: {formatDateTime(analysisData.timestamp)} (ID: {docId})
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {/* --- UPDATED Dialog Section --- */}
+          <Dialog
+            open={isRecentDialogOpen}
+            onOpenChange={setIsRecentDialogOpen}
+          >
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                onClick={() => handleViewRecentResearch()}
               >
-                <span className="text-sm font-medium text-gray-500">
-                  {index + 1}.
-                </span>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline ml-2 block font-semibold"
-                >
-                  {item.title}
-                </a>
-                <span className="text-green-700 text-sm block mt-1 break-all">
-                  {item.url}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>未找到與 "{keyword}" 相關的 SERP 結果。</p>
-        )}
+                查找相關研究
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[725px]">
+              <DialogHeader>
+                <DialogTitle>相關的最近關鍵字研究</DialogTitle>
+                <DialogDescription>
+                  以下是與 "{keyword}" 相關的最近研究項目。
+                </DialogDescription>
+              </DialogHeader>
+              {(isFetchingRecent || isFindingRelevant) && (
+                <div className="flex justify-center items-center p-4">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  正在{isFetchingRecent ? '獲取列表' : '分析相關性'}...
+                </div>
+              )}
+              {fetchRecentError && (
+                <p className="text-red-600 text-center p-4">
+                  列表錯誤: {fetchRecentError}
+                </p>
+              )}
+              {findRelevantError && (
+                <p className="text-red-600 text-center p-4">
+                  AI分析錯誤: {findRelevantError}
+                </p>
+              )}
+              {!isFetchingRecent &&
+                !isFindingRelevant &&
+                !fetchRecentError &&
+                !findRelevantError && (
+                  <>
+                    {filteredResearchList.length > 0 ? (
+                      <div className="max-h-[60vh] overflow-y-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>查詢</TableHead>
+                              <TableHead className="text-right">
+                                總搜尋量
+                              </TableHead>
+                              <TableHead>地區</TableHead>
+                              <TableHead>語言</TableHead>
+                              <TableHead>建立時間</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredResearchList.map(item => (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-medium">
+                                  <Link
+                                    href={`/keyword-mapping/${item.id}`}
+                                    className="hover:underline"
+                                    target="_blank"
+                                  >
+                                    {item.query}
+                                  </Link>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <span className="flex items-center justify-end">
+                                    <Sigma
+                                      size={12}
+                                      className="mr-1 flex-shrink-0"
+                                    />
+                                    {formatVolume(item.totalVolume)}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {item.region ? (
+                                    <span className="flex items-center">
+                                      <Globe
+                                        size={12}
+                                        className="mr-1 flex-shrink-0"
+                                      />
+                                      {item.region}
+                                    </span>
+                                  ) : (
+                                    'N/A'
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {item.language ? (
+                                    <span className="flex items-center">
+                                      <Languages
+                                        size={12}
+                                        className="mr-1 flex-shrink-0"
+                                      />
+                                      {item.language}
+                                    </span>
+                                  ) : (
+                                    'N/A'
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <span className="flex items-center">
+                                    <Clock
+                                      size={12}
+                                      className="mr-1 flex-shrink-0"
+                                    />
+                                    {formatDateTime(item.createdAt)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <p className="text-center text-gray-500 p-4">
+                        找不到與 "{keyword}" 相關的最近研究記錄。
+                      </p>
+                    )}
+                  </>
+                )}
+            </DialogContent>
+          </Dialog>
+          {/* --- End UPDATED Dialog Section --- */}
+
+          <Button
+            variant="destructive"
+            onClick={handleDeletePage}
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                刪除中...
+              </>
+            ) : (
+              <>
+                <Trash2 className="mr-2 h-4 w-4" />
+                刪除此分析
+              </>
+            )}
+          </Button>
+        </div>
       </div>
+      {deleteError && (
+        <p className="text-red-600 mb-4 text-center md:text-right">
+          刪除錯誤: {deleteError}
+        </p>
+      )}
 
-      {/* Right Column: AI Analysis */}
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold mb-4">AI 分析工具</h2>
+      {/* Two-column layout for content */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Left Column: Organic Results Section */}
+        <div className="space-y-4 border rounded-lg p-4 shadow-sm">
+          <h2 className="text-xl font-semibold mb-4">自然搜尋結果 (前 10)</h2>
+          {organicResults.slice(0, 10).map(item => (
+            <div key={item.position} className="border-b pb-4 last:border-b-0">
+              <p className="text-sm text-gray-500">排名: {item.position}</p>
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline text-lg font-medium block"
+              >
+                {item.title}
+              </a>
+              <p className="text-green-700 text-sm mt-1 break-all">
+                {item.displayedUrl ?? item.url}
+              </p>
+              <p className="text-gray-700 mt-2 text-sm">
+                {item.description ?? '無描述'}
+              </p>
+              {item.emphasizedKeywords &&
+                item.emphasizedKeywords.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    強調關鍵字: {item.emphasizedKeywords.join(', ')}
+                  </p>
+                )}
+            </div>
+          ))}
+          {organicResults.length === 0 && (
+            <p className="text-gray-500">未找到自然搜尋結果。</p>
+          )}
+        </div>
 
-        {/* Content Type Analysis */}
-        <AnalysisSection
-          title="內容類型分析"
-          type="contentType"
-          isLoading={isLoading.contentType}
-          error={analysisError.contentType}
-          onAnalyze={() => handleAnalyze('contentType')}
-          result={results.contentType} // Pass memoized JSON result
-          rawTextResult={analysisData.contentTypeAnalysisText} // Optionally pass raw text
-        />
-
-        {/* User Intent Analysis */}
-        <AnalysisSection
-          title="用戶意圖分析"
-          type="userIntent"
-          isLoading={isLoading.userIntent}
-          error={analysisError.userIntent}
-          onAnalyze={() => handleAnalyze('userIntent')}
-          result={results.userIntent} // Pass memoized JSON result
-          rawTextResult={analysisData.userIntentAnalysisText} // Optionally pass raw text
-        />
-
-        {/* Title Analysis */}
-        <AnalysisSection
-          title="SERP 標題分析"
-          type="title"
-          isLoading={isLoading.title}
-          error={analysisError.title}
-          onAnalyze={() => handleAnalyze('title')}
-          result={results.title} // Pass memoized JSON result
-        />
+        {/* Right Column: Analysis Sections */}
+        <div className="space-y-6">
+          <AnalysisSection
+            title="內容類型分析"
+            type="contentType"
+            isLoading={isLoading.contentType}
+            error={analysisError.contentType}
+            onAnalyze={() => handleAnalyze('contentType')}
+            result={analysisData.contentTypeAnalysisJson}
+            rawTextResult={analysisData.contentTypeAnalysisText}
+          />
+          <AnalysisSection
+            title="用戶意圖分析"
+            type="userIntent"
+            isLoading={isLoading.userIntent}
+            error={analysisError.userIntent}
+            onAnalyze={() => handleAnalyze('userIntent')}
+            result={analysisData.userIntentAnalysisJson}
+            rawTextResult={analysisData.userIntentAnalysisText}
+          />
+          <AnalysisSection
+            title="SERP 標題分析"
+            type="title"
+            isLoading={isLoading.title}
+            error={analysisError.title}
+            onAnalyze={() => handleAnalyze('title')}
+            result={analysisData.titleAnalysis}
+          />
+        </div>
       </div>
     </div>
   );
