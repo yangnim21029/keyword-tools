@@ -449,7 +449,7 @@ interface FindRelevantQueriesInput {
 export async function findRelevantResearchQueries({
   currentSerpQuery,
   recentQueries,
-  model = 'gpt-o3-mini' // Or your preferred model
+  model = 'gpt-4.1-mini' // Or your preferred model
 }: FindRelevantQueriesInput): Promise<{
   data: string[] | null;
   error: string | null;

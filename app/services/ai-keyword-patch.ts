@@ -4,14 +4,14 @@
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-const RELATED_KEYWORDS_MODEL = 'gpt-o3-mini';
+const RELATED_KEYWORDS_MODEL = 'gpt-4.1-mini';
 
 // 定義 AI 服務的輸入類型 (保持泛用性)
 export interface AIServiceInput {
   keywords: string[];
   region?: string;
   language?: string;
-  model?: 'gpt-4.1-mini' | 'gpt-o3-mini'; // Keep this generic for now
+  model?: 'gpt-4.1-mini' | 'gpt-4.1-mini'; // Keep this generic for now
 }
 
 // 定義 AI 服務的輸出類型 (保持泛用性)

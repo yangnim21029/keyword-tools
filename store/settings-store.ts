@@ -57,7 +57,7 @@ export const useSettingsStore = create<SettingsStoreInterface>()(
         maxResults: 30, // Default max results
         useAlphabet: false,
         useSymbols: false,
-        personaModel: 'gpt-o3-mini' // Default model
+        personaModel: 'gpt-4.1-mini' // Default model
       },
       actions: {
         setFilterZeroVolume: value =>

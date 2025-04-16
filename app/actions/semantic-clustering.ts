@@ -25,8 +25,8 @@ const clusterSchema = z.object({
 const inputSchema = z.object({
   keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
   model: z
-    .enum(['gpt-o3-mini', 'gpt-o3-mini'])
-    .default('gpt-o3-mini')
+    .enum(['gpt-4.1-mini', 'gpt-4.1-mini'])
+    .default('gpt-4.1-mini')
     .optional()
   // historyId: z.string().optional(), // 暂时不需要 historyId
 });
@@ -35,8 +35,8 @@ const inputSchema = z.object({
 const aiInputSchema = z.object({
   keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
   model: z
-    .enum(['gpt-o3-mini', 'gpt-o3-mini'])
-    .default('gpt-o3-mini')
+    .enum(['gpt-4.1-mini', 'gpt-4.1-mini'])
+    .default('gpt-4.1-mini')
     .optional() // Updated model list
 });
 
@@ -132,7 +132,7 @@ export async function performSemanticClusteringAI(
   try {
     const validatedInput = aiInputSchema.parse(input); // Use parse, throws on error
     const { keywords, model } = validatedInput;
-    const openaiModel = model ?? 'gpt-o3-mini';
+    const openaiModel = model ?? 'gpt-4.1-mini';
 
     console.log(
       `[Server Action] Clustering Step 1: Requesting Text Generation. Model=${openaiModel}, Keywords=${keywords.length}`

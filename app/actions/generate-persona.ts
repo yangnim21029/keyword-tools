@@ -9,8 +9,8 @@ const personaInputSchema = z.object({
   clusterName: z.string().describe('要生成畫像的分群主題名稱'),
   keywords: z.array(z.string()).min(1).describe('該分群包含的關鍵字列表'),
   model: z
-    .enum(['gpt-o3-mini', 'gpt-o3-mini'])
-    .default('gpt-o3-mini')
+    .enum(['gpt-4.1-mini', 'gpt-4.1-mini'])
+    .default('gpt-4.1-mini')
     .optional()
 });
 
@@ -92,7 +92,7 @@ export async function generateUserPersonaFromClusters(
   try {
     const validatedInput = personaInputSchema.parse(input);
     const { clusterName, keywords, model } = validatedInput;
-    const openaiModel = model ?? 'gpt-o3-mini';
+    const openaiModel = model ?? 'gpt-4.1-mini';
 
     console.log(
       `[Server Action] Persona Gen Step 1: Requesting Text. Cluster='${clusterName}', Model=${openaiModel}`
