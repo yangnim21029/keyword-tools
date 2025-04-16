@@ -93,13 +93,31 @@ export default function KeywordClustering({
     }));
   }, []);
 
+  // Check if clusters is valid and not empty
+  const hasValidClusters = useMemo(() => {
+    if (!clusters || typeof clusters !== 'object') return false;
+    
+    // Check if there's at least one valid cluster with keywords
+    return Object.entries(clusters).some(
+      ([name, keywords]) => 
+        name && 
+        name.trim() !== '' && 
+        Array.isArray(keywords) && 
+        keywords.length > 0
+    );
+  }, [clusters]);
 
   // Memoize sorted clusters with summaries including long-tail keyword list
   const sortedClusters = useMemo((): ProcessedCluster[] => {
-    if (!clusters || !keywordVolumeMap) return [];
-    const clustersWithSummaries = Object.entries(clusters).map(
+    if (!hasValidClusters || !keywordVolumeMap) return [];
+    
+    const clustersWithSummaries = Object.entries(clusters!).map(
       ([clusterName, keywordList]) => {
         const validKeywordList = Array.isArray(keywordList) ? keywordList : [];
+        if (validKeywordList.length === 0) {
+          console.warn(`Empty keyword list for cluster: ${clusterName}`);
+        }
+        
         const sortedKeywords = [...validKeywordList].sort(
           (a, b) =>
             (keywordVolumeMap[b.toLowerCase()] || 0) -
@@ -115,7 +133,7 @@ export default function KeywordClustering({
         );
         const longTailKeywords = sortedKeywords.filter(
           keyword =>
-            typeof keyword === 'string' && keyword.trim().split('s+').length > 2 // Fixed regex
+            typeof keyword === 'string' && keyword.trim().split(/\s+/).length > 2
         );
         return {
           clusterName,
@@ -127,7 +145,7 @@ export default function KeywordClustering({
       }
     );
     return clustersWithSummaries.sort((a, b) => b.totalVolume - a.totalVolume);
-  }, [clusters, keywordVolumeMap]);
+  }, [clusters, keywordVolumeMap, hasValidClusters]);
 
 
   // Modified: Use the passed callback for starting persona generation/saving
@@ -187,27 +205,30 @@ export default function KeywordClustering({
   // --- Render Logic ---
 
   // Case: No clusters passed from parent
-  if (!clusters || sortedClusters.length === 0) {
+  if (!hasValidClusters || sortedClusters.length === 0) {
     return (
       <div className="text-center p-8 border rounded-lg bg-muted/30">
         <LayoutGrid className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
         <h3 className="text-xl font-medium mb-2">未找到分群結果</h3>
         <p className="text-muted-foreground">
-          {clusters === null
+          {clusteringStatus === 'processing'
+            ? '正在處理分群數據...'
+            : clusters === null
             ? '正在等待分群數據...'
             : '未能從關鍵詞中生成有效分群。'}
         </p>
+        {clusteringStatus === 'failed' && (
+          <p className="text-destructive mt-2">
+            分群處理失敗，請嘗試重新執行。
+          </p>
+        )}
       </div>
     );
   }
 
   // Display all clusters now
   const displayClusters = sortedClusters;
-  const totalKeywordsCount = sortedClusters.reduce(
-    (sum, cluster) => sum + cluster.keywordList.length,
-    0
-  );
-
+  
   return (
     <TooltipProvider delayDuration={200}>
       <div className="max-w-5xl mx-auto">

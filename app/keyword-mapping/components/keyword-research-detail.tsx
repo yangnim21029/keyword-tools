@@ -232,8 +232,38 @@ export default function KeywordResearchDetail({
   // 2. Memoize raw clusters from prop
   const currentClusters = useMemo(() => {
     console.log('[KeywordResearchDetail] Recalculating currentClusters...');
-    return initialResearchDetail?.clusters || null;
+    // Additional validation to make sure clusters are non-empty and well-formed
+    const clusters = initialResearchDetail?.clusters || null;
+    
+    // Check if clusters object exists and has at least one non-empty cluster
+    if (clusters && typeof clusters === 'object') {
+      const validClusters: Record<string, string[]> = {};
+      let hasValidCluster = false;
+      
+      // Validate each cluster and only keep valid ones
+      Object.entries(clusters).forEach(([clusterName, keywords]) => {
+        // Ensure cluster has a name and non-empty keywords array
+        if (clusterName && Array.isArray(keywords) && keywords.length > 0) {
+          validClusters[clusterName] = keywords;
+          hasValidCluster = true;
+        }
+      });
+      
+      return hasValidCluster ? validClusters : null;
+    }
+    
+    return null;
   }, [initialResearchDetail]);
+  
+  // Advanced validation for clusters
+  const hasValidClusters = useMemo(() => {
+    if (!currentClusters) return false;
+    
+    // Make sure at least one cluster has keywords
+    return Object.entries(currentClusters).some(
+      ([name, keywords]) => name && Array.isArray(keywords) && keywords.length > 0
+    );
+  }, [currentClusters]);
 
   // 3. Memoize raw personas from prop
   const currentPersonas = useMemo(() => {
@@ -495,9 +525,7 @@ export default function KeywordResearchDetail({
         {/* --- Integrated Clustering Section --- */}
 
         {/* Render the Clustering Card ONLY when completed and clusters exist */} 
-        {currentClusteringStatus === 'completed' &&
-          currentClusters &&
-          Object.keys(currentClusters).length > 0 && (
+        {(currentClusteringStatus === 'completed' && hasValidClusters) && (
             <div className="mt-6 w-full">
               <KeywordClustering
                 clusters={currentClusters}
@@ -520,9 +548,7 @@ export default function KeywordResearchDetail({
           )}
 
         {/* Render the standalone button when table is not ready */} 
-        {!(currentClusteringStatus === 'completed' &&
-          currentClusters &&
-          Object.keys(currentClusters).length > 0) && (
+        {!(currentClusteringStatus === 'completed' && hasValidClusters) && (
             <div className="mt-6 flex flex-col items-center"> 
               {/* Optional: Show specific messages based on status */} 
               {currentClusteringStatus === 'failed' && (
@@ -531,7 +557,7 @@ export default function KeywordResearchDetail({
                 </p>
               )}
               {currentClusteringStatus === 'completed' &&
-                (!currentClusters || Object.keys(currentClusters).length === 0) && (
+                !hasValidClusters && (
                 <p className="mb-2 text-sm text-muted-foreground">
                   分群完成，但未找到有效分群。(No valid clusters found.)
                 </p>
@@ -546,8 +572,7 @@ export default function KeywordResearchDetail({
                 {
                 // Determine button text
                 (currentClusteringStatus === 'failed' ||
-                  (currentClusteringStatus === 'completed' &&
-                    (!currentClusters || Object.keys(currentClusters).length === 0)))
+                  (currentClusteringStatus === 'completed' && !hasValidClusters))
                   ? '重試分群 (Retry Clustering)' 
                   : '查看關鍵字分群 (View Keyword Clusters)' 
                 }

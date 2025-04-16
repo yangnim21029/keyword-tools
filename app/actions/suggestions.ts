@@ -8,7 +8,33 @@ import {
 import { fetchAutocomplete } from '@/app/services/suggestion.service';
 import { KeywordSuggestionResult } from '@/lib/schema';
 
-// Refactored getKeywordSuggestions
+/**
+ * 獲取關鍵字建議 - 根據輸入的查詢詞生成相關關鍵字建議
+ * 
+ * 此函數使用Google Autocomplete API獲取與輸入查詢相關的關鍵字建議。
+ * 可以選擇性地擴展搜索範圍，包括添加字母(A-Z)和符號變體，以獲取更廣泛的建議。
+ * 
+ * 功能特點:
+ * - 基本關鍵字查詢
+ * - 字母擴展(A-Z)
+ * - 符號擴展(問號、驚嘆號等)
+ * - 中文關鍵字空格變體
+ * - 簡體中文過濾
+ * - 重複項去除
+ * 
+ * 使用場景:
+ * - SEO關鍵字研究
+ * - 內容創作主題發掘
+ * - 市場調研
+ * - 廣告活動關鍵字規劃
+ * 
+ * @param query 要查詢的關鍵字或詞組
+ * @param region 目標地區代碼 (例如: 'TW' 台灣, 'HK' 香港)
+ * @param language 目標語言代碼 (例如: 'zh-TW' 繁體中文, 'en' 英文)
+ * @param useAlphabet 是否使用字母(A-Z)擴展搜索 (預設: true)
+ * @param useSymbols 是否使用符號擴展搜索 (預設: false)
+ * @returns 包含關鍵字建議的結果對象
+ */
 export async function getKeywordSuggestions(
   query: string,
   region: string,
@@ -97,6 +123,35 @@ interface UrlFormData {
   region: string;
   language: string;
 }
+
+/**
+ * 從URL獲取關鍵字建議 - 分析網址並生成相關關鍵字建議
+ * 
+ * 此函數通過分析URL的域名和路徑部分，提取潛在的關鍵字，
+ * 然後使用Google Autocomplete API獲取相關關鍵字建議。
+ * 
+ * 功能特點:
+ * - 自動從URL提取域名和路徑關鍵詞
+ * - 過濾常見頂級域名(.com, .org等)
+ * - 將連字符和下劃線轉換為空格
+ * - 簡體中文過濾
+ * - 重複項去除
+ * 
+ * 處理流程:
+ * 1. 從URL提取域名和路徑部分
+ * 2. 移除常見TLD和www前綴
+ * 3. 分割並清理路徑部分
+ * 4. 使用提取的關鍵字獲取相關建議
+ * 5. 合併、過濾並去重結果
+ * 
+ * 使用場景:
+ * - 競爭對手網站分析
+ * - 內容差距分析
+ * - 快速獲取特定網站相關的關鍵字
+ * 
+ * @param formData 包含url、region和language的對象
+ * @returns 包含關鍵字建議的結果對象
+ */
 export async function getUrlSuggestions(
   formData: UrlFormData
 ): Promise<KeywordSuggestionResult> {
