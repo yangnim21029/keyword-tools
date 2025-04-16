@@ -24,14 +24,20 @@ const clusterSchema = z.object({
 // 定义输入 schema (可选，但推荐)
 const inputSchema = z.object({
   keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
-  model: z.enum(['gpt-4o', 'gpt-4o-mini']).default('gpt-4o-mini').optional()
+  model: z
+    .enum(['gpt-o3-mini', 'gpt-o3-mini'])
+    .default('gpt-o3-mini')
+    .optional()
   // historyId: z.string().optional(), // 暂时不需要 historyId
 });
 
 // Input for the main AI function
 const aiInputSchema = z.object({
   keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
-  model: z.enum(['gpt-4.1-mini', 'gpt-4o']).default('gpt-4.1-mini').optional() // Updated model list
+  model: z
+    .enum(['gpt-o3-mini', 'gpt-o3-mini'])
+    .default('gpt-o3-mini')
+    .optional() // Updated model list
 });
 
 // Schema for the final JSON output (clusters)
@@ -126,7 +132,7 @@ export async function performSemanticClusteringAI(
   try {
     const validatedInput = aiInputSchema.parse(input); // Use parse, throws on error
     const { keywords, model } = validatedInput;
-    const openaiModel = model ?? 'gpt-4.1-mini';
+    const openaiModel = model ?? 'gpt-o3-mini';
 
     console.log(
       `[Server Action] Clustering Step 1: Requesting Text Generation. Model=${openaiModel}, Keywords=${keywords.length}`

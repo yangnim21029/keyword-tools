@@ -18,7 +18,7 @@ import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Use correct path
 
 export type Language = 'en' | 'zh-TW' | 'ja' | 'ko';
 // Define type for Persona Model
-export type PersonaModelType = 'gpt-4o-mini' | 'gpt-4o';
+export type PersonaModelType = 'gpt-o3-mini' | 'gpt-o3-mini';
 
 export interface SettingsState {
   language: Language;
@@ -77,7 +77,7 @@ export const defaultSettings: SettingsState = {
   filterZeroVolume: false,
   maxResults: 40,
   // Add default persona model
-  personaModel: 'gpt-4o-mini'
+  personaModel: 'gpt-o3-mini'
 };
 
 // 創建store工廠函數

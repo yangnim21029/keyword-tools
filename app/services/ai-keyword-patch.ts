@@ -4,21 +4,14 @@
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-// Import OpenAI or your preferred AI SDK here
-// Example: import OpenAI from 'openai';
-
-// --- Configuration (Replace with your actual configuration) ---
-// const openai = new OpenAI({
-//   apiKey: process.env.OPENAI_API_KEY,
-// });
-const RELATED_KEYWORDS_MODEL = 'gpt-4o-mini'; // Or your preferred model
+const RELATED_KEYWORDS_MODEL = 'gpt-o3-mini';
 
 // 定義 AI 服務的輸入類型 (保持泛用性)
 export interface AIServiceInput {
   keywords: string[];
   region?: string;
   language?: string;
-  model?: 'gpt-4o' | 'gpt-4o-mini'; // Keep this generic for now
+  model?: 'gpt-4.1-mini' | 'gpt-o3-mini'; // Keep this generic for now
 }
 
 // 定義 AI 服務的輸出類型 (保持泛用性)
@@ -44,74 +37,6 @@ export async function processWithAI(
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
-}
-
-/**
- * Uses AI to identify parent keywords for a list of zero-volume keywords.
- *
- * @param zeroVolumeKeywords An array of keywords with zero search volume.
- * @returns A promise that resolves to a Record mapping zero-volume keywords to their identified parent keyword.
- */
-export async function identifyParentKeywordsFromAI(
-  zeroVolumeKeywords: string[]
-): Promise<Record<string, string>> {
-  if (!zeroVolumeKeywords || zeroVolumeKeywords.length === 0) {
-    return {};
-  }
-
-  // --- Placeholder for AI Interaction ---
-  console.log(
-    `[AI Service] identifyParentKeywordsFromAI called for ${zeroVolumeKeywords.length} keywords.`
-  );
-
-  // TODO: Implement the actual AI call logic here
-  // 1. Construct the prompt for the AI model.
-  //    Example Prompt Structure:
-  //    "For each of the following keywords, identify the core product, brand, or overarching theme.
-  //     Return only the single most relevant short-tail keyword for that theme.
-  //     Format the output as JSON: {"original_keyword1": "parent_keyword1", "original_keyword2": "parent_keyword2", ...}
-  //     Keywords: [keyword1, keyword2, ...]"
-
-  // 2. Make the API call to your chosen AI model (e.g., OpenAI).
-  //    Example (Conceptual using OpenAI SDK):
-  //    try {
-  //      const prompt = `... construct your prompt ... Keywords: ${JSON.stringify(zeroVolumeKeywords)}`;
-  //      const completion = await openai.chat.completions.create({
-  //        model: PARENT_KEYWORD_MODEL,
-  //        messages: [{ role: 'user', content: prompt }],
-  //        response_format: { type: "json_object" }, // Use JSON mode if available
-  //        // Add other parameters like temperature, max_tokens etc.
-  //      });
-  //      const aiResponseContent = completion.choices[0]?.message?.content;
-  //      if (!aiResponseContent) {
-  //         throw new Error('AI response content is empty.');
-  //      }
-  //      // 3. Parse the AI response (expecting JSON).
-  //      const parentMap = JSON.parse(aiResponseContent);
-  //      // 4. Validate the response structure (optional but recommended).
-  //      // ... validation logic ...
-  //      console.log(`[AI Service] Successfully parsed parent keywords from AI.`);
-  //      return parentMap; // Return the Record<string, string>
-  //    } catch (error) {
-  //      console.error('[AI Service] Error calling or parsing AI response:', error);
-  //      // Decide how to handle errors: return empty object, throw, etc.
-  //      // Returning empty might be safer for the overall flow.
-  //      return {};
-  //    }
-
-  // Placeholder return until AI call is implemented
-  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async work
-  // Example placeholder response structure:
-  const placeholderMap: Record<string, string> = {};
-  zeroVolumeKeywords.forEach(kw => {
-    // Basic placeholder logic: just take the first word
-    placeholderMap[kw] = kw.split(' ')[0] || kw;
-  });
-  console.warn(
-    '[AI Service] Using placeholder logic for parent keyword identification.'
-  );
-  return placeholderMap;
-  // --- End Placeholder ---
 }
 
 /**

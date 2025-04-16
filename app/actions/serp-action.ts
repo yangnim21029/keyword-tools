@@ -108,7 +108,7 @@ export async function performContentTypeAnalysis({
   docId,
   keyword,
   serpString,
-  model = 'gpt-4.1-mini'
+  model = 'gpt-o3-mini'
 }: AnalyzeParams): Promise<z.infer<typeof contentTypeAnalysisTextSchema>> {
   const analysisKey = 'contentTypeAnalysisText';
   console.log(
@@ -150,7 +150,7 @@ export async function performUserIntentAnalysis({
   keyword,
   serpString,
   relatedKeywordsRaw,
-  model = 'gpt-4.1-mini'
+  model = 'gpt-o3-mini'
 }: UserIntentParams): Promise<z.infer<typeof userIntentAnalysisTextSchema>> {
   const analysisKey = 'userIntentAnalysisText';
   console.log(
@@ -195,7 +195,7 @@ export async function performSerpTitleAnalysis({
   docId,
   keyword,
   serpString,
-  model = 'gpt-4.1-mini'
+  model = 'gpt-o3-mini'
 }: AnalyzeParams): Promise<z.infer<typeof titleAnalysisOutputSchema>> {
   const analysisKey = 'titleAnalysis';
   console.log(
@@ -240,7 +240,7 @@ export async function convertAnalysisTextToJson({
   analysisType,
   analysisText,
   keyword,
-  model = 'gpt-4.1-mini'
+  model = 'gpt-o3-mini'
 }: ConvertParams): Promise<
   | z.infer<typeof contentTypeAnalysisJsonSchema>
   | z.infer<typeof userIntentAnalysisJsonSchema>

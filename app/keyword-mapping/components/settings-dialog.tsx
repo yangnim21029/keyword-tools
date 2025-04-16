@@ -186,10 +186,12 @@ export function SettingsDialog() {
                     <SelectValue placeholder="選擇模型" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-4o-mini">
+                    <SelectItem value="gpt-o3-mini">
                       GPT-4o-mini (推薦)
                     </SelectItem>
-                    <SelectItem value="gpt-4o">GPT-4o (最佳質量)</SelectItem>
+                    <SelectItem value="gpt-o3-mini">
+                      GPT-4o (最佳質量)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 dark:text-gray-400">

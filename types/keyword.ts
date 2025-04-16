@@ -27,4 +27,4 @@ export interface KeywordResearchDetail {
   relatedKeywords: RelatedKeyword[];
   competitors: Competitor[];
   suggestions: Suggestion[];
-} 
+}

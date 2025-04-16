@@ -1,8 +1,6 @@
 'use client';
 
 import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Import existing constants
-// Remove direct Firebase import
-// import { findSerpAnalysisByKeyword } from '@/app/services/firebase';
 // Import the Server Action instead
 import {
   deleteSerpAnalysisAction,

@@ -3,11 +3,11 @@ import { Suspense } from 'react';
 import { getSerpAnalysisList } from '../services/firebase'; // Import the list function
 
 // Loading component for the list
-function ListLoadingFallback() {
+const ListLoadingFallback = () => {
   return (
     <p className="text-center text-gray-500 mt-4">正在載入已分析列表...</p>
   );
-}
+};
 
 // Component to render the list fetching and display
 async function ExistingKeywordsList() {

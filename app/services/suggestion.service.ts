@@ -8,16 +8,23 @@
 /**
  * 使用 Google Autocomplete API 獲取關鍵字建議
  */
-export async function fetchAutocomplete(query: string, region: string = 'TW', language: string = 'zh-TW'): Promise<string[]> {
+export async function fetchAutocomplete(
+  query: string,
+  region: string = 'TW',
+  language: string = 'zh-TW'
+): Promise<string[]> {
   try {
     await new Promise(resolve => setTimeout(resolve, 50)); // 減少延遲
 
-    const url = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(query)}&gl=${region}&hl=${language}`;
+    const url = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(
+      query
+    )}&gl=${region}&hl=${language}`;
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-      },
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+      }
     });
 
     const data = await response.json();
@@ -36,16 +43,23 @@ export async function fetchAutocomplete(query: string, region: string = 'TW', la
  * 使用 Google Autocomplete API 獲取關鍵字建議，使用較長的延遲
  * 適用於特定 UI 互動（例如點擊關鍵字卡片）
  */
-export async function fetchSuggestionWithDelay(query: string, region: string = 'TW', language: string = 'zh-TW'): Promise<string[]> {
+export async function fetchSuggestionWithDelay(
+  query: string,
+  region: string = 'TW',
+  language: string = 'zh-TW'
+): Promise<string[]> {
   try {
     await new Promise(resolve => setTimeout(resolve, 200)); // 較長的延遲
 
-    const url = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(query)}&gl=${region}&hl=${language}`;
+    const url = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(
+      query
+    )}&gl=${region}&hl=${language}`;
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-      },
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+      }
     });
 
     const data = await response.json();
@@ -57,4 +71,4 @@ export async function fetchSuggestionWithDelay(query: string, region: string = '
     console.error('延遲獲取自動完成建議時出錯:', error);
     return [];
   }
-} 
+}
