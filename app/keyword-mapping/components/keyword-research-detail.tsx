@@ -156,18 +156,19 @@ export default function KeywordResearchDetail({
                 console.log(
                   `[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`
                 );
+                router.refresh(); // Refresh after revalidation attempt
               } catch (revalError) {
                 console.error(
                   `[KeywordResearchDetail] Failed to request revalidation via action:`,
                   revalError
                 );
-                // Decide if you still want to refresh even if revalidation fails
+                // Router refresh is important in case revalidation fails
+                router.refresh();
               }
-              router.refresh(); // Refresh after revalidation attempt
             } else if (status === 'failed') {
               toast.error('分群處理失敗 (Clustering failed).');
-              // Optionally refresh on failure too?
-              // router.refresh();
+              // Also refresh on failure to get latest state
+              router.refresh();
             }
           }
         } catch (error) {
@@ -346,7 +347,7 @@ export default function KeywordResearchDetail({
 
       if (result.success) {
         console.log(
-          '[KeywordResearchDetail] Server action requestClustering successful. Refreshing router...'
+          '[KeywordResearchDetail] Server action requestClustering successful. Setting status to processing...'
         );
         // Show success, the page refresh will show the 'processing' state
         toast.success(
@@ -354,6 +355,9 @@ export default function KeywordResearchDetail({
         );
         // **CRITICAL**: Update local status immediately to 'processing' to trigger polling
         setCurrentClusteringStatus('processing');
+        
+        // We don't need to refresh the router here since we're updating the local state
+        // and the polling effect will handle subsequent status updates
       } else {
         console.error(
           '[KeywordResearchDetail] Server action requestClustering failed:',
@@ -383,7 +387,7 @@ export default function KeywordResearchDetail({
       );
       setIsRequestingClustering(false);
     }
-  }, [researchId, router, currentClusteringStatus]); // Added currentClusteringStatus dependency
+  }, [researchId, currentClusteringStatus]);
 
   // --- Persona Generation Logic (remains largely the same) ---
   const handleSavePersona = useCallback(
