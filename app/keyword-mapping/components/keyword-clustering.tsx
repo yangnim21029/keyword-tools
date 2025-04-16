@@ -238,7 +238,7 @@ export default function KeywordClustering({
         {/* Table Body / Mobile Cards */}
         {/* Use space-y for mobile card spacing, border for desktop */}
         <div className="md:border-x md:border-b md:border-border md:rounded-b-lg space-y-4 md:space-y-0">
-          {displayClusters.map((cluster, index) => {
+          {displayClusters.map((cluster: ProcessedCluster, index) => {
             const mainAxisKeyword = cluster.highestVolumeKeyword || '-';
             const mainAxisVolume =
               keywordVolumeMap[
