@@ -620,8 +620,9 @@ export async function triggerKeywordClustering(
       `[Server Action] Status updated to 'completed' for ${researchId}`
     );
 
-    // REMOVED Revalidation - Rely on router.refresh() in client
-    // await revalidateResearch(researchId);
+    // Restore revalidation to ensure client gets fresh data
+    await revalidateResearch(researchId);
+    console.log(`[Server Action] Revalidated cache for ${researchId}`);
 
     return { success: true };
   } catch (error) {
@@ -643,6 +644,10 @@ export async function triggerKeywordClustering(
       console.log(
         `[Server Action] Status updated to 'failed' for ${researchId} due to error.`
       );
+      
+      // Also revalidate on failure
+      await revalidateResearch(researchId);
+      console.log(`[Server Action] Revalidated cache after failure for ${researchId}`);
     } catch (updateError) {
       console.error(
         `[Server Action] CRITICAL: Failed to update status to 'failed' for ${researchId} after error:`,

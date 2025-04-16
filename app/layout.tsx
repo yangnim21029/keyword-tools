@@ -1,6 +1,5 @@
 import { SettingsDialog } from '@/app/keyword-mapping/components/settings-dialog';
 import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
-import { ModeToggle } from '@/components/common/mode-toggle';
 import { SettingsProvider } from '@/providers/settings-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import type { Metadata, Viewport } from 'next';
@@ -31,16 +30,13 @@ export const metadata: Metadata = {
   }
 };
 
-// 添加視口配置
+// 修改視口配置，移除暗黑模式的主題色
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'white' },
-    { media: '(prefers-color-scheme: dark)', color: 'black' }
-  ]
+  themeColor: 'white'
 };
 
 export default function RootLayout({
@@ -53,7 +49,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${roboto.variable} font-sans bg-background text-foreground antialiased min-h-screen overflow-x-hidden`}
       >
-        <ThemeProvider>
+        <ThemeProvider defaultTheme="light" enableSystem={false}>
           <SettingsProvider>
             <div className="flex flex-col h-full w-full">
               <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 bg-background border-b px-4">
@@ -88,7 +84,6 @@ export default function RootLayout({
                 <div className="flex items-center gap-2 ml-auto">
                   <div className="flex items-center gap-1">
                     <SettingsDialog />
-                    <ModeToggle />
                   </div>
                 </div>
               </header>
@@ -112,7 +107,7 @@ export default function RootLayout({
               className: 'sm:max-w-[356px] max-w-[90vw]'
             }}
             closeButton={false}
-            theme="system"
+            theme="light"
           />
         </ThemeProvider>
       </body>

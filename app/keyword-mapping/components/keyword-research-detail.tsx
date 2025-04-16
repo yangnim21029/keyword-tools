@@ -87,6 +87,7 @@ export default function KeywordResearchDetail({
           // override the status to 'completed' for UI consistency.
           if (
             initialResearchDetail?.clusters &&
+            typeof initialResearchDetail.clusters === 'object' &&
             Object.keys(initialResearchDetail.clusters).length > 0 &&
             finalStatus !== 'completed'
           ) {
@@ -156,14 +157,22 @@ export default function KeywordResearchDetail({
                 console.log(
                   `[KeywordResearchDetail] Revalidation requested via action. Refreshing router...`
                 );
-                router.refresh(); // Refresh after revalidation attempt
+                
+                // Force a refresh to get updated data from server
+                router.refresh(); 
+                
+                // In Next.js 15, we may need to force a reload in some cases when cache validation isn't enough
+                setTimeout(() => {
+                  console.log("[KeywordResearchDetail] Force refreshing page after completion...");
+                  window.location.reload();
+                }, 500);
               } catch (revalError) {
                 console.error(
                   `[KeywordResearchDetail] Failed to request revalidation via action:`,
                   revalError
                 );
-                // Router refresh is important in case revalidation fails
-                router.refresh();
+                // Also force reload if revalidation fails
+                window.location.reload();
               }
             } else if (status === 'failed') {
               toast.error('分群處理失敗 (Clustering failed).');
@@ -250,9 +259,11 @@ export default function KeywordResearchDetail({
         }
       });
       
+      console.log(`[KeywordResearchDetail] Valid clusters found: ${hasValidCluster}, count: ${Object.keys(validClusters).length}`);
       return hasValidCluster ? validClusters : null;
     }
     
+    console.log('[KeywordResearchDetail] No valid clusters object found');
     return null;
   }, [initialResearchDetail]);
   
@@ -261,9 +272,12 @@ export default function KeywordResearchDetail({
     if (!currentClusters) return false;
     
     // Make sure at least one cluster has keywords
-    return Object.entries(currentClusters).some(
+    const isValid = Object.entries(currentClusters).some(
       ([name, keywords]) => name && Array.isArray(keywords) && keywords.length > 0
     );
+    
+    console.log(`[KeywordResearchDetail] hasValidClusters evaluation result: ${isValid}`);
+    return isValid;
   }, [currentClusters]);
 
   // 3. Memoize raw personas from prop
