@@ -4,7 +4,7 @@ import type { SerpAnalysisData as FirebaseSerpAnalysisData } from '@/app/service
 import React, { useCallback, useState, useTransition } from 'react';
 // Import Server Actions
 import {
-  convertAnalysisTextToJson,
+  generateAnalysisJsonFromText,
   deleteSerpAnalysisAction,
   performContentTypeAnalysis,
   performSerpTitleAnalysis,
@@ -209,7 +209,7 @@ export function SerpDisplayClient({
           );
 
           // --- Step 2: Convert Text to JSON ---
-          const conversionResult = await convertAnalysisTextToJson({
+          const conversionResult = await generateAnalysisJsonFromText({
             docId: docId,
             analysisType: type,
             analysisText: rawText,

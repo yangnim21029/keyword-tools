@@ -1,3 +1,6 @@
+import React from 'react';
+
+// Reusable KeywordTags Component
 export function KeywordTags({ keywords }: { keywords: string[] }) {
   return (
     <div className="flex flex-wrap gap-1 overflow-hidden sm:max-h-none sm:overflow-visible">

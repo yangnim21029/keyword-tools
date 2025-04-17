@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { unstable_cache } from "next/cache";
-
+import { openai } from '@ai-sdk/openai';
+import { generateText } from 'ai';
 
 export async function fetchGscData(queries: string[], minImpressions: number = 1): Promise<GscData[]> {
     if (queries.length === 0) return [];
@@ -531,4 +532,121 @@ export async function getMockData() {
 
 export type PresetQueryType = Awaited<ReturnType<typeof getPresetQueries>>;
 export type PresetQueryKey = keyof PresetQueryType;
+
+// Define Zod Schema for the AI TEXT output
+const GscAnalysisTextSchema = z.object({
+  analysisText: z.string().describe("包含 GSC 分析的原始文本/Markdown")
+});
+export type GscAnalysisText = z.infer<typeof GscAnalysisTextSchema>;
+
+// Refined AI Analysis Function - NOW USES generateText with raw data subset
+export async function generateAiAnalysis(
+  uniqueDataItems: GscData[],
+  model: string = 'gpt-4.1-mini'
+): Promise<GscAnalysisText> {
+  "use server";
+
+  // --- 1. Prepare RAW Data Subset for Prompt --- 
+  // Sort by impressions and take top 60 items
+  const sortedData = [...uniqueDataItems]
+    .sort((a, b) => b.total_impressions - a.total_impressions)
+    .slice(0, 60);
+
+  // Format the subset for the prompt
+  const keywordDataValue = sortedData.map(item => {
+    // Try to get a cleaner page representation
+    let pageDisplay = item.associated_pages[0] || 'N/A';
+    try {
+      const urlObj = new URL(pageDisplay);
+      pageDisplay = urlObj.pathname + urlObj.search + urlObj.hash;
+      if (pageDisplay.length > 80) { // Truncate long paths
+        pageDisplay = pageDisplay.substring(0, 77) + '...';
+      }
+    } catch { 
+      // Keep original if not a valid URL or if error
+      if (pageDisplay.length > 80) { 
+        pageDisplay = pageDisplay.substring(0, 77) + '...';
+      }
+    }
+    
+    return `- Keyword: "${item.keyword}", Page: "${pageDisplay}", Impressions: ${item.total_impressions}, Clicks: ${item.total_clicks}, Position: ${item.mean_position.toFixed(1)} (Site: ${item.site_id})`;
+  }).join('\n');
+
+  const itemCount = sortedData.length;
+
+  // --- 2. Construct the AI Prompt (Further Refined for Consolidated View) --- 
+  const prompt = `
+**重要前提：** 提供的 Google Search Console (GSC) 數據列表僅代表我們所管理的網站（即「佔有市場」）的表現，並非整個網路市場（「總體市場」）的數據。請基於此**內部視角**進行分析。
+
+**任務：** 分析我們網站的流量來源，如麥肯錫顧問般重新驗證關於使用者動機的假設，並根據下方提供的 GSC 關鍵字-頁面數據列表（按展示次數排序，最多 ${itemCount} 條）提出優化建議。
+
+**分析重點：**
+1. 從提供的數據列表中，識別主要的**最佳曝光頁面**（列表靠前、高展示量的頁面）及其帶來流量的主要關鍵字。
+2. 分析這些**最佳曝光頁面**的**關鍵字覆蓋廣度**（即，一個頁面在列表中與多少不同的關鍵字相關聯？這代表其主題涵蓋能力）。
+3. 驗證目前吸引的用戶 Persona 是否符合預期（關鍵字意圖：資訊型 vs. 商業/交易型）。
+4. 找出「流量來源優化」的機會（例如，高展示低點擊的關鍵字/頁面）與挑戰（例如，關鍵字與登陸頁面主題不匹配）。
+5. 提出「流量來源佈局優化」、「網站整體架構配置」與「第一印象洗腦」相關的建議，以鞏固及拓展我們的「佔有市場」。
+
+**回應要求：**
+*   描述方式融入日常對話。
+*   **每一句**都需要包含關鍵字：「流量來源優化」。
+*   優化建議需提及如何從我們的「佔有市場」（列表數據）出發，觀察「潛在市場」特徵，並與「總體市場」對比，尋找「流量來源優化」的機會。
+*   **嚴禁** 提及網站速度、社群媒體、頁面內容反應、頁面具體 UI 配置。
+*   數字 0 是最小的。
+*   採用 Ahrefs PSA 框架（作為純文本輸出，使用 Markdown 標題）：
+    *   \`### [問題與動機]\` - 包含關鍵字「流量來源優化」。
+    *   \`### [數據列表分析]\` - **取代 [表格支持]**。引用下方數據列表中的具體例子（關鍵字、頁面、展示、點擊、排名）來支持論點，**特別關注高展示頁面及其關聯的關鍵字數量/多樣性**。強調排名數字小、展示大的重要性。每句包含「流量來源優化」。
+    *   \`### [建立回答論述]\` - 詳細闡述分析和建議（包含頁面關鍵字覆蓋廣度的意義），多次換行，每句包含「流量來源優化」。聚焦於我們網站的表現。
+*   回應結尾需包含關鍵字「流量來源優化」。
+*   最後增加一段 \`### [下一步建議]\`，提供兩個「要不要試試...」方向的具體建議，每句包含「流量來源優化」。
+
+---
+**GSC 關鍵字-頁面數據列表 (我們網站表現，按展示排序，最多 ${itemCount} 條):**
+${keywordDataValue}
+---
+`;
+
+  // --- 3. Perform Real AI Call using generateText --- 
+  console.log(`[Action] Calling AI for GSC Analysis TEXT using ${model} with ${itemCount} raw items...`);
+  try {
+    const { text: analysisResultText } = await generateText({
+      model: openai(model),
+      prompt: prompt
+    });
+    
+    console.log(`[Action] AI GSC Analysis TEXT generation successful.`);
+    // Validate the text output
+    const validatedResult = GscAnalysisTextSchema.parse({ analysisText: analysisResultText });
+    return validatedResult; 
+
+  } catch (error) {
+    console.error(`[Action] AI GSC Analysis TEXT generation failed:`, error);
+    throw new Error(
+      `AI 分析生成失敗: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+// NEW Server Action to trigger analysis on demand
+export async function triggerAiAnalysisForTheme(theme: string): Promise<GscAnalysisText> {
+  "use server";
+  console.log(`[Action] Triggering AI Analysis for theme: ${theme}`);
+  try {
+    // 1. Fetch data required for the theme
+    const { uniqueDataItems } = await getThemeData(theme); 
+    console.log(`[Action] Data fetched for theme: ${theme}`);
+
+    // 2. Call the existing analysis generation function with the correct data
+    const analysisResult = await generateAiAnalysis(uniqueDataItems); 
+    console.log(`[Action] AI Analysis generated successfully for theme: ${theme}`);
+    return analysisResult;
+
+  } catch (error) {
+    console.error(`[Action] Failed to trigger AI analysis for theme ${theme}:`, error);
+    // Rethrow or return a specific error structure if needed
+    throw new Error(
+      `為主題 \'${theme}\' 觸發 AI 分析失敗: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
 

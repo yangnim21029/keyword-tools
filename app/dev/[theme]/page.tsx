@@ -4,13 +4,22 @@ import { cn } from '@/lib/utils'
 import { getThemeData } from '../gsc-action'
 import {
   getFaviconUrl,
-  getPresetQueries
+  getPresetQueries,
+  generateAiAnalysis
 } from '../gsc-action'
 import { DataTable } from '../components/data-table'
 import { KeywordTags } from '../components/keyword-tags'
 import { Suspense } from 'react'
 import { RawTable } from '../components/raw-table'
 import type { PresetQueryType } from '../gsc-action'
+import { AiAnalysisDialog } from '../components/ai-analysis-dialog'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 // 強制使用靜態生成
 export const dynamic = 'force-static'
@@ -36,11 +45,9 @@ async function ThemeDataContent({ theme }: { theme: string }) {
     { key: 'site', label: '網站' },
     { key: 'page', label: '頁面' },
     { key: 'impressionShare', label: '單頁面全站展示佔比 (%)' },
-    { key: 'topKeyword', label: '最高流量詞' }
-  ];
-  const mostKeywordsColumns = [
-      { key: 'rank', label: '排名' }, { key: 'page', label: '頁面' },
-      { key: 'keywordCount', label: '關鍵字數' }, { key: 'keywords', label: '關鍵字 (依展示排序)' }
+    { key: 'topKeyword', label: '最高流量詞' },
+    { key: 'keywordCount', label: '關鍵字數' },
+    { key: 'keywords', label: '關鍵字 (依展示排序)' }
   ];
 
   const siteKeywordTableColumns = [
@@ -52,11 +59,8 @@ async function ThemeDataContent({ theme }: { theme: string }) {
       { key: 'topKeywords', label: '主要關鍵字 (依展示排序)' }
   ];
 
-  const pagesSortedByKeywordCount = [...topPagesBySite]
-    .sort((a, b) => b.keyword_count - a.keyword_count)
-    .slice(0, 10);
-  const topSitesData = siteKeywordData.slice(0, 10);
-  const totalImpressionsInTable = topSitesData.reduce((sum, site) => sum + site.totalSiteImpressions, 0);
+  const pagesSortedByImpressions = [...topPagesBySite]
+    .sort((a, b) => b.total_impressions - a.total_impressions);
 
   // Pre-fetch favicon URLs
   const faviconUrlCache: Map<string, string> = new Map();
@@ -72,46 +76,14 @@ async function ThemeDataContent({ theme }: { theme: string }) {
     }
   }
 
+  const topSitesData = siteKeywordData.slice(0, 10);
+  const totalImpressionsInTable = topSitesData.reduce((sum, site) => sum + site.totalSiteImpressions, 0);
+
   return (
-    <div className="space-y-4">
-      <DataTable
-        title="各站最高流量頁面"
-        columns={topPagesColumns}
-        data={topPagesBySite}
-        headerClassName="bg-gray-100"
-        renderRow={(item, index) => (
-          <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
-            <td className="px-4 py-1.5 text-gray-700 font-mono">{item.site_id}</td>
-            <td className="px-4 py-1.5">
-              <div className="flex items-center gap-2">
-                {faviconUrlCache.get(item.url) && (
-                  <Image
-                    src={faviconUrlCache.get(item.url) || ''}
-                    alt=""
-                    width={16}
-                    height={16}
-                    className="w-4 h-4 flex-shrink-0"
-                    loading="lazy"
-                  />
-                )}
-                <a 
-                  href={item.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[300px] font-mono"
-                >
-                  {item.displayText}
-                </a>
-              </div>
-            </td>
-            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.impressionShare.toFixed(1)}%</td>
-            <td className="px-4 py-1.5 text-gray-700 font-mono">{item.top_keyword}</td>
-          </tr>
-        )}
-      />
-      
-      <div className="h-4"></div>
+    <div className="space-y-4 relative">
+      <div className="absolute top-0 right-0 p-4">
+        <AiAnalysisDialog theme={theme} />
+      </div>
 
       <DataTable
         title="主要流量網站與關鍵字"
@@ -152,16 +124,18 @@ async function ThemeDataContent({ theme }: { theme: string }) {
         }}
       />
       
-      <div className='h-2'></div>
+      <div className="h-4"></div>
 
+      {/* Reordered Table 2: 最佳曝光頁面 (Formerly 各站最高流量頁面) - Sorted by Impressions */}
       <DataTable
-        title="包含最多關鍵字的頁面"
-        columns={mostKeywordsColumns}
-        data={pagesSortedByKeywordCount}
+        title="最佳曝光頁面"
+        columns={topPagesColumns}
+        data={pagesSortedByImpressions}
         headerClassName="bg-gray-100"
         renderRow={(item, index) => (
           <tr key={index} className="hover:bg-gray-50 text-sm border-b border-gray-200">
             <td className="px-4 py-1.5 text-right font-mono text-gray-700">{index + 1}</td>
+            <td className="px-4 py-1.5 text-gray-700 font-mono">{item.site_id}</td>
             <td className="px-4 py-1.5">
               <div className="flex items-center gap-2">
                 {faviconUrlCache.get(item.url) && (
@@ -184,28 +158,26 @@ async function ThemeDataContent({ theme }: { theme: string }) {
                 </a>
               </div>
             </td>
+            <td className="px-4 py-1.5 text-right font-mono text-gray-700">{item.impressionShare.toFixed(1)}%</td>
+            <td className="px-4 py-1.5 text-gray-700 font-mono">{item.top_keyword}</td>
             <td className="px-4 py-1.5 text-right">
-              <div className="flex items-center justify-end gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${
+              <div className="flex items-center justify-end gap-1">
+                <span className={`h-2 w-2 rounded-full ${
                   item.keyword_count > 30 ? "bg-yellow-500" : 
                   item.keyword_count > 20 ? "bg-yellow-400" : 
                   item.keyword_count > 10 ? "bg-yellow-300" : "bg-yellow-200"
                 }`}></span>
-                <span className="font-mono text-yellow-600">{item.keyword_count}</span>
+                <span className="font-mono text-yellow-600 text-xs">{item.keyword_count}</span>
               </div>
             </td>
             <td className="px-4 py-1.5 min-w-[250px]">
-              <KeywordTags keywords={item.keywords} />
+              <KeywordTags keywords={item.keywords.slice(0, 15)} />
             </td>
           </tr>
         )}
       />
-
-      <Suspense fallback={<div>Loading raw data...</div>}>
-        <RawTable theme={theme} queries={presetQueries[theme as keyof typeof presetQueries].queries} />
-      </Suspense>
       
-      
+      <div className="h-4"></div>
 
       <div className="my-8 flex flex-col items-center justify-center border-t border-b border-gray-200 py-6">
         <h3 className="mb-2 text-base font-medium text-gray-700 font-mono">$ VIEW_RAW_DATA</h3>
@@ -226,7 +198,18 @@ async function ThemeDataContent({ theme }: { theme: string }) {
         </svg>
       </div>
 
-    
+      <Accordion type="single" collapsible className="w-full">
+        <AccordionItem value="raw-data">
+          <AccordionTrigger className="text-sm font-mono text-gray-600 hover:no-underline justify-center">展開/摺疊 原始資料表</AccordionTrigger>
+          <AccordionContent>
+            <ScrollArea className="h-[60vh] w-full rounded-md border p-4">
+              <Suspense fallback={<div>Loading raw data...</div>}>
+                <RawTable theme={theme} queries={presetQueries[theme as keyof typeof presetQueries].queries} />
+              </Suspense>
+            </ScrollArea>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }
@@ -236,7 +219,7 @@ export default async function DevPage({ params }: Props) {
   const presetQueries = await getPresetQueries();
   
   return (
-    <div className="container mx-auto p-4 space-y-4 mb-16">
+    <div className="container mx-auto p-4 space-y-4 mb-16 relative">
       <h1 className="text-xl font-medium mb-4">
         GSC Data Analysis for: <span className="font-mono text-gray-700">{presetQueries[theme as keyof typeof presetQueries].queries.join(', ')}</span>
       </h1>

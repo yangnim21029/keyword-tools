@@ -68,22 +68,28 @@ export default function RootLayout({
                       查詢
                     </Link>
                     <Link
-                      href="/serp"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      SERP 分析
-                    </Link>
-                    <Link
                       href="/help"
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       說明
                     </Link>
                     <Link
+                      href="/writing"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Writing
+                    </Link>
+                    <Link
                       href="/dev"
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       各站成效
+                    </Link>
+                    <Link
+                      href="/serp"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      SERP 分析
                     </Link>
                   </nav>
                 </div>

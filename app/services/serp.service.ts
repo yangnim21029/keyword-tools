@@ -126,7 +126,7 @@ const apifyPayloadSchema = z.object({
  * @param language Optional Apify search language code (e.g., 'zh-TW', 'en')
  * @returns An object containing the full SERP data structure or throws an error
  */
-export async function fetchKeywordData(
+export async function fetchSerpByKeyword(
   query: string | string[],
   region?: string | null,
   language?: string | null
@@ -140,7 +140,7 @@ export async function fetchKeywordData(
   const searchLanguage = language || 'zh-TW';
 
   console.log(
-    `[fetchKeywordData] Calling Apify with: query=${JSON.stringify(
+    `[fetchSerpByKeyword] Calling Apify with: query=${JSON.stringify(
       query
     )}, region=${countryCode}, language=${searchLanguage}`
   );
@@ -160,7 +160,7 @@ export async function fetchKeywordData(
   // Check if queries string is empty after processing
   if (queriesString.length === 0) {
     console.error(
-      '[fetchKeywordData] No valid queries provided after processing input.'
+      '[fetchSerpByKeyword] No valid queries provided after processing input.'
     );
     throw new Error('未提供有效的搜索查詢。');
   }
@@ -183,7 +183,7 @@ export async function fetchKeywordData(
   const validatedPayload = apifyPayloadSchema.safeParse(payload);
   if (!validatedPayload.success) {
     console.error(
-      '[fetchKeywordData] Payload validation failed:',
+      '[fetchSerpByKeyword] Payload validation failed:',
       validatedPayload.error.flatten(),
       'Original Payload:',
       payload
@@ -207,7 +207,7 @@ export async function fetchKeywordData(
     if (!response.ok) {
       // Log the payload on error for debugging
       console.error(
-        '[fetchKeywordData] API request failed. Status:',
+        '[fetchSerpByKeyword] API request failed. Status:',
         response.status,
         'Payload:',
         payload
@@ -220,7 +220,7 @@ export async function fetchKeywordData(
 
     if (!validationResult.success) {
       console.error(
-        '[fetchKeywordData] API response validation failed:',
+        '[fetchSerpByKeyword] API response validation failed:',
         validationResult.error.flatten(),
         'Raw Data:',
         rawData // Log raw data on validation failure
@@ -234,7 +234,7 @@ export async function fetchKeywordData(
     const validatedData = validationResult.data[0];
     return validatedData;
   } catch (error) {
-    console.error(`[fetchKeywordData] Error fetching keyword data:`, error);
+    console.error(`[fetchSerpByKeyword] Error fetching keyword data:`, error);
     throw new Error(
       `獲取關鍵字數據時發生錯誤: ${
         error instanceof Error ? error.message : String(error)

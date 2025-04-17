@@ -6,14 +6,14 @@ import {
   getSerpTitleAnalysisPrompt,
   getUserIntentAnalysisPrompt,
   getUserIntentConversionPrompt
-} from '@/app/prompt/prompt-design';
+} from '@/app/prompt/serp-prompt-design';
 import {
   deleteSerpAnalysisById,
   findSerpAnalysisByKeyword,
   saveSerpAnalysis,
   type FirebaseSerpAnalysisDoc
 } from '@/app/services/firebase/db-serp';
-import { fetchKeywordData } from '@/app/services/serp.service';
+import { fetchSerpByKeyword } from '@/app/services/serp.service';
 import { openai } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
@@ -225,7 +225,7 @@ export async function performSerpTitleAnalysis({
   }
 }
 
-// --- NEW: Convert Analysis Text to JSON ---
+// --- RENAMED: Convert Analysis Text to JSON ---
 
 interface ConvertParams {
   docId: string;
@@ -235,7 +235,8 @@ interface ConvertParams {
   model?: string;
 }
 
-export async function convertAnalysisTextToJson({
+// RENAMED function
+export async function generateAnalysisJsonFromText({
   docId,
   analysisType,
   analysisText,
@@ -325,12 +326,12 @@ export async function initiateSerpAnalysisAction({
   }
 
   try {
-    // 1. Fetch data from Apify (Assume fetchKeywordData returns the full structure)
-    // IMPORTANT: Ensure fetchKeywordData in serp.service.ts returns an object
+    // 1. Fetch data from Apify (Assume fetchSerpByKeyword returns the full structure)
+    // IMPORTANT: Ensure fetchSerpByKeyword in serp.service.ts returns an object
     // matching the structure defined by FirebaseSerpAnalysisDoc in db-serp.ts
     // (e.g., { searchQuery: {...}, resultsTotal: ..., organicResults: [...] })
     console.log(`[Action] Fetching SERP data from Apify...`);
-    const fullSerpData = await fetchKeywordData(
+    const fullSerpData = await fetchSerpByKeyword(
       originalKeyword,
       region,
       language
@@ -338,7 +339,7 @@ export async function initiateSerpAnalysisAction({
     console.log(`[Action] Fetched full SERP data from Apify.`);
 
     // 2. Prepare data for saving (create mode) - map the full structure
-    // The type here should ideally match what fetchKeywordData returns
+    // The type here should ideally match what fetchSerpByKeyword returns
     // Assuming it largely matches FirebaseSerpAnalysisDoc structure
     const dataToSave: Partial<FirebaseSerpAnalysisDoc> & {
       originalKeyword: string;

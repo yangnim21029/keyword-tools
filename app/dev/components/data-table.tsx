@@ -1,6 +1,7 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 
+// Reusable DataTable Component
 export function DataTable<T extends Record<string, any>>({
   title,
   columns,
@@ -44,8 +45,9 @@ export function DataTable<T extends Record<string, any>>({
           </tbody>
         </table>
       </div>
+      {/* Optional caption below the table */}
       {title && (
-        <p className="my-2 px-6 text-xs text-gray-500 font-mono">
+        <p className="my-2 px-1 text-xs text-gray-500 font-mono">
           <span className="text-gray-700">*</span> {title}
         </p>
       )}

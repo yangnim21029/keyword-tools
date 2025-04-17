@@ -58,7 +58,7 @@ import {
   saveSerpAnalysis,
   type SerpAnalysisData
 } from '../services/firebase';
-import { fetchKeywordData } from '../services/serp.service';
+import { fetchSerpByKeyword } from '../services/serp.service';
 
 type SerpPageProps = {
   searchParams: Promise<{ keyword?: string | string[] }>;
