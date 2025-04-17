@@ -82,42 +82,43 @@ async function SerpResultContent({
     return <ErrorDisplay message={`無法加載 ID ${serpId} 的分析數據。`} />;
   }
 
-  // --- Prepare data for Client Component ---
-  // Ensure the object matches the ClientSerpAnalysisData type
-  // The 'id' field is already part of SerpAnalysisData from the converter
+  // --- Prepare data for Client Component --- 
   const serializableAnalysisData = {
-    ...analysisData, // Spread the data which includes the id
+    // Spread only non-analysis fields if necessary, or handle all explicitly
+    id: analysisData.id,
+    originalKeyword: analysisData.originalKeyword,
+    normalizedKeyword: analysisData.normalizedKeyword,
     timestamp: analysisData.timestamp.toDate(), // Convert Timestamp
-
-    // Ensure all fields required by ClientSerpAnalysisData exist, providing defaults
-    // Map top-level fields (provide defaults if needed based on ClientSerpAnalysisData)
+    
+    // Map optional top-level fields explicitly, converting undefined to null
     searchQuery: analysisData.searchQuery ?? null,
     resultsTotal: analysisData.resultsTotal ?? null,
-    relatedQueries: analysisData.relatedQueries ?? [],
+    relatedQueries: analysisData.relatedQueries ?? [], // Already defaulting to []
     aiOverview: analysisData.aiOverview ?? null,
-    paidResults: analysisData.paidResults ?? [],
-    paidProducts: analysisData.paidProducts ?? [],
-    peopleAlsoAsk: analysisData.peopleAlsoAsk ?? [],
+    paidResults: analysisData.paidResults ?? [], // Already defaulting to []
+    paidProducts: analysisData.paidProducts ?? [], // Already defaulting to []
+    peopleAlsoAsk: analysisData.peopleAlsoAsk ?? [], // Already defaulting to []
 
-    // Ensure organicResults is always an array AND map description: undefined -> null
+    // Keep mapping for organic results 
     organicResults: (analysisData.organicResults ?? []).map(result => ({
-      ...result,
-      description: result.description ?? null, // Ensure description is string | null
+      // Ensure this mapping matches the subset defined in ClientSerpAnalysisData
+      position: result.position,
+      title: result.title,
+      url: result.url,
+      description: result.description ?? null, 
       displayedUrl: result.displayedUrl ?? null,
-      emphasizedKeywords: result.emphasizedKeywords ?? []
+      emphasizedKeywords: result.emphasizedKeywords ?? null // Match client type (optional array | null)
+      // Omit fields not defined in ClientSerpAnalysisData['organicResults']
     })),
 
-    // Ensure analysis fields exist (defaults to null)
-    contentTypeAnalysis: analysisData.contentTypeAnalysis ?? null,
-    userIntentAnalysis: analysisData.userIntentAnalysis ?? null,
-    titleAnalysis: analysisData.titleAnalysis ?? null,
-    contentTypeAnalysisText: analysisData.contentTypeAnalysisText ?? null,
-    userIntentAnalysisText: analysisData.userIntentAnalysisText ?? null,
-
-    // Initialize JSON fields required by client component if not already present
-    contentTypeAnalysisJson: null, // These are typically generated on client-side
-    userIntentAnalysisJson: null // These are typically generated on client-side
+    // --- Explicitly map ALL analysis fields expected by client, handling undefined -> null --- 
+    contentTypeAnalysisJson: analysisData.contentTypeAnalysis ?? null, 
+    userIntentAnalysisJson: analysisData.userIntentAnalysis ?? null,
+    titleAnalysis: analysisData.titleAnalysis ?? null, 
+    contentTypeAnalysisText: analysisData.contentTypeAnalysisText ?? null, 
+    userIntentAnalysisText: analysisData.userIntentAnalysisText ?? null, 
   };
+  // Ensure the final object structure matches ClientSerpAnalysisData exactly
   // --- End Data Preparation ---
 
   console.log(

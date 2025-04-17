@@ -4,9 +4,9 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // Use Textarea for better display
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertTriangle } from 'lucide-react'; // Import AlertTriangle
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { MEDIASITE_DATA } from '@/app/config/constants';
 import {
   Select,
@@ -16,113 +16,163 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// Define API endpoints
+const STEP1_URL = '/api/writing/steps/1-analyze';
+const STEP2_URL = '/api/writing/steps/2-plan';
+const STEP3_URL = '/api/writing/steps/3-finalize';
+
 export default function WritingPage() {
   const [keyword, setKeyword] = useState('');
-  const [mediaSite, setMediaSite] = useState(''); // Stores the selected URL
+  const [mediaSiteName, setMediaSiteName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [researchPrompt, setResearchPrompt] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [intermediateData, setIntermediateData] = useState<any>(null);
+
+  const getStepMessage = () => {
+    switch (currentStep) {
+      case 1: return "Step 1: Analyzing SERP & Content...";
+      case 2: return "Step 2: Planning Content Strategy...";
+      case 3: return "Step 3: Finalizing Research Prompt...";
+      default: return "Generating prompt, please wait...";
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
     setResearchPrompt(null);
+    setCurrentStep(0);
+    setIntermediateData(null);
 
-    // Find the selected site object to get region and language
-    const selectedSite = MEDIASITE_DATA.find(site => site.url === mediaSite);
-
-    if (!keyword || !mediaSite || !selectedSite) {
-      setError('Keyword and a valid Media Site selection are required.');
+    if (!keyword || !mediaSiteName) {
+      setError('Keyword and Media Site selection are required.');
       setIsLoading(false);
       return;
     }
 
-    // Extract region and language from the selected site
-    const { region, language } = selectedSite;
-
-    console.log(`Submitting: Keyword=${keyword}, MediaSite=${mediaSite}, Region=${region}, Language=${language} (Derived from Media Site)`);
+    console.log(`Submitting: Keyword=${keyword}, MediaSiteName=${mediaSiteName}`);
 
     try {
-      const response = await fetch('/api/get-research-prompt', { 
+      setCurrentStep(1);
+      console.log(`[Step 1] Calling Analyze API: ${STEP1_URL}`);
+      const step1Response = await fetch(STEP1_URL, { 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        // Use derived region and language
-        body: JSON.stringify({ keyword, mediaSite, region, language }), 
+        body: JSON.stringify({ keyword, mediaSiteName }), 
       });
 
-      console.log('API Response Status:', response.status);
-
-      if (!response.ok) {
-        let errorData;
-        try {
-            errorData = await response.json();
-            console.error('API Error JSON:', errorData);
-        } catch (e) {
-            errorData = await response.text(); 
-            console.error('API Error Text:', errorData);
-        }
-        throw new Error(errorData?.details || errorData?.error || errorData || `HTTP error ${response.status}`);
+      console.log('[Step 1] API Response Status:', step1Response.status);
+      if (!step1Response.ok) {
+        const errorData = await step1Response.json().catch(() => step1Response.text());
+        console.error('[Step 1] API Error:', errorData);
+        throw new Error(`Step 1 Failed: ${errorData?.details || errorData?.error || JSON.stringify(errorData) || `HTTP error ${step1Response.status}`}`);
       }
 
-      const resultText = await response.text();
-      console.log('API Success Result Length:', resultText.length);
-      setResearchPrompt(resultText);
+      const step1Result = await step1Response.json();
+      setIntermediateData(step1Result);
+      console.log("[Step 1] Success. Received intermediate data.");
+
+      setCurrentStep(2);
+      console.log(`[Step 2] Calling Plan API: ${STEP2_URL}`);
+      const step2Response = await fetch(STEP2_URL, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(step1Result),
+      });
+
+      console.log('[Step 2] API Response Status:', step2Response.status);
+      if (!step2Response.ok) {
+        const errorData = await step2Response.json().catch(() => step2Response.text());
+        console.error('[Step 2] API Error:', errorData);
+        throw new Error(`Step 2 Failed: ${errorData?.details || errorData?.error || JSON.stringify(errorData) || `HTTP error ${step2Response.status}`}`);
+      }
+
+      const step2Result = await step2Response.json();
+      setIntermediateData(step2Result);
+      console.log("[Step 2] Success. Received action plan data.");
+
+      setCurrentStep(3);
+      console.log(`[Step 3] Calling Finalize API: ${STEP3_URL}`);
+      const step3Response = await fetch(STEP3_URL, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(step2Result),
+      });
+
+      console.log('[Step 3] API Response Status:', step3Response.status);
+      if (!step3Response.ok) {
+        const errorText = await step3Response.text();
+        let errorJson;
+        try { errorJson = JSON.parse(errorText); } catch (e) { /* ignore parse error */ }
+        console.error('[Step 3] API Error:', errorJson || errorText);
+        throw new Error(`Step 3 Failed: ${errorJson?.details || errorJson?.error || errorText || `HTTP error ${step3Response.status}`}`);
+      }
+
+      const finalPromptText = await step3Response.text();
+      setResearchPrompt(finalPromptText);
+      setCurrentStep(4);
+      console.log("[Step 3] Success. Final Research Prompt Generated.");
 
     } catch (err) {
-      console.error("Form submission error:", err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred while fetching the prompt.');
+      console.error("Multi-step form submission error:", err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred during the generation process.');
+      setCurrentStep(0);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    // Increased vertical padding
     <div className="container mx-auto p-4 py-12 max-w-3xl"> 
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl font-semibold">Generate Research Prompt</CardTitle>
+          <CardTitle className="text-2xl font-semibold">Generate Research Prompt (Step-by-Step)</CardTitle>
           <CardDescription>
-            Enter a keyword and select a media site. The region and language will be set automatically based on the site.
+            Enter keyword and media site. Progress will be shown below.
           </CardDescription>
         </CardHeader>
         <CardContent>
-           {/* Increased form spacing */}
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2"> {/* Consistent spacing for label+input */}
-              <Label htmlFor="keyword" className="font-medium">Keyword</Label> {/* Medium weight label */}
+            <div className="space-y-2">
+              <Label htmlFor="keyword" className="font-medium">Keyword</Label>
               <Input 
                 id="keyword" 
                 value={keyword} 
                 onChange={(e) => setKeyword(e.target.value)} 
                 placeholder="e.g., 保濕面膜"
                 required 
+                disabled={isLoading}
               />
             </div>
-            <div className="space-y-2"> {/* Consistent spacing for label+select */}
-              <Label htmlFor="mediaSite" className="font-medium">Media Site</Label> {/* Medium weight label */}
+            <div className="space-y-2">
+              <Label htmlFor="mediaSite" className="font-medium">Media Site</Label>
               <Select 
-                value={mediaSite} 
-                onValueChange={(value) => setMediaSite(value)} // Just set the URL
+                value={mediaSiteName} 
+                onValueChange={(value) => setMediaSiteName(value)} 
                 required
+                disabled={isLoading}
               >
                 <SelectTrigger id="mediaSite">
                   <SelectValue placeholder="Select a media site..." />
                 </SelectTrigger>
                 <SelectContent>
                   {MEDIASITE_DATA.map((site) => (
-                    <SelectItem key={site.url} value={site.url}>
-                      {/* Display URL instead of title */}
-                      {site.url} 
+                    <SelectItem key={site.name} value={site.name}> 
+                      {site.name} ({site.url}) 
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {/* Standard button height */}
             <Button type="submit" disabled={isLoading} className="w-full sm:w-auto h-10"> 
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isLoading ? 'Generating...' : 'Generate Prompt'}
@@ -131,21 +181,19 @@ export default function WritingPage() {
         </CardContent>
       </Card>
 
-      {(isLoading || error || researchPrompt) && (
-        <Card className="mt-8"> {/* Increased margin-top */}
+      {(isLoading || error || researchPrompt || currentStep > 0 && currentStep < 4) && ( 
+        <Card className="mt-8">
           <CardHeader>
-            <CardTitle>Result</CardTitle>
+            <CardTitle>Generation Progress</CardTitle>
           </CardHeader>
-          {/* Added padding to result content */}
-          <CardContent className="p-6"> 
-            {isLoading && (
-              <div className="flex justify-center items-center p-6 text-muted-foreground"> {/* Subtle text color */}
-                <Loader2 className="mr-3 h-6 w-6 animate-spin" /> {/* Slightly larger spinner */}
-                <p className="text-lg">Generating prompt, please wait...</p> {/* Larger text */}
+          <CardContent className="p-6">
+            {isLoading && currentStep > 0 && currentStep < 4 && (
+              <div className="flex justify-center items-center p-6 text-muted-foreground">
+                <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                <p className="text-lg">{getStepMessage()}</p>
               </div>
             )}
             {error && (
-               // Improved error display with icon
               <div className="flex items-start space-x-3 text-destructive bg-red-50 dark:bg-red-900/20 p-4 rounded-md border border-destructive/50">
                  <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                  <div>
@@ -154,13 +202,12 @@ export default function WritingPage() {
                  </div>
               </div>
             )}
-            {researchPrompt && (
-              <div className="space-y-2"> {/* Space between label and textarea */}
-                <Label className="font-medium">Generated Prompt:</Label> {/* Medium weight label */}
+            {!isLoading && researchPrompt && currentStep === 4 && (
+              <div className="space-y-2">
+                <Label className="font-medium">Generated Prompt:</Label>
                 <Textarea 
                   readOnly 
                   value={researchPrompt} 
-                   // Added subtle background, adjusted height, text size
                   className="mt-1 h-[400px] font-mono text-xs bg-muted/50 border rounded-md p-3" 
                   placeholder="Generated prompt will appear here..."
                 />

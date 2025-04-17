@@ -105,27 +105,27 @@ async function generateActionPlan(keyword: string, serpTitleReport: string, serp
 
 
 
-export function getResearchPrompt(keyword: string, actionPlan: string, mediaSiteDataString: string, serp: string, serpTitleReport: string, serpContentReport: string, serpSearchIntentReport: string) {
+export function getResearchPrompt(keyword: string, actionPlan: string, mediaSiteDataString: string, serp: string, contentTypeReportText: string, userIntentReportText: string) {
     return `
 forget all previous instructions, do not repeat yourself, do not self reference, do not explain what you are doing, do not write any code, do not analyze this, do not explain.
 
 **🔑 重點項目（須提供）：**
 
-- **文章類型**：${serpContentReport}
-- **參考來源／競爭對手選擇**（提供指定URL，或AI根據關鍵字自動選擇Google SERP 前10名URL）：${serp}
+- 🎯 文章類型需求與規則：${actionPlan}
 - **目標關鍵字**（必填）：${keyword}
 - **寫作風格**：${mediaSiteDataString}
-- 🎯 需求與規則：${actionPlan}
+- **內容類型分析**：${contentTypeReportText}
 
 --------
 1. **搜尋意圖分析：**
 - 請依據目標關鍵字判定主要搜尋意圖，並確保文章符合此搜尋意圖。
 - 自動分析 Google SERP 頁面，確保文章內容完整符合使用者需求。
-1. **競爭對手內容分析：**
-- 自動分析目前 Google SERP Top 10 的內容，或根據我提供的URL進行分析。
-- 在本文中包含競爭者缺乏的議題、獨特觀點或深入資訊，確保產出內容更具價值與競爭力。
+${userIntentReportText}
+2. **競爭對手內容分析：**
+${serp}
+- 在本文中包含競爭者提及，但缺乏的議題、獨特觀點或深入資訊，確保產出內容更具價值與競爭力。
+3. **SEO 內容撰寫指南**
 - 撰寫前請確認閱讀 Google Helpful Content Guideline
-
 <Google Helpful Content Guideline>
 ### 自我評估內容 
 根據這些問題評估自己的內容，可以協助您評估自己製作的內容是否實用且可靠。除了向自己提出上述問題外，您也可以考慮請您信任、但與網站沒有關聯的人對網頁進行誠實的評估。
@@ -172,11 +172,14 @@ Google 的核心排名系統旨在獎勵提供良好網頁體驗的內容。網�
 您之所以會加入大量新內容，或是移除大量較舊的內容，是因為您認為這樣會讓網站看起來「更新鮮」而提升網站整體搜尋排名嗎？(這麼做其實沒有效果)
 </Google Helpful Content Guideline>
 
-1. **SEO 內容撰寫：**
+4. **SEO 回覆格式要求：**
 - 請直接輸出完整SEO文章（無須提供大綱或分析過程）。
 - 文章長度需介於1,500至3,000字間，並具高度相關性。
 - 使用繁體中文，適合香港、台灣讀者，不使用地區專屬詞彙。
 - 使用適當的H1、H2、H3結構，提升搜尋引擎友好度。
+- 無需提供大綱或分析過程，直接輸出完整文章。
+- 不需要內部連結
+- 將參考資料/url連結置於文章最下方，不算在字數內
 1. **排版與可讀性：**
 - 使用清晰易讀的短段落（50-100字內）。
 - 必要時以列表（Bullet Points）、數據、案例研究輔助提高可讀性。
@@ -184,7 +187,7 @@ Google 的核心排名系統旨在獎勵提供良好網頁體驗的內容。網�
 - 提供1至3個與主要關鍵字及搜尋意圖高度相關的常見問題，每項50字內，可以帶內部或是外部連結。有助讀者快速理解核心內容，並提高SEO表現。
 1. 輸出格式：僅輸出文章內容，SEO 分析的過程不要放入文章中
 1. 文章長段落內文，根據語意自動換行分段
-1. 文章中不需要放入連結及來源參考資料等欄位"&"
+1. 文章中不需要放入連結及來源參考資料等欄位
 `
 }
 
@@ -201,8 +204,7 @@ export async function generateReaseachPrompt(
     let language: string | undefined;
     let mediaSiteDataString: string;
     let serpString: string;
-    let serpTitleReportText: string;
-    let serpContentReportText: string;
+    let contentTypeReportText: string;
     let userIntentReportText: string;
     let actionPlanText: string;
 
@@ -232,20 +234,15 @@ export async function generateReaseachPrompt(
         console.log(`[Research Action - Step 1] Processed SERP String.`);
 
         console.log(`[Research Action - Step 1] ==== Start AI Analysis ====`);
-        const serpTitleReportPrompt = getContentTypeAnalysisPrompt(keyword, serpString);
-        const serpTitleReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: serpTitleReportPrompt });
-        serpTitleReportText = serpTitleReport.text;
+        const contentTypeReportPrompt = getContentTypeAnalysisPrompt(keyword, serpString);
+        const contentTypeReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: contentTypeReportPrompt });
+        contentTypeReportText = contentTypeReport.text;
         console.log('[Research Action - Step 1] Generated Content Type Report.');
-
-        const serpContentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
-        const serpContentReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: serpContentReportPrompt });
-        serpContentReportText = serpContentReport.text;
-        console.log('[Research Action - Step 1] Generated User Intent Report (for content).');
 
         const userIntentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
         const userIntentReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: userIntentReportPrompt });
         userIntentReportText = userIntentReport.text;
-        console.log('[Research Action - Step 1] Generated User Intent Report (for overall).');
+        console.log('[Research Action - Step 1] Generated User Intent Report.');
 
         // Return intermediate data for the next step
         return {
@@ -253,8 +250,7 @@ export async function generateReaseachPrompt(
             mediaSiteName,
             mediaSiteDataString,
             serpString,
-            serpTitleReportText,
-            serpContentReportText,
+            contentTypeReportText,
             userIntentReportText
         };
     }
@@ -267,12 +263,11 @@ export async function generateReaseachPrompt(
         // Extract data from the previous step
         mediaSiteDataString = intermediateData.mediaSiteDataString;
         serpString = intermediateData.serpString;
-        serpTitleReportText = intermediateData.serpTitleReportText;
-        serpContentReportText = intermediateData.serpContentReportText;
+        contentTypeReportText = intermediateData.contentTypeReportText;
         userIntentReportText = intermediateData.userIntentReportText;
 
         // Generate Action Plan
-        actionPlanText = await generateActionPlan(keyword, serpTitleReportText, serpContentReportText, userIntentReportText, serpString, mediaSiteDataString);
+        actionPlanText = await generateActionPlan(keyword, contentTypeReportText, userIntentReportText, '', serpString, mediaSiteDataString);
 
         // Return combined data for the next step
         return {
@@ -289,13 +284,12 @@ export async function generateReaseachPrompt(
         // Extract all necessary data
         mediaSiteDataString = intermediateData.mediaSiteDataString;
         serpString = intermediateData.serpString;
-        serpTitleReportText = intermediateData.serpTitleReportText;
-        serpContentReportText = intermediateData.serpContentReportText;
+        contentTypeReportText = intermediateData.contentTypeReportText;
         userIntentReportText = intermediateData.userIntentReportText;
         actionPlanText = intermediateData.actionPlanText;
 
         // Generate final prompt string
-        const researchPrompt = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, serpTitleReportText, serpContentReportText, userIntentReportText);
+        const researchPrompt = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, contentTypeReportText, userIntentReportText);
         console.log('[Research Action - Step 3] Generated final Research Prompt output.');
 
         return researchPrompt;

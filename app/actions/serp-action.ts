@@ -11,7 +11,10 @@ import {
   deleteSerpAnalysisById,
   findSerpAnalysisByKeyword,
   saveSerpAnalysis,
-  type FirebaseSerpAnalysisDoc
+  type FirebaseSerpAnalysisDoc,
+  type ContentTypeAnalysisJson,
+  type UserIntentAnalysisJson,
+  type TitleAnalysisJson
 } from '@/app/services/firebase/db-serp';
 import { fetchSerpByKeyword } from '@/app/services/serp.service';
 import { openai } from '@ai-sdk/openai';
@@ -20,7 +23,7 @@ import { z } from 'zod';
 
 // --- Zod Schemas for AI Output Validation ---
 
-// Schemas for generateText output
+// --- RE-ADD Schemas for generateText output --- 
 const contentTypeAnalysisTextSchema = z.object({
   analysisText: z.string().describe('包含內容類型分析的原始文本/Markdown')
 });
@@ -34,7 +37,7 @@ const pageReferenceSchema = z.object({
   url: z.string().url()
 });
 
-// Renamed: Schema for Content Type JSON structure
+// Schema for Content Type JSON structure (Matches definition in db-serp.ts)
 const contentTypeAnalysisJsonSchema = z.object({
   analysisTitle: z.string(),
   reportDescription: z.string(),
@@ -47,11 +50,10 @@ const contentTypeAnalysisJsonSchema = z.object({
     })
   )
 });
-export type ContentTypeAnalysisJson = z.infer<
-  typeof contentTypeAnalysisJsonSchema
->; // Export inferred type
+// Re-exporting type for clarity in function signatures
+export type { ContentTypeAnalysisJson };
 
-// Renamed: Schema for User Intent JSON structure
+// Schema for User Intent JSON structure (Matches definition in db-serp.ts)
 const userIntentAnalysisJsonSchema = z.object({
   analysisTitle: z.string(),
   reportDescription: z.string(),
@@ -78,17 +80,17 @@ const userIntentAnalysisJsonSchema = z.object({
     )
     .optional()
 });
-export type UserIntentAnalysisJson = z.infer<
-  typeof userIntentAnalysisJsonSchema
->; // Export inferred type
+// Re-exporting type for clarity in function signatures
+export type { UserIntentAnalysisJson };
 
-// Schema for Title Analysis JSON structure (No rename needed)
+// Schema for Title Analysis JSON structure (Matches definition in db-serp.ts)
 const titleAnalysisOutputSchema = z.object({
   title: z.string(),
   analysis: z.string(),
   recommendations: z.array(z.string())
 });
-export type TitleAnalysisJson = z.infer<typeof titleAnalysisOutputSchema>; // Export inferred type
+// Re-exporting type for clarity in function signatures
+export type { TitleAnalysisJson };
 
 // --- Server Actions for Analysis ---
 
@@ -103,20 +105,21 @@ interface UserIntentParams extends AnalyzeParams {
   relatedKeywordsRaw: string;
 }
 
-// --- Perform Content Type Analysis (Outputs Text) ---
+// --- REVERTED: Perform Content Type Analysis (Outputs Text) ---
 export async function performContentTypeAnalysis({
   docId,
   keyword,
   serpString,
   model = 'gpt-4.1-mini'
 }: AnalyzeParams): Promise<z.infer<typeof contentTypeAnalysisTextSchema>> {
-  const analysisKey = 'contentTypeAnalysisText';
+  const analysisKey = 'contentTypeAnalysisText'; // Save to Text field
   console.log(
     `[Action] Performing Content Type Analysis (Text) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
   try {
     const prompt = getContentTypeAnalysisPrompt(keyword, serpString);
     console.log('[AI Call] Calling AI for Content Type Text Analysis...');
+    // --- Use generateText --- 
     const { text: analysisResultText } = await generateText({
       model: openai(model),
       prompt
@@ -124,13 +127,14 @@ export async function performContentTypeAnalysis({
     console.log(
       `[Action] Content Type Analysis (Text) successful for Doc ID: ${docId}. Saving raw text...`
     );
+    // --- Validate and Save Text --- 
     const result = { analysisText: analysisResultText };
     const validatedResult = contentTypeAnalysisTextSchema.parse(result);
     await saveSerpAnalysis(
-      { [analysisKey]: validatedResult.analysisText },
+      { [analysisKey]: validatedResult.analysisText }, // Save text
       docId
     );
-    return validatedResult;
+    return validatedResult; // Return text object
   } catch (error) {
     console.error(
       `[Action] Content Type Analysis (Text) failed for Doc ID: ${docId}:`,
@@ -144,7 +148,7 @@ export async function performContentTypeAnalysis({
   }
 }
 
-// --- Perform User Intent Analysis (Outputs Text) ---
+// --- REVERTED: Perform User Intent Analysis (Outputs Text) ---
 export async function performUserIntentAnalysis({
   docId,
   keyword,
@@ -152,7 +156,7 @@ export async function performUserIntentAnalysis({
   relatedKeywordsRaw,
   model = 'gpt-4.1-mini'
 }: UserIntentParams): Promise<z.infer<typeof userIntentAnalysisTextSchema>> {
-  const analysisKey = 'userIntentAnalysisText';
+  const analysisKey = 'userIntentAnalysisText'; // Save to Text field
   console.log(
     `[Action] Performing User Intent Analysis (Text) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
@@ -163,6 +167,7 @@ export async function performUserIntentAnalysis({
       relatedKeywordsRaw
     );
     console.log('[AI Call] Calling AI for User Intent Text Analysis...');
+    // --- Use generateText --- 
     const { text: analysisResultText } = await generateText({
       model: openai(model),
       prompt
@@ -170,13 +175,14 @@ export async function performUserIntentAnalysis({
     console.log(
       `[Action] User Intent Analysis (Text) successful for Doc ID: ${docId}. Saving raw text...`
     );
+    // --- Validate and Save Text --- 
     const result = { analysisText: analysisResultText };
     const validatedResult = userIntentAnalysisTextSchema.parse(result);
     await saveSerpAnalysis(
-      { [analysisKey]: validatedResult.analysisText },
+      { [analysisKey]: validatedResult.analysisText }, // Save text
       docId
     );
-    return validatedResult;
+    return validatedResult; // Return text object
   } catch (error) {
     console.error(
       `[Action] User Intent Analysis (Text) failed for Doc ID: ${docId}:`,
@@ -196,7 +202,7 @@ export async function performSerpTitleAnalysis({
   keyword,
   serpString,
   model = 'gpt-4.1-mini'
-}: AnalyzeParams): Promise<z.infer<typeof titleAnalysisOutputSchema>> {
+}: AnalyzeParams): Promise<TitleAnalysisJson> {
   const analysisKey = 'titleAnalysis';
   console.log(
     `[Action] Performing Title Analysis (JSON) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
@@ -225,7 +231,7 @@ export async function performSerpTitleAnalysis({
   }
 }
 
-// --- RENAMED: Convert Analysis Text to JSON ---
+// --- RE-ADD: Convert Analysis Text to JSON ---
 
 interface ConvertParams {
   docId: string;
@@ -235,23 +241,22 @@ interface ConvertParams {
   model?: string;
 }
 
-// RENAMED function
 export async function generateAnalysisJsonFromText({
   docId,
   analysisType,
   analysisText,
   keyword,
   model = 'gpt-4.1-mini'
-}: ConvertParams): Promise<
-  | z.infer<typeof contentTypeAnalysisJsonSchema>
-  | z.infer<typeof userIntentAnalysisJsonSchema>
-> {
+}: ConvertParams): Promise<ContentTypeAnalysisJson | UserIntentAnalysisJson> {
   console.log(
     `[Action] Converting ${analysisType} text to JSON for Doc ID: ${docId} (Keyword: ${keyword})`
   );
 
   if (!docId) {
-    throw new Error('缺少文檔 ID，無法儲存轉換結果。');
+    throw new Error('Missing Document ID, cannot save conversion result.');
+  }
+  if (!analysisText) {
+    throw new Error('Missing analysis text, cannot perform conversion.');
   }
 
   try {
@@ -268,7 +273,7 @@ export async function generateAnalysisJsonFromText({
       schema = userIntentAnalysisJsonSchema;
       saveKey = 'userIntentAnalysis';
     } else {
-      throw new Error('無效的分析類型');
+      throw new Error('Invalid analysis type for conversion.');
     }
 
     console.log(`[AI Call] Calling AI for ${analysisType} JSON Conversion...`);
@@ -282,6 +287,7 @@ export async function generateAnalysisJsonFromText({
       `[Action] Conversion to JSON successful for ${analysisType} of ${keyword}. Saving...`
     );
 
+    // Save the converted JSON to the corresponding JSON field
     await saveSerpAnalysis({ [saveKey]: convertedResult }, docId);
     console.log(
       `[Action] Successfully saved ${saveKey} JSON to Doc ID: ${docId}`
@@ -294,7 +300,7 @@ export async function generateAnalysisJsonFromText({
       error
     );
     throw new Error(
-      `${analysisType} 文本轉換為 JSON 或儲存時失敗: ${
+      `${analysisType} text to JSON conversion or save failed: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
@@ -326,10 +332,7 @@ export async function initiateSerpAnalysisAction({
   }
 
   try {
-    // 1. Fetch data from Apify (Assume fetchSerpByKeyword returns the full structure)
-    // IMPORTANT: Ensure fetchSerpByKeyword in serp.service.ts returns an object
-    // matching the structure defined by FirebaseSerpAnalysisDoc in db-serp.ts
-    // (e.g., { searchQuery: {...}, resultsTotal: ..., organicResults: [...] })
+    // 1. Fetch data from Apify...
     console.log(`[Action] Fetching SERP data from Apify...`);
     const fullSerpData = await fetchSerpByKeyword(
       originalKeyword,
@@ -338,14 +341,13 @@ export async function initiateSerpAnalysisAction({
     );
     console.log(`[Action] Fetched full SERP data from Apify.`);
 
-    // 2. Prepare data for saving (create mode) - map the full structure
-    // The type here should ideally match what fetchSerpByKeyword returns
-    // Assuming it largely matches FirebaseSerpAnalysisDoc structure
+    // 2. Prepare data for saving (create mode)
+    // --- UPDATED: Initialize both text and JSON fields to null ---
     const dataToSave: Partial<FirebaseSerpAnalysisDoc> & {
       originalKeyword: string;
     } = {
       originalKeyword: originalKeyword,
-      // Map all relevant fields from the fetched data
+      // Map Apify fields
       searchQuery: fullSerpData.searchQuery ?? null,
       resultsTotal: fullSerpData.resultsTotal ?? null,
       relatedQueries: fullSerpData.relatedQueries ?? [],
@@ -353,9 +355,9 @@ export async function initiateSerpAnalysisAction({
       paidResults: fullSerpData.paidResults ?? [],
       paidProducts: fullSerpData.paidProducts ?? [],
       peopleAlsoAsk: fullSerpData.peopleAlsoAsk ?? [],
-      organicResults: fullSerpData.organicResults ?? [], // Ensure organicResults includes all details
+      organicResults: fullSerpData.organicResults ?? [],
 
-      // Initialize analysis fields to null
+      // Initialize ALL analysis fields to null
       contentTypeAnalysis: null,
       userIntentAnalysis: null,
       titleAnalysis: null,
@@ -363,9 +365,8 @@ export async function initiateSerpAnalysisAction({
       userIntentAnalysisText: null
     };
 
-    // 3. Save new document to Firestore using saveSerpAnalysis (create mode)
+    // 3. Save new document to Firestore
     console.log(`[Action] Saving initial SERP data to Firestore...`);
-    // Pass the more complete dataToSave object
     const newDocId = await saveSerpAnalysis(dataToSave);
     console.log(
       `[Action] Successfully created Firestore document with ID: ${newDocId}`

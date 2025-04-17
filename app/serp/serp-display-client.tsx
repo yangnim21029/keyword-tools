@@ -49,34 +49,32 @@ import { Lightbulb } from 'lucide-react'; // Import an icon
 
 // Define the data structure expected by the Client Component
 // This should mirror SerpAnalysisData from db-serp.ts, converting Timestamp to Date
+// --- UPDATED: Add missing text and title analysis fields --- 
 type ClientSerpAnalysisData = Omit<
   FirebaseSerpAnalysisData,
-  'timestamp' | 'organicResults'
+  'timestamp' | 'organicResults' | 'contentTypeAnalysis' | 'userIntentAnalysis' | 'titleAnalysis' | 'contentTypeAnalysisText' | 'userIntentAnalysisText'
 > & {
   timestamp: Date; // Convert timestamp to Date for client
-  // Explicitly type organicResults to match client needs (may differ slightly from DB schema if needed)
-  organicResults: Array<{
+  organicResults: Array<{ // Simplified organic results for client
     position: number;
     title: string;
     url: string;
     description: string | null;
     displayedUrl?: string | null;
     emphasizedKeywords?: string[] | null;
-    // Add other fields from organicResultSchema if needed for display
-    // siteLinks?: Array<{ title?: string | null; url?: string | null; description?: string | null }> | null;
-    // type?: string | null;
-    // ... etc
   }>;
-  // Include other top-level fields from FirebaseSerpAnalysisData
+  // Include other top-level fields if needed
   searchQuery?: FirebaseSerpAnalysisData['searchQuery'];
   resultsTotal?: FirebaseSerpAnalysisData['resultsTotal'];
   relatedQueries?: FirebaseSerpAnalysisData['relatedQueries'];
   aiOverview?: FirebaseSerpAnalysisData['aiOverview'];
-  // paidResults, paidProducts, peopleAlsoAsk can be added if needed for display
 
-  // Existing analysis fields
+  // Add all analysis fields as optional
   contentTypeAnalysisJson: ContentTypeAnalysisJson | null;
   userIntentAnalysisJson: UserIntentAnalysisJson | null;
+  titleAnalysis: TitleAnalysisJson | null; // Added field
+  contentTypeAnalysisText: string | null; // Added field
+  userIntentAnalysisText: string | null; // Added field
 };
 
 // Update props type to use the client-specific data structure
@@ -903,10 +901,11 @@ type AnalysisSectionProps = {
   isLoading: boolean;
   error: string | null;
   onAnalyze: () => void;
+  // --- UPDATED: Correct result type union --- 
   result:
     | ContentTypeAnalysisJson
     | UserIntentAnalysisJson
-    | TitleAnalysisJson // Use correct type for title analysis
+    | TitleAnalysisJson
     | null;
   rawTextResult?: string | null; // Optional raw text for display
 };

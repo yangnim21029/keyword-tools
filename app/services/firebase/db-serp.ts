@@ -83,7 +83,69 @@ const organicResultSchema = z.object({
   channelName: z.string().optional().nullable()
 });
 
-// --- Main Document Schema (Reverted to z.any()) ---
+// --- NEW: Schemas for Analysis JSON structures ---
+const pageReferenceSchema = z.object({
+  position: z.number().int().positive(),
+  url: z.string().url()
+});
+
+const contentTypeAnalysisJsonSchema = z.object({
+  analysisTitle: z.string(),
+  reportDescription: z.string(),
+  usageHint: z.string(),
+  contentTypes: z.array(
+    z.object({
+      type: z.string(),
+      count: z.number().int().nonnegative(),
+      pages: z.array(pageReferenceSchema)
+    })
+  )
+});
+// Export inferred type for use in actions if needed elsewhere, though maybe not strictly necessary if actions re-define
+export type ContentTypeAnalysisJson = z.infer<
+  typeof contentTypeAnalysisJsonSchema
+>;
+
+const userIntentAnalysisJsonSchema = z.object({
+  analysisTitle: z.string(),
+  reportDescription: z.string(),
+  usageHint: z.string(),
+  intents: z.array(
+    z.object({
+      category: z.enum([
+        'Navigational',
+        'Informational',
+        'Commercial',
+        'Transactional'
+      ]),
+      specificIntent: z.string(),
+      count: z.number().int().nonnegative(),
+      pages: z.array(pageReferenceSchema)
+    })
+  ),
+  relatedKeywords: z
+    .array(
+      z.object({
+        keyword: z.string(),
+        searchVolume: z.number().nullable()
+      })
+    )
+    .optional()
+});
+// Export inferred type for use in actions if needed elsewhere
+export type UserIntentAnalysisJson = z.infer<
+  typeof userIntentAnalysisJsonSchema
+>;
+
+// Schema for Title Analysis JSON structure (No rename needed)
+const titleAnalysisOutputSchema = z.object({
+  title: z.string(),
+  analysis: z.string(),
+  recommendations: z.array(z.string())
+});
+export type TitleAnalysisJson = z.infer<typeof titleAnalysisOutputSchema>; // Export inferred type
+
+// --- Main Document Schema (REVERTED) ---
 const serpAnalysisSchema = z.object({
   originalKeyword: z.string().min(1),
   normalizedKeyword: z.string().min(1),
@@ -94,38 +156,55 @@ const serpAnalysisSchema = z.object({
   resultsTotal: z.number().int().optional().nullable(),
   relatedQueries: z.array(relatedQuerySchema).optional().nullable(),
   aiOverview: aiOverviewSchema,
-  paidResults: z.array(paidResultSchema).optional().nullable(), // Use array of basic schema
-  paidProducts: z.array(paidProductSchema).optional().nullable(), // Use array of basic schema
-  peopleAlsoAsk: z.array(peopleAlsoAskSchema).optional().nullable(), // Use array of basic schema
+  paidResults: z.array(paidResultSchema).optional().nullable(),
+  paidProducts: z.array(paidProductSchema).optional().nullable(),
+  peopleAlsoAsk: z.array(peopleAlsoAskSchema).optional().nullable(),
 
   // Renamed field to use the expanded organic result schema
-  organicResults: z.array(organicResultSchema).optional().nullable(), // Use new detailed schema
+  organicResults: z.array(organicResultSchema).optional().nullable(),
 
-  // --- REVERTED: Keep analysis fields as z.any() for now ---
-  contentTypeAnalysis: z.any().optional().nullable(),
-  userIntentAnalysis: z.any().optional().nullable(),
-  titleAnalysis: z.any().optional().nullable(),
+  // --- REVERTED: Keep both Text and JSON analysis fields --- 
+  contentTypeAnalysis: contentTypeAnalysisJsonSchema.optional().nullable(), 
+  userIntentAnalysis: userIntentAnalysisJsonSchema.optional().nullable(), 
+  titleAnalysis: titleAnalysisOutputSchema.optional().nullable(),
+  // --- RE-ADD Text fields --- 
   contentTypeAnalysisText: z.string().optional().nullable(),
   userIntentAnalysisText: z.string().optional().nullable()
 });
 
 // Type for data stored in Firestore (without id)
+// --- UPDATED: Type reflects schema changes ---
 export type FirebaseSerpAnalysisDoc = z.infer<typeof serpAnalysisSchema>;
 // Type for data returned from functions (including id)
 export type SerpAnalysisData = FirebaseSerpAnalysisDoc & { id: string };
 
-// --- Firestore Converter ---
+// --- Firestore Converter (REVERTED) ---
 const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
   toFirestore(
-    data: FirebaseFirestore.WithFieldValue<FirebaseSerpAnalysisDoc>
+    data: FirebaseFirestore.WithFieldValue<Partial<FirebaseSerpAnalysisDoc>> // Use Partial for updates
   ): FirebaseFirestore.DocumentData {
-    // Pass through validated data, ensure server timestamp
     const dataToSave: FirebaseFirestore.DocumentData = {
-      ...data,
-      // --- UPDATED: Avoid spread types for conditional properties ---
-      timestamp: FieldValue.serverTimestamp() // Overwrite timestamp
+      ...data, // Spread the partial data
+      timestamp: FieldValue.serverTimestamp() // Always set/update timestamp
     };
-    // Conditionally add fields instead of using spread
+
+    // --- UPDATED: Handle optional fields (both JSON and Text) --- 
+    if (data.contentTypeAnalysis !== undefined) {
+      dataToSave.contentTypeAnalysis = data.contentTypeAnalysis; 
+    }
+    if (data.userIntentAnalysis !== undefined) {
+      dataToSave.userIntentAnalysis = data.userIntentAnalysis; 
+    }
+    if (data.titleAnalysis !== undefined) {
+      dataToSave.titleAnalysis = data.titleAnalysis; 
+    }
+    if (data.contentTypeAnalysisText !== undefined) {
+      dataToSave.contentTypeAnalysisText = data.contentTypeAnalysisText;
+    }
+    if (data.userIntentAnalysisText !== undefined) {
+      dataToSave.userIntentAnalysisText = data.userIntentAnalysisText;
+    }
+    // Keep existing conditional logic for other fields
     if (data.relatedQueries !== undefined)
       dataToSave.relatedQueries = data.relatedQueries;
     if (data.aiOverview !== undefined) dataToSave.aiOverview = data.aiOverview;
@@ -137,9 +216,13 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
       dataToSave.peopleAlsoAsk = data.peopleAlsoAsk;
     if (data.organicResults !== undefined)
       dataToSave.organicResults = data.organicResults;
+    if (data.searchQuery !== undefined)
+      dataToSave.searchQuery = data.searchQuery;
+    if (data.resultsTotal !== undefined)
+      dataToSave.resultsTotal = data.resultsTotal;
     // --- End Update ---
 
-    // Remove undefined fields explicitly (optional, Firestore might handle it)
+    // Remove undefined properties
     Object.keys(dataToSave).forEach(
       key => dataToSave[key] === undefined && delete dataToSave[key]
     );
@@ -149,21 +232,20 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
     snapshot: FirebaseFirestore.QueryDocumentSnapshot
   ): SerpAnalysisData {
     const data = snapshot.data();
-    // Helper function to safely get potentially missing optional fields
     const getOptionalField = (
       obj: any,
       fieldName: string,
-      defaultValue: any = null
+      defaultValue: any = null 
     ) => (obj?.[fieldName] === undefined ? defaultValue : obj[fieldName]);
 
-    // Construct the returned object, mapping all fields
+    // --- UPDATED: Map all fields (Text and JSON) --- 
     const returnData: SerpAnalysisData = {
       id: snapshot.id,
       originalKeyword: data.originalKeyword,
       normalizedKeyword: data.normalizedKeyword,
       timestamp: data.timestamp,
 
-      // Map new top-level fields
+      // Map top-level fields
       searchQuery: getOptionalField(data, 'searchQuery'),
       resultsTotal: getOptionalField(data, 'resultsTotal'),
       relatedQueries: getOptionalField(data, 'relatedQueries', []),
@@ -172,11 +254,11 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
       paidProducts: getOptionalField(data, 'paidProducts', []),
       peopleAlsoAsk: getOptionalField(data, 'peopleAlsoAsk', []),
 
-      // Map organic results using its detailed structure (handle potential missing fields inside map if needed)
+      // Map organic results
       organicResults: getOptionalField(data, 'organicResults', []).map(
         (res: any) => ({
-          position: getOptionalField(res, 'position', 0), // Default to 0 or throw error if required
-          title: getOptionalField(res, 'title', ''), // Default to empty string
+          position: getOptionalField(res, 'position', 0), 
+          title: getOptionalField(res, 'title', ''), 
           url: getOptionalField(res, 'url', ''),
           description: getOptionalField(res, 'description'),
           displayedUrl: getOptionalField(res, 'displayedUrl'),
@@ -194,57 +276,53 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
         })
       ),
 
-      // Map existing analysis fields
-      contentTypeAnalysis: getOptionalField(data, 'contentTypeAnalysis'),
-      userIntentAnalysis: getOptionalField(data, 'userIntentAnalysis'),
+      // Map analysis fields (JSON and Text)
+      contentTypeAnalysis: getOptionalField(data, 'contentTypeAnalysis'), 
+      userIntentAnalysis: getOptionalField(data, 'userIntentAnalysis'), 
       titleAnalysis: getOptionalField(data, 'titleAnalysis'),
-      contentTypeAnalysisText: getOptionalField(
-        data,
-        'contentTypeAnalysisText'
-      ),
+      contentTypeAnalysisText: getOptionalField(data, 'contentTypeAnalysisText'), 
       userIntentAnalysisText: getOptionalField(data, 'userIntentAnalysisText')
     };
+
     return returnData;
   }
 };
 
-// --- Firestore Collection Reference ---
+// --- Firestore Collection Reference (REVERTED) ---
+// Remove getSerpCollectionRef
 const getSerpCollection = () => {
   if (!db) throw new Error('Firestore is not initialized.');
+  // Use converter directly
   return db
     .collection(COLLECTIONS.SERP_ANALYSIS)
     .withConverter(serpAnalysisConverter);
 };
 
-// --- Modified saveSerpAnalysis ---
+// --- Modified saveSerpAnalysis (REVERTED) ---
 /**
- * Saves or updates SERP analysis data including full Apify results.
- * If docId is provided, it updates the existing document.
- * If docId is not provided, it creates a new document using .add().
- * Requires originalKeyword when creating.
- * @param data Partial data including potential full Apify structure.
+ * Saves or updates SERP analysis data.
+ * Handles partial updates with merge.
+ * Initializes new documents with null analysis fields.
+ * @param data Partial data matching FirebaseSerpAnalysisDoc structure.
  * @param docId Optional Firestore document ID for updates.
  * @returns The document ID (either new or existing).
  */
 export async function saveSerpAnalysis(
-  // Input type now reflects the possibility of including the full Apify structure
   data: Partial<FirebaseSerpAnalysisDoc> & { originalKeyword?: string },
   docId?: string
 ): Promise<string> {
-  const collectionRef = getSerpCollection();
+  const collectionRef = getSerpCollection(); // Use the direct converted ref
 
   try {
     if (docId) {
       // --- Update existing document ---
       console.log(`[Firestore] Updating SERP analysis (ID: ${docId})`);
       const docRef = collectionRef.doc(docId);
-      // Prepare update data - ensure nested structures are handled if present in partial data
-      // The converter's toFirestore handles the main structure and timestamp.
       const updateData: FirebaseFirestore.WithFieldValue<
         Partial<FirebaseSerpAnalysisDoc>
       > = {
-        ...data
-        // No specific mapping needed here unless transforming data before save
+        ...data 
+        // Timestamp handled by converter on update
       };
       await docRef.set(updateData, { merge: true });
       console.log(
@@ -263,13 +341,13 @@ export async function saveSerpAnalysis(
         `[Firestore] Creating new SERP analysis for keyword: ${data.originalKeyword} (Normalized: ${normalizedKeyword})`
       );
 
-      // Construct the full document data for creation, mapping all fields from input
+      // --- REVERTED: Initialize Text and JSON fields to null ---
       const dataToCreate: FirebaseSerpAnalysisDoc = {
         originalKeyword: data.originalKeyword,
         normalizedKeyword: normalizedKeyword,
-        timestamp: Timestamp.now(), // Will be overwritten by converter
+        timestamp: Timestamp.now(), // Placeholder, converter handles final timestamp
 
-        // Map all new fields, providing defaults
+        // Map Apify fields
         searchQuery: data.searchQuery ?? null,
         resultsTotal: data.resultsTotal ?? null,
         relatedQueries: data.relatedQueries ?? [],
@@ -277,17 +355,21 @@ export async function saveSerpAnalysis(
         paidResults: data.paidResults ?? [],
         paidProducts: data.paidProducts ?? [],
         peopleAlsoAsk: data.peopleAlsoAsk ?? [],
-        organicResults: data.organicResults ?? [], // Assume input `data.organicResults` has the full structure
+        organicResults: data.organicResults ?? [],
 
-        // Existing analysis fields default to null
-        contentTypeAnalysis: data.contentTypeAnalysis ?? null,
-        userIntentAnalysis: data.userIntentAnalysis ?? null,
-        titleAnalysis: data.titleAnalysis ?? null,
-        contentTypeAnalysisText: data.contentTypeAnalysisText ?? null,
-        userIntentAnalysisText: data.userIntentAnalysisText ?? null
+        // Initialize ALL analysis fields to null
+        contentTypeAnalysis: null,
+        userIntentAnalysis: null,
+        titleAnalysis: null,
+        contentTypeAnalysisText: null,
+        userIntentAnalysisText: null
       };
 
-      // Validate the structure before creation using the updated full schema
+      // Merge any analysis data provided in the input (e.g., if fetched data included it)
+      // This allows initiating with fetched Apify data AND potentially pre-existing analysis
+      Object.assign(dataToCreate, data); 
+
+      // Validate the final structure for creation
       const validationResult = serpAnalysisSchema.safeParse(dataToCreate);
       if (!validationResult.success) {
         console.error(
@@ -299,8 +381,9 @@ export async function saveSerpAnalysis(
         );
       }
 
-      // Pass the validated data to add(), use type assertion `as any`
-      const docRef = await collectionRef.add(validationResult.data as any);
+      // --- REVERTED: Use collectionRef.add directly, converter handles types/timestamp ---
+      // Type assertion might be needed if TS inference struggles
+      const docRef = await collectionRef.add(validationResult.data as any); 
       console.log(
         `[Firestore] Successfully created SERP analysis (ID: ${docRef.id})`
       );
@@ -319,7 +402,7 @@ export async function saveSerpAnalysis(
   }
 }
 
-// --- Find by Keyword (No change needed in logic) ---
+// --- Find by Keyword (Reverted to use getSerpCollection) ---
 export async function findSerpAnalysisByKeyword(
   originalKeyword: string
 ): Promise<SerpAnalysisData | null> {
@@ -328,7 +411,7 @@ export async function findSerpAnalysisByKeyword(
     `[Firestore] Querying for normalized keyword: ${normalizedKeyword}`
   );
   try {
-    const querySnapshot = await getSerpCollection()
+    const querySnapshot = await getSerpCollection() // Use reverted function
       .where('normalizedKeyword', '==', normalizedKeyword)
       .limit(1)
       .get();
@@ -354,14 +437,14 @@ export async function findSerpAnalysisByKeyword(
   }
 }
 
-// --- Get by ID (No change needed in logic) ---
+// --- Get by ID (Reverted to use getSerpCollection) ---
 export async function getSerpAnalysisById(
   docId: string
 ): Promise<SerpAnalysisData | null> {
   if (!docId) throw new Error('Document ID cannot be empty.');
   console.log(`[Firestore] Fetching analysis by ID: ${docId}`);
   try {
-    const docRef = getSerpCollection().doc(docId);
+    const docRef = getSerpCollection().doc(docId); // Use reverted function
     const docSnap = await docRef.get();
 
     if (docSnap.exists) {
@@ -380,15 +463,14 @@ export async function getSerpAnalysisById(
   }
 }
 
-// --- Get List (No change needed) ---
+// --- Get List (Reverted to use getSerpCollection) ---
 export async function getSerpAnalysisList(): Promise<
   { id: string; keyword: string }[]
 > {
   console.log('[Firestore] Fetching SERP analysis list (ID and Keyword)...');
   try {
-    const snapshot = await getSerpCollection()
-      .orderBy('timestamp', 'desc') // Order by timestamp perhaps?
-      // Select only necessary fields for the list
+    const snapshot = await getSerpCollection() // Use reverted function
+      .orderBy('timestamp', 'desc') 
       .select('originalKeyword')
       .get();
 
@@ -410,7 +492,7 @@ export async function getSerpAnalysisList(): Promise<
   }
 }
 
-// --- NEW: Delete by ID ---
+// --- Delete by ID (Reverted to use getSerpCollection) ---
 /**
  * Deletes a SERP analysis document by its Firestore ID.
  * @param docId The Firestore document ID to delete.
@@ -420,7 +502,7 @@ export async function deleteSerpAnalysisById(docId: string): Promise<void> {
   if (!docId) throw new Error('Document ID cannot be empty for deletion.');
   console.log(`[Firestore] Attempting to delete analysis by ID: ${docId}`);
   try {
-    const docRef = getSerpCollection().doc(docId);
+    const docRef = getSerpCollection().doc(docId); // Use reverted function
     await docRef.delete();
     console.log(
       `[Firestore] Successfully deleted SERP analysis for ID: ${docId}`

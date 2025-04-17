@@ -1,4 +1,3 @@
-
 /**
  * 地區映射常量
  * 使用索引簽名來允許字符串索引
@@ -137,7 +136,7 @@ export const MEDIASITE_DATA = [
     "url": "https://holidaysmart.io/",
     "title": "HolidaySmart 假期日常 | 香港最強食買玩旅遊資訊精明消費雜誌",
     "description": "「HolidaySmart 假期日常」為讀者蒐羅高質素的本地及旅遊美食、必買、好去處資訊之外，亦會分享每日優惠情報、報告各類限時折扣優惠等，令大家一齊成為至 Smart 精明消費者。",
-    "language": "zh-HK",
+    "language": "zh-TW",
     "region": "hk",
     "name": "HS"
   },
