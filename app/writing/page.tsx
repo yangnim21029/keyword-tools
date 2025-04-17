@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea"; // Use Textarea for better display
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertTriangle } from 'lucide-react'; // Import AlertTriangle
-import { WEBSITE_DATA } from '../actions/writing-actions'; // Import website data for dropdown
+import { MEDIASITE_DATA } from '../actions/writing-actions'; // Import website data for dropdown
 import {
   Select,
   SelectContent,
@@ -30,7 +30,7 @@ export default function WritingPage() {
     setResearchPrompt(null);
 
     // Find the selected site object to get region and language
-    const selectedSite = WEBSITE_DATA.find(site => site.url === mediaSite);
+    const selectedSite = MEDIASITE_DATA.find(site => site.url === mediaSite);
 
     if (!keyword || !mediaSite || !selectedSite) {
       setError('Keyword and a valid Media Site selection are required.');
@@ -113,7 +113,7 @@ export default function WritingPage() {
                   <SelectValue placeholder="Select a media site..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {WEBSITE_DATA.map((site) => (
+                  {MEDIASITE_DATA.map((site) => (
                     <SelectItem key={site.url} value={site.url}>
                       {/* Display URL instead of title */}
                       {site.url} 
