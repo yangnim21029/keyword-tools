@@ -5,7 +5,7 @@
 # --- Configuration ---
 KEYWORD="credit card" # Default keyword
 MEDIA_SITE_NAME="BF"    # Default media site name
-BASE_URL="http://localhost:3000" # Adjust if your server runs elsewhere
+BASE_URL="https://keyword-killer-next-ugr9.vercel.app" # Adjust if your server runs elsewhere
 
 # --- Command Line Arguments ---
 # Allow overriding keyword and site name via arguments
@@ -44,9 +44,13 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check for API error in response (simple check for 'error' key)
-if echo "${STEP1_OUTPUT}" | jq -e '.error' > /dev/null; then
+if ! echo "${STEP1_OUTPUT}" | jq '.' > /dev/null 2>&1; then
+    echo "Error: Step 1 response is not valid JSON:" >&2
+    echo "${STEP1_OUTPUT}"
+    exit 1
+elif echo "${STEP1_OUTPUT}" | jq -e '.error' > /dev/null; then
     echo "Error: API returned an error in Step 1:" >&2
-    echo "${STEP1_OUTPUT}" | jq
+    echo "${STEP1_OUTPUT}" | jq '.' # Pretty print the error JSON
     exit 1
 fi
 
@@ -65,9 +69,13 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check for API error in response
-if echo "${STEP2_OUTPUT}" | jq -e '.error' > /dev/null; then
+if ! echo "${STEP2_OUTPUT}" | jq '.' > /dev/null 2>&1; then
+    echo "Error: Step 2 response is not valid JSON:" >&2
+    echo "${STEP2_OUTPUT}"
+    exit 1
+elif echo "${STEP2_OUTPUT}" | jq -e '.error' > /dev/null; then
     echo "Error: API returned an error in Step 2:" >&2
-    echo "${STEP2_OUTPUT}" | jq
+    echo "${STEP2_OUTPUT}" | jq '.' # Pretty print the error JSON
     exit 1
 fi
 
@@ -85,10 +93,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Check if the final output starts with '{"error":' (indicating a JSON error response)
-if [[ "${FINAL_PROMPT}" == \{\"error\":* ]]; then
-     echo "Error: API returned an error in Step 3:" >&2
-     echo "${FINAL_PROMPT}" | jq # Try to pretty-print JSON error
+# Check if the final output seems like JSON before assuming it's the prompt
+# A simple check: does it start with '{'? If not, or if it's a JSON error, report it.
+if [[ "${FINAL_PROMPT}" != \{* ]] || echo "${FINAL_PROMPT}" | jq -e '.error' > /dev/null 2>&1; then
+     echo "Error: API response in Step 3 was not the expected prompt or contained an error:" >&2
+     # Try to pretty-print if it's JSON, otherwise print raw
+     if echo "${FINAL_PROMPT}" | jq '.' > /dev/null 2>&1; then
+        echo "${FINAL_PROMPT}" | jq '.'
+     else
+        echo "${FINAL_PROMPT}"
+     fi
      exit 1
 fi
 

@@ -43,6 +43,9 @@ import { formatVolume } from '@/lib/utils'; // Import formatVolume
 import { Clock, Globe, Languages, Loader2, Sigma, Trash2 } from 'lucide-react'; // Import icon
 import Link from 'next/link'; // <-- Correct import for Link
 import { useRouter } from 'next/navigation'; // Import router
+import { Badge } from '@/components/ui/badge'; // Import Badge
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Import Card components
+import { Lightbulb } from 'lucide-react'; // Import an icon
 
 // Define the data structure expected by the Client Component
 // This should mirror SerpAnalysisData from db-serp.ts, converting Timestamp to Date
@@ -83,6 +86,209 @@ type SerpDisplayClientProps = {
 
 // Analysis types will now trigger different flows
 type AnalysisTriggerType = 'contentType' | 'userIntent' | 'title';
+
+// --- NEW: Rankability Assessment Logic & Component ---
+
+type RankabilityLevel = 'good' | 'fair' | 'poor' | 'incomplete';
+
+interface RankabilityResult {
+  level: RankabilityLevel;
+  reason: string;
+  details: {
+    dominantIntent?: string;
+    articleCount?: number;
+    topIntents?: string[];
+    topContentTypes?: string[];
+  };
+}
+
+// Helper function to determine rankability (can be moved outside if needed)
+function assessRankability(
+  contentTypeAnalysis: ContentTypeAnalysisJson | null,
+  userIntentAnalysis: UserIntentAnalysisJson | null
+): RankabilityResult {
+  const details: RankabilityResult['details'] = {};
+
+  if (!contentTypeAnalysis || !userIntentAnalysis) {
+    return {
+      level: 'incomplete',
+      reason:
+        '需要先完成「內容類型分析」和「用戶意圖分析」才能評估排名潛力。',
+      details
+    };
+  }
+
+  // --- Analyze User Intent ---
+  let dominantIntent = '未知';
+  let isInformationalDominant = false;
+  let topIntents: string[] = [];
+  if (userIntentAnalysis.intents && userIntentAnalysis.intents.length > 0) {
+    // Sort intents by count descending
+    const sortedIntents = [...userIntentAnalysis.intents].sort(
+      (a, b) => b.count - a.count
+    );
+    dominantIntent = sortedIntents[0].category || '未知';
+    // Consider '資訊型' (Informational) as the target intent for articles
+    isInformationalDominant = dominantIntent === '資訊型';
+    topIntents = sortedIntents
+      .slice(0, 3)
+      .map(i => `${i.category} (${i.count})`);
+    details.dominantIntent = dominantIntent;
+    details.topIntents = topIntents;
+  } else {
+    dominantIntent = '無意圖數據';
+  }
+
+  // --- Analyze Content Type ---
+  let articleCount = 0;
+  const articleTypes = ['文章', '部落格文章', '資訊頁面', '指南']; // Add more relevant types if needed
+  let topContentTypes: string[] = [];
+  if (
+    contentTypeAnalysis.contentTypes &&
+    contentTypeAnalysis.contentTypes.length > 0
+  ) {
+    const sortedTypes = [...contentTypeAnalysis.contentTypes].sort(
+      (a, b) => b.count - a.count
+    );
+    topContentTypes = sortedTypes
+      .slice(0, 3)
+      .map(t => `${t.type} (${t.count})`);
+    details.topContentTypes = topContentTypes;
+
+    contentTypeAnalysis.contentTypes.forEach(ct => {
+      if (articleTypes.includes(ct.type)) {
+        // Count pages within the top 10 positions
+        const top10Pages = ct.pages?.filter(p => p.position <= 10) ?? [];
+        articleCount += top10Pages.length;
+      }
+    });
+    details.articleCount = articleCount;
+  }
+
+  // --- Determine Rankability Level ---
+  if (isInformationalDominant) {
+    if (articleCount >= 5) {
+      return {
+        level: 'good',
+        reason:
+          '主要用戶意圖為「資訊型」，且 SERP 中已有較多文章類型內容排名靠前，適合以文章競爭。',
+        details
+      };
+    } else if (articleCount >= 2) {
+      return {
+        level: 'fair',
+        reason:
+          '主要用戶意圖為「資訊型」，但 SERP 中文章類型內容不多，有機會但可能需更強內容或不同角度。',
+        details
+      };
+    } else {
+      return {
+        level: 'poor',
+        reason:
+          '主要用戶意圖為「資訊型」，但 SERP 中幾乎沒有文章類型內容，以文章競爭可能較困難，需評估其他內容形式。',
+        details
+      };
+    }
+  } else {
+    // Not informational dominant
+    if (articleCount >= 3) {
+      // Even if not dominant, if articles exist, maybe there's a niche?
+      return {
+        level: 'fair', // Changed from poor to fair, as articles *do* rank
+        reason: `主要用戶意圖 (${dominantIntent}) 並非「資訊型」，但 SERP 中仍有部分文章排名，可能存在特定角度的資訊需求。`,
+        details
+      };
+    } else {
+      return {
+        level: 'poor',
+        reason: `主要用戶意圖 (${dominantIntent}) 並非「資訊型」，且 SERP 中文章類型內容很少或沒有，不建議優先以文章競爭。`,
+        details
+      };
+    }
+  }
+}
+
+// Rankability Assessment Component
+function RankabilityAssessment({
+  analysisData
+}: {
+  analysisData: ClientSerpAnalysisData;
+}) {
+  const assessment = assessRankability(
+    analysisData.contentTypeAnalysisJson,
+    analysisData.userIntentAnalysisJson
+  );
+
+  const getBadgeVariant = (
+    level: RankabilityLevel
+  ): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    switch (level) {
+      case 'good':
+        return 'default'; // Greenish in default theme? Or customize
+      case 'fair':
+        return 'secondary'; // Yellowish/Orange?
+      case 'poor':
+        return 'destructive'; // Red
+      case 'incomplete':
+      default:
+        return 'outline'; // Grey
+    }
+  };
+
+  const getLevelText = (level: RankabilityLevel): string => {
+    switch (level) {
+      case 'good':
+        return '潛力良好';
+      case 'fair':
+        return '潛力中等';
+      case 'poor':
+        return '潛力較低';
+      case 'incomplete':
+      default:
+        return '評估未完成';
+    }
+  };
+
+  return (
+    <Card className="mb-6 bg-gradient-to-r from-blue-50 via-purple-50 to-indigo-50 border-l-4 border-blue-400 shadow">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center text-xl font-semibold text-gray-800">
+          <Lightbulb className="mr-2 h-5 w-5 text-yellow-500" />
+          文章排名潛力評估
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="flex items-center space-x-2">
+          <span className="font-medium text-gray-700">評估結果:</span>
+          <Badge variant={getBadgeVariant(assessment.level)}>
+            {getLevelText(assessment.level)}
+          </Badge>
+        </div>
+        <p className="text-sm text-gray-600">{assessment.reason}</p>
+        {assessment.level !== 'incomplete' && (
+          <div className="text-xs text-gray-500 pt-2 border-t mt-2 space-y-1">
+            {assessment.details.dominantIntent && (
+              <p>
+                <span className="font-medium">主要意圖:</span>{' '}
+                {assessment.details.dominantIntent} (
+                {assessment.details.topIntents?.join('; ')})
+              </p>
+            )}
+            {assessment.details.articleCount !== undefined && (
+              <p>
+                <span className="font-medium">前10名文章數:</span>{' '}
+                {assessment.details.articleCount} (主要類型:{' '}
+                {assessment.details.topContentTypes?.join('; ') || 'N/A'})
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// --- END NEW ---
 
 export function SerpDisplayClient({
   initialAnalysisData
@@ -177,6 +383,8 @@ export function SerpDisplayClient({
           `[Client] Requesting ${type} analysis for Doc ID: ${docId} (Keyword: ${keyword})`
         );
 
+        let updatedAnalysisData: Partial<ClientSerpAnalysisData> = {};
+
         if (type === 'contentType' || type === 'userIntent') {
           // --- Step 1: Get Raw Text ---
           const analysisFn =
@@ -202,7 +410,8 @@ export function SerpDisplayClient({
             type === 'contentType'
               ? 'contentTypeAnalysisText'
               : 'userIntentAnalysisText';
-          setAnalysisData(prev => ({ ...prev, [textStateKey]: rawText }));
+          updatedAnalysisData = { ...updatedAnalysisData, [textStateKey]: rawText }
+
 
           console.log(
             `[Client] Received raw ${type} text. Converting to JSON...`
@@ -226,10 +435,8 @@ export function SerpDisplayClient({
             type === 'contentType'
               ? 'contentTypeAnalysisJson'
               : 'userIntentAnalysisJson';
-          setAnalysisData(prev => ({
-            ...prev,
-            [jsonStateKey]: conversionResult
-          }));
+          updatedAnalysisData = { ...updatedAnalysisData, [jsonStateKey]: conversionResult };
+
         } else if (type === 'title') {
           // --- Direct JSON Analysis (Title) ---
           console.log(`[Client] Performing title JSON analysis...`);
@@ -240,8 +447,14 @@ export function SerpDisplayClient({
             serpString
           });
           console.log(`[Client] Received title JSON:`, result);
-          setAnalysisData(prev => ({ ...prev, titleAnalysis: result }));
+          // Make sure key matches ClientSerpAnalysisData if needed
+          updatedAnalysisData = { ...updatedAnalysisData, titleAnalysis: result }; // Assuming titleAnalysis is the key
         }
+
+        // Update state once with all changes for this analysis type
+         setAnalysisData(prev => ({ ...prev, ...updatedAnalysisData }));
+
+
       } catch (err) {
         console.error(
           `[Client] Error during ${type} analysis/conversion:`,
@@ -265,6 +478,7 @@ export function SerpDisplayClient({
       analysisData.relatedQueries
     ]
   );
+
 
   // --- Delete Handler for this page ---
   const handleDeletePage = async () => {
@@ -309,6 +523,7 @@ export function SerpDisplayClient({
       }
     });
   };
+
 
   // --- UPDATED: Handler for fetching and filtering recent keyword research ---
   const handleViewRecentResearch = useCallback(async () => {
@@ -396,6 +611,7 @@ export function SerpDisplayClient({
   }, [keyword]);
   // --- End UPDATED Handler ---
 
+
   // --- Display Logic ---
 
   // Helper to format date/time nicely
@@ -433,6 +649,7 @@ export function SerpDisplayClient({
     }
   };
 
+
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8">
       {/* Header Section */}
@@ -447,7 +664,7 @@ export function SerpDisplayClient({
             分析時間: {formatDateTime(analysisData.timestamp)} (ID: {docId})
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end"> {/* Added flex-wrap and justify-end */}
           {/* --- UPDATED Dialog Section --- */}
           <Dialog
             open={isRecentDialogOpen}
@@ -457,6 +674,7 @@ export function SerpDisplayClient({
               <Button
                 variant="outline"
                 onClick={() => handleViewRecentResearch()}
+                size="sm" // Make buttons slightly smaller
               >
                 查找相關研究
               </Button>
@@ -579,6 +797,7 @@ export function SerpDisplayClient({
             variant="destructive"
             onClick={handleDeletePage}
             disabled={isDeleting}
+            size="sm" // Make buttons slightly smaller
           >
             {isDeleting ? (
               <>
@@ -600,10 +819,15 @@ export function SerpDisplayClient({
         </p>
       )}
 
+      {/* --- NEW: Rankability Assessment --- */}
+      <RankabilityAssessment analysisData={analysisData} />
+      {/* --- END NEW --- */}
+
+
       {/* Two-column layout for content */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Left Column: Organic Results Section */}
-        <div className="space-y-4 border rounded-lg p-4 shadow-sm">
+         {/* Left Column: Organic Results Section */}
+         <div className="space-y-4 border rounded-lg p-4 shadow-sm">
           <h2 className="text-xl font-semibold mb-4">自然搜尋結果 (前 10)</h2>
           {organicResults.slice(0, 10).map(item => (
             <div key={item.position} className="border-b pb-4 last:border-b-0">
@@ -635,25 +859,26 @@ export function SerpDisplayClient({
           )}
         </div>
 
+
         {/* Right Column: Analysis Sections */}
-        <div className="space-y-6">
-          <AnalysisSection
-            title="內容類型分析"
-            type="contentType"
-            isLoading={isLoading.contentType}
-            error={analysisError.contentType}
-            onAnalyze={() => handleAnalyze('contentType')}
-            result={analysisData.contentTypeAnalysisJson}
-            rawTextResult={analysisData.contentTypeAnalysisText}
-          />
-          <AnalysisSection
-            title="用戶意圖分析"
-            type="userIntent"
-            isLoading={isLoading.userIntent}
-            error={analysisError.userIntent}
-            onAnalyze={() => handleAnalyze('userIntent')}
-            result={analysisData.userIntentAnalysisJson}
-            rawTextResult={analysisData.userIntentAnalysisText}
+         <div className="space-y-6">
+           <AnalysisSection
+             title="內容類型分析"
+             type="contentType"
+             isLoading={isLoading.contentType}
+             error={analysisError.contentType}
+             onAnalyze={() => handleAnalyze('contentType')}
+             result={analysisData.contentTypeAnalysisJson}
+             rawTextResult={analysisData.contentTypeAnalysisText} // Pass raw text
+           />
+           <AnalysisSection
+             title="用戶意圖分析"
+             type="userIntent"
+             isLoading={isLoading.userIntent}
+             error={analysisError.userIntent}
+             onAnalyze={() => handleAnalyze('userIntent')}
+             result={analysisData.userIntentAnalysisJson}
+             rawTextResult={analysisData.userIntentAnalysisText} // Pass raw text
           />
           <AnalysisSection
             title="SERP 標題分析"
@@ -661,13 +886,15 @@ export function SerpDisplayClient({
             isLoading={isLoading.title}
             error={analysisError.title}
             onAnalyze={() => handleAnalyze('title')}
-            result={analysisData.titleAnalysis}
+            result={analysisData.titleAnalysis} // Assuming key is titleAnalysis
+            // No raw text for title analysis typically
           />
         </div>
       </div>
     </div>
   );
 }
+
 
 // Helper component for displaying each analysis section
 type AnalysisSectionProps = {
@@ -679,10 +906,11 @@ type AnalysisSectionProps = {
   result:
     | ContentTypeAnalysisJson
     | UserIntentAnalysisJson
-    | TitleAnalysisJson
+    | TitleAnalysisJson // Use correct type for title analysis
     | null;
   rawTextResult?: string | null; // Optional raw text for display
 };
+
 
 function AnalysisSection({
   title,
@@ -691,7 +919,7 @@ function AnalysisSection({
   error,
   onAnalyze,
   result,
-  rawTextResult
+  rawTextResult // Receive raw text prop
 }: AnalysisSectionProps): React.ReactNode {
   // --- Render Result Logic ---
   const renderResult = (): React.ReactNode | null => {
@@ -818,7 +1046,8 @@ function AnalysisSection({
     }
 
     // Title Analysis Rendering
-    if (type === 'title' && result && 'title' in result) {
+    // Check for 'titleAnalysis' as the property name if that's what's in ClientSerpAnalysisData
+     if (type === 'title' && result && 'title' in result && 'analysis' in result) {
       const data = result as TitleAnalysisJson; // Type assertion
       return (
         <div className="space-y-3 text-sm">
@@ -846,6 +1075,7 @@ function AnalysisSection({
       );
     }
 
+
     // Fallback for unknown result structure or type
     return (
       <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-words">
@@ -854,13 +1084,14 @@ function AnalysisSection({
     );
   };
 
+
   // --- Render Raw Text Logic ---
   const renderRawText = (): React.ReactNode | null => {
     if (!rawTextResult || result) return null; // Only show if no JSON result yet
     return (
       <div className="mt-2">
         <h4 className="text-sm font-medium text-gray-600 mb-1">
-          原始文本結果:
+          原始文本結果 (等待JSON轉換):
         </h4>
         <pre className="text-xs bg-yellow-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-words">
           {rawTextResult}
@@ -869,20 +1100,29 @@ function AnalysisSection({
     );
   };
 
+
   // --- Main Component Return ---
   return (
     <div className="border rounded-lg p-4 shadow-sm">
       {/* Header with Title and Button */}
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-lg font-semibold">{title}</h3>
-        <button
+        <Button // Use Shadcn Button
           onClick={onAnalyze}
           disabled={isLoading}
-          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          size="sm" // Make button smaller
+          variant="default" // Or another appropriate variant
         >
-          {isLoading ? '處理中...' : '開始分析'}
-        </button>
-      </div>
+          {isLoading ? (
+             <>
+               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+               處理中...
+             </>
+           ) : (
+             '開始分析'
+           )}
+         </Button>
+       </div>
 
       {/* Error Display */}
       {error && (
@@ -892,22 +1132,27 @@ function AnalysisSection({
       )}
 
       {/* Loading Indicator */}
-      {isLoading && (
-        <p className="text-sm text-gray-500">正在加載分析結果...</p>
-      )}
+      {isLoading && !result && !rawTextResult && ( // Show loading only if nothing else is shown
+         <div className="flex items-center text-sm text-gray-500">
+           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+           正在加載分析結果...
+         </div>
+       )}
+
 
       {/* Content Area: Render JSON or Raw Text or Placeholder */}
-      {!isLoading && !error && (
-        <>
-          {renderResult()} {/* Call the render function */}
-          {renderRawText()} {/* Call the render function */}
-        </>
-      )}
+       {!isLoading && !error && (
+         <>
+           {renderResult()} {/* Render JSON result if available */}
+           {renderRawText()} {/* Render Raw text if available AND JSON is not */}
+         </>
+       )}
+
 
       {/* Placeholder when no data, not loading, and no error */}
-      {!result && !rawTextResult && !isLoading && !error && (
-        <p className="text-sm text-gray-400">點擊 "開始分析" 以獲取結果。</p>
-      )}
-    </div>
-  );
+       {!result && !rawTextResult && !isLoading && !error && (
+         <p className="text-sm text-gray-400">點擊 "開始分析" 以獲取結果。</p>
+       )}
+     </div>
+   );
 }

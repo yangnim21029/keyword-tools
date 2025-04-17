@@ -14,23 +14,6 @@ import {
 import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import type { KeywordVolumeItem } from '@/lib/schema';
 
-// 定义分群结果的 schema
-const clusterSchema = z.object({
-  clusters: z
-    .record(z.string(), z.array(z.string()))
-    .describe('主題名稱映射到關鍵字數組的分群結果')
-});
-
-// 定义输入 schema (可选，但推荐)
-const inputSchema = z.object({
-  keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
-  model: z
-    .enum(['gpt-4.1-mini', 'gpt-4.1-mini'])
-    .default('gpt-4.1-mini')
-    .optional()
-  // historyId: z.string().optional(), // 暂时不需要 historyId
-});
-
 // Input for the main AI function
 const aiInputSchema = z.object({
   keywords: z.array(z.string()).min(5, '至少需要5个关键词进行分群'),
@@ -60,23 +43,24 @@ const getClusteringTextPrompt = (
 **CRITICAL INSTRUCTIONS:**
 1.  **Role:** Assume the persona of an expert keyword clustering specialist.
 2.  **Input Data:** Base your entire analysis strictly on the provided keyword list. Do NOT use external knowledge or assumptions.
-3.  **Output Format:** Generate your response *exclusively* in the Markdown format specified below. Each cluster should start with '## Cluster: [主題名稱]' followed by a bulleted list of keywords.
+3.  **Output Format:** Generate your response *exclusively* in the Markdown format specified below. Each cluster should start with '## Cluster: [主題名稱]' followed by a bulleted list of keywords using '- '.
 4.  **Behavior:**
     *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.
     *   Do NOT engage in conversation or ask clarifying questions.
-    *   Do NOT use markdown formatting (like \`\`\`) around the final output block.
+    *   Do NOT use markdown formatting (like \`\`\` or \`\`\`markdown) around the final output block.
     *   Group keywords semantically based on whether they could be targetted by the same listicle-style article.
     *   Avoid overly generic cluster names like "基本知識".
     *   Each cluster must contain at least 2 keywords.
+    *   Ensure every keyword from the input list is assigned to exactly one cluster.
 
 --- START OF TASK-SPECIFIC INSTRUCTIONS ---
 
-Based *only* on the keywords provided below, perform semantic clustering. 
+Based *only* on the keywords provided below, perform semantic clustering.
 
 Keywords:
 ${keywords.join(', ')}
 
-Output Format Example:
+Output Format Example (MUST follow this structure exactly):
 ## Cluster: 主題名稱1
 - 關鍵字1
 - 關鍵字2
@@ -85,7 +69,7 @@ Output Format Example:
 - 關鍵字3
 - 關鍵字4
 
-Respond ONLY with the Markdown content following the specified format.`;
+Respond ONLY with the Markdown content following the specified format, starting directly with the first '## Cluster:' line and ending after the last keyword of the last cluster.`;
 
 /**
  * Generates the prompt for converting the Markdown text output to JSON.
@@ -96,13 +80,23 @@ const getClusteringConversionPrompt = (
 
 **CRITICAL INSTRUCTIONS:**
 1.  **Role:** Act as a data conversion bot.
-2.  **Input Data:** Use *only* the provided Markdown text.
-3.  **Output Format:** Generate *only* a valid JSON object matching the structure: { "clusters": { "主題名稱": ["關鍵字1", ...] } }
+2.  **Input Data:** Use *only* the provided Markdown text. The text strictly follows the format:
+    \`\`\`
+    ## Cluster: [Cluster Name 1]
+    - Keyword1
+    - Keyword2
+    ## Cluster: [Cluster Name 2]
+    - Keyword3
+    - Keyword4
+    ...
+    \`\`\`
+3.  **Output Format:** Generate *only* a valid JSON object matching the structure: { "clusters": { "[Cluster Name]": ["Keyword1", "Keyword2", ...] } }.
 4.  **Behavior:**
     *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.
     *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.
-    *   Extract the cluster name from the '## Cluster: ' lines.
-    *   Extract the keywords from the bullet points under each cluster name.
+    *   Extract the cluster name accurately from the '## Cluster: ' lines.
+    *   Extract the keywords accurately from the bullet points ('- ') under each cluster name, trimming any leading/trailing whitespace.
+    *   Ensure the output is a single, valid JSON object.
 
 --- START OF TASK-SPECIFIC INSTRUCTIONS ---
 
@@ -154,6 +148,11 @@ export async function performSemanticClusteringAI(
       prompt: textPrompt
     });
     console.log('[Server Action] Clustering Step 1: Received raw text result.');
+    // --- Add logging for rawMarkdown ---
+    console.log('--- BEGIN RAW MARKDOWN ---');
+    console.log(rawMarkdown);
+    console.log('--- END RAW MARKDOWN ---');
+    // --- End logging ---
 
     if (!rawMarkdown || rawMarkdown.trim().length === 0) {
       console.error(
@@ -162,16 +161,22 @@ export async function performSemanticClusteringAI(
       throw new Error('AI failed to generate clustering text.');
     }
 
+    // --- Trim markdown before conversion ---
+    const trimmedMarkdown = rawMarkdown.trim();
+
     // --- Step 2: Convert Text to JSON ---
     console.log(
       `[Server Action] Clustering Step 2: Requesting JSON Conversion. Model=${openaiModel}`
     );
-    const conversionPrompt = getClusteringConversionPrompt(rawMarkdown.trim());
+    const conversionPrompt = getClusteringConversionPrompt(trimmedMarkdown); // Use trimmed markdown
     console.log('[AI Call] Calling AI for Clustering JSON Conversion...');
+
+    // --- Add explicit mode and use refined prompt ---
     const { object: jsonResult } = await generateObject({
       model: openai(openaiModel),
       schema: clusterOutputSchema, // Use the defined Zod schema
-      prompt: conversionPrompt
+      prompt: conversionPrompt,
+      mode: 'json' // Explicitly set mode to 'json'
     });
 
     console.log(
@@ -185,6 +190,22 @@ export async function performSemanticClusteringAI(
     if (error instanceof z.ZodError) {
       console.error('Zod validation error details:', error.flatten());
       throw new Error(`Data validation failed: ${error.errors[0]?.message}`);
+    }
+    // --- Improve error handling for schema validation failure ---
+    if (
+      error instanceof Error &&
+      error.message.includes('No object generated') // Or a more specific error code if available
+    ) {
+      console.error(
+        '[Server Action] AI failed to generate valid JSON matching the schema.'
+      );
+      // Include details about the error if possible, e.g., from error.cause
+      if (error.cause instanceof Error) {
+          console.error('[Server Action] Cause:', error.cause.message);
+      }
+      throw new Error(
+        'AI generation failed: Could not convert clustering text to the required JSON format.'
+      );
     }
     if (error instanceof Error) {
       throw error; // Re-throw original error
@@ -322,7 +343,7 @@ async function _saveClusteringResults(
  * Attempts to revalidate the cache for a given researchId, logging any errors.
  * Used in error handling paths.
  * @param researchId The ID of the Keyword Research item.
- * @param context A string describing the context of the error (e.g., 'AI failure').
+ * @param context A string describing the context of the error (e.g., 'save failure').
  * @private Internal helper function.
  */
 async function _attemptRevalidationOnError(
@@ -373,12 +394,23 @@ export async function requestClustering(
       // No need to save or revalidate further as nothing changed.
       return { success: true }; // Successfully determined no action needed.
     }
+    // --- Add minimum keyword check ---
+    if (prepResult.keywords.length < 5) {
+      console.warn(
+        `[Clustering Action] Insufficient keywords (${prepResult.keywords.length}) for clustering for ${researchId}. Minimum 5 required.`
+      );
+      return {
+        success: false,
+        error: `Insufficient keywords (${prepResult.keywords.length}). Minimum 5 required for clustering.`
+      };
+    }
 
     // 2. Perform Clustering (Call AI)
     let clusteringResult: z.infer<typeof clusterOutputSchema>;
     try {
       clusteringResult = await performSemanticClusteringAI({
         keywords: prepResult.keywords
+        // Consider passing the model if configurable
       });
     } catch (aiError) {
       console.error(
@@ -386,6 +418,7 @@ export async function requestClustering(
         aiError
       );
       await _attemptRevalidationOnError(researchId, 'AI failure');
+      // Use the potentially more specific error message from performSemanticClusteringAI
       const message =
         aiError instanceof Error ? aiError.message : 'AI clustering failed.';
       return { success: false, error: message };
