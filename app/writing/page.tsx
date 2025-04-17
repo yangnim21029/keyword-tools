@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea"; // Use Textarea for better display
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertTriangle } from 'lucide-react'; // Import AlertTriangle
-import { MEDIASITE_DATA } from '../actions/writing-actions'; // Import website data for dropdown
+import { MEDIASITE_DATA } from '@/app/config/constants';
 import {
   Select,
   SelectContent,

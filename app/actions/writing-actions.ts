@@ -94,11 +94,12 @@ h4 List
 
 async function generateActionPlan(keyword: string, serpTitleReport: string, serpContentReport: string, serpSearchIntentReport: string, serp: string, mediaSiteDataString: string) {
     const prompt = await getActionPlanPrompt(keyword, mediaSiteDataString, serp, serpTitleReport, serpContentReport, serpSearchIntentReport);
-    const actionPlan = await generateText({
+    const { text: actionPlanText } = await generateText({
         model: openai('gpt-4.1-mini'),
         prompt: prompt,
     });
-    return actionPlan;
+    console.log('[Research Action - Step 2] Generated Action Plan.');
+    return actionPlanText;
 }
 
 
@@ -188,57 +189,118 @@ Google 的核心排名系統旨在獎勵提供良好網頁體驗的內容。網�
 }
 
 // Update function signature to accept optional region and language
-export async function generateReaseachPrompt(keyword: string, mediaSiteName: string): Promise<string> {
-    const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-    if (!mediaSite) {
-        console.error(`[Research Action] Media site not found for name: ${mediaSiteName}`);
-        throw new Error(`Media site not found for name: ${mediaSiteName}`);
+export async function generateReaseachPrompt(
+    keyword: string,
+    mediaSiteName: string,
+    step: number = 1,
+    intermediateData: any = null
+): Promise<string | object> {
+
+    let mediaSite: any;
+    let region: string | undefined;
+    let language: string | undefined;
+    let mediaSiteDataString: string;
+    let serpString: string;
+    let serpTitleReportText: string;
+    let serpContentReportText: string;
+    let userIntentReportText: string;
+    let actionPlanText: string;
+
+    console.log(`[Research Action] Entering Step ${step} for keyword: ${keyword}, site: ${mediaSiteName}`);
+
+    // --- Step 1: Fetch Site Data, SERP, and Initial Analysis ---
+    if (step === 1) {
+        mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+        if (!mediaSite) {
+            console.error(`[Research Action - Step 1] Media site not found for name: ${mediaSiteName}`);
+            throw new Error(`Media site not found for name: ${mediaSiteName}`);
+        }
+        region = mediaSite.region;
+        language = mediaSite.language;
+        mediaSiteDataString = JSON.stringify(mediaSite);
+
+        console.log(`[Research Action - Step 1] Found site data. Region: ${region}, Language: ${language}`);
+
+        const serp = await fetchSerpByKeyword(keyword, region, language);
+        console.log('[Research Action - Step 1] Fetched SERP data.');
+
+        if (!serp.organicResults) {
+            console.error('[Research Action - Step 1] No organic results found for keyword:', keyword);
+            throw new Error('No organic results found');
+        }
+        serpString = serp.organicResults.slice(0, 10).map(result => `${result.title} - ${result.description}`).join('\n');
+        console.log(`[Research Action - Step 1] Processed SERP String.`);
+
+        console.log(`[Research Action - Step 1] ==== Start AI Analysis ====`);
+        const serpTitleReportPrompt = getContentTypeAnalysisPrompt(keyword, serpString);
+        const serpTitleReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: serpTitleReportPrompt });
+        serpTitleReportText = serpTitleReport.text;
+        console.log('[Research Action - Step 1] Generated Content Type Report.');
+
+        const serpContentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
+        const serpContentReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: serpContentReportPrompt });
+        serpContentReportText = serpContentReport.text;
+        console.log('[Research Action - Step 1] Generated User Intent Report (for content).');
+
+        const userIntentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
+        const userIntentReport = await generateText({ model: openai('gpt-4.1-mini'), prompt: userIntentReportPrompt });
+        userIntentReportText = userIntentReport.text;
+        console.log('[Research Action - Step 1] Generated User Intent Report (for overall).');
+
+        // Return intermediate data for the next step
+        return {
+            keyword,
+            mediaSiteName,
+            mediaSiteDataString,
+            serpString,
+            serpTitleReportText,
+            serpContentReportText,
+            userIntentReportText
+        };
     }
 
-    const region = mediaSite.region;
-    const language = mediaSite.language;
+    // --- Step 2: Generate Action Plan ---
+    if (step === 2) {
+        if (!intermediateData) {
+            throw new Error("[Research Action - Step 2] Intermediate data from Step 1 is required.");
+        }
+        // Extract data from the previous step
+        mediaSiteDataString = intermediateData.mediaSiteDataString;
+        serpString = intermediateData.serpString;
+        serpTitleReportText = intermediateData.serpTitleReportText;
+        serpContentReportText = intermediateData.serpContentReportText;
+        userIntentReportText = intermediateData.userIntentReportText;
 
-    const mediaSiteDataString = JSON.stringify(mediaSite);
+        // Generate Action Plan
+        actionPlanText = await generateActionPlan(keyword, serpTitleReportText, serpContentReportText, userIntentReportText, serpString, mediaSiteDataString);
 
-    console.log(`[Research Action] Starting generation for keyword: ${keyword}, site name: ${mediaSiteName}, region: ${region}, language: ${language}`);
-
-    const serp = await fetchSerpByKeyword(keyword, region, language);
-    console.log('[Research Action] Fetched SERP data.');
-
-    if (!serp.organicResults) {
-        console.error('[Research Action] No organic results found for keyword:', keyword);
-        throw new Error('No organic results found');
+        // Return combined data for the next step
+        return {
+            ...intermediateData,
+            actionPlanText
+        };
     }
-    const serpString = serp.organicResults.slice(0, 10).map(result => `${result.title} - ${result.description}`).join('\n');
-    console.log(`[Research Action] SERP String: ${serpString}`);
-    console.log(`[Research Action] ==== Start AI Analysis ====`);
 
-    const serpTitleReportPrompt = getContentTypeAnalysisPrompt(keyword, serpString);
-    const serpTitleReport = await generateText({
-        model: openai('gpt-4.1-mini'),
-        prompt: serpTitleReportPrompt,
-    });
-    console.log('[Research Action] Generated Content Type Report.');
+    // --- Step 3: Generate Final Prompt String ---
+    if (step === 3) {
+        if (!intermediateData) {
+            throw new Error("[Research Action - Step 3] Intermediate data from Step 2 is required.");
+        }
+        // Extract all necessary data
+        mediaSiteDataString = intermediateData.mediaSiteDataString;
+        serpString = intermediateData.serpString;
+        serpTitleReportText = intermediateData.serpTitleReportText;
+        serpContentReportText = intermediateData.serpContentReportText;
+        userIntentReportText = intermediateData.userIntentReportText;
+        actionPlanText = intermediateData.actionPlanText;
 
-    const serpContentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
-    const serpContentReport = await generateText({
-        model: openai('gpt-4.1-mini'),
-        prompt: serpContentReportPrompt,
-    });
-    console.log('[Research Action] Generated User Intent Report (for content).');
+        // Generate final prompt string
+        const researchPrompt = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, serpTitleReportText, serpContentReportText, userIntentReportText);
+        console.log('[Research Action - Step 3] Generated final Research Prompt output.');
 
-    const userIntentReportPrompt = getUserIntentAnalysisPrompt(keyword, serpString, '');
-    const userIntentReport = await generateText({
-        model: openai('gpt-4.1-mini'),
-        prompt: userIntentReportPrompt,
-    });
-    console.log('[Research Action] Generated User Intent Report (for overall).');
+        return researchPrompt;
+    }
 
-    const actionPlan = await generateActionPlan(keyword, serpTitleReport.text, serpContentReport.text, userIntentReport.text, serpString, mediaSiteDataString);
-    console.log('[Research Action] Generated Action Plan.');
-
-    const researchPrompt = getResearchPrompt(keyword, actionPlan.text, mediaSiteDataString, serpString, serpTitleReport.text, serpContentReport.text, userIntentReport.text);
-    console.log('[Research Action] Generated final Research Prompt output.');
-
-    return researchPrompt;
+    // Should not reach here if step is 1, 2, or 3
+    throw new Error(`[Research Action] Invalid step number provided: ${step}`);
 }
