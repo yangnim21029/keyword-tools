@@ -38,7 +38,7 @@ type SearchParams = {
 
 // Define type for the props including the searchParams Promise
 interface SeoFitPageProps {
-  searchParams: Promise<SearchParams>;
+  searchParams: Promise<SearchParams>; // Keep for potential future use or standard structure
 }
 
 // Define type for a keyword combination
@@ -47,7 +47,15 @@ interface KeywordCombination {
   combination: string;
 }
 
-// Helper function to generate keyword combinations
+// --- Mock Data ---
+const mockKeywordCombinations: KeywordCombination[] = [
+  { id: 1, combination: "simulated keyword one" },
+  { id: 2, combination: "ai analysis result" },
+  { id: 3, combination: "demo table data" },
+  { id: 4, combination: "another example phrase" },
+];
+
+// Helper function to generate keyword combinations (Keep for reference or other uses, but not called by default now)
 const generateKeywordCombinations = (params: SearchParams): KeywordCombination[] => {
   // Group keywords by their key (kw1, kw2, etc.)
   const keywordGroups: { [key: string]: string[] } = {};
@@ -103,101 +111,76 @@ const generateKeywordCombinations = (params: SearchParams): KeywordCombination[]
 };
 
 // --- Component Definition ---
-// Use Promise<SearchParams> for Next.js 15
 export default function SeoFitPage({ searchParams: searchParamsProp }: SeoFitPageProps) {
-  // Resolve the searchParams promise
-  // Note: Using `use` hook requires the component to be async or be inside Suspense
-  // Since this is 'use client', we'll resolve it in useEffect or similar pattern.
-  // Let's try resolving directly and managing state.
-
   const [url, setUrl] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<string | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false) // Control dialog state
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [keywordCombinations, setKeywordCombinations] = useState<KeywordCombination[]>([]);
-  const [resolvedParams, setResolvedParams] = useState<SearchParams | null>(null);
-
-  // Effect to resolve searchParams and generate keywords
-  useEffect(() => {
-    const resolveParams = async () => {
-      try {
-        const params = await searchParamsProp;
-        setResolvedParams(params); // Store resolved params
-        console.log("Resolved searchParams:", params);
-        const combinations = generateKeywordCombinations(params);
-        setKeywordCombinations(combinations);
-      } catch (error) {
-        console.error("Failed to resolve searchParams:", error);
-        // Handle error appropriately, maybe set an error state
-      }
-    };
-    resolveParams();
-  }, [searchParamsProp]); // Re-run if the promise prop changes (though unlikely)
 
   const handleAnalysis = async () => {
-    if (!url) return // Basic validation
-    setIsLoading(true)
-    setResult(null) // Clear previous result
+    if (!url) return;
+    setIsLoading(true);
+    setResult(null);
+    setKeywordCombinations([]); // Reset table before new analysis
 
-    // Simulate AI analysis delay to feel realistic
-    await new Promise(resolve => setTimeout(resolve, 2500))
+    await new Promise(resolve => setTimeout(resolve, 2500));
 
-    // Simulate result (can be randomized or based on URL for demo)
-    const isFit = Math.random() > 0.3 // Simple random result for demo purposes
+    const isFit = Math.random() > 0.3;
     setResult(
       isFit
         ? "✅ This page appears to be SEO-fit!"
         : "❌ This page may need SEO improvements."
-    )
-    setIsLoading(false)
-
-    // Keep dialog open to show result. User can close it manually.
+    );
+    // Set mock data after analysis completes
+    setKeywordCombinations(mockKeywordCombinations);
+    setIsLoading(false);
   }
 
-  // Reset state when dialog is closed
   const handleOpenChange = (open: boolean) => {
       setDialogOpen(open);
       if (!open) {
-          // Reset state when dialog is closed manually or via overlay click
           setUrl("");
           setIsLoading(false);
           setResult(null);
+          setKeywordCombinations([]); // Reset table when dialog closes
       }
   }
 
   return (
     <div
-      className="relative flex flex-col items-center justify-start min-h-screen overflow-hidden pt-20" // Added pt-20 for spacing from top
+      // Changed to center content on the page
+      className="min-h-screen flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-900" 
     >
-      {/* Background Image using next/image */}
-      <Image
-        src={backgroundImageUrl}
-        alt="SEO Analysis Background"
-        fill // Makes the image cover the div
-        priority // Load the image eagerly as it's the background
-        className="object-cover object-center -z-10" // Position behind content, cover area
-      />
+      {/* Content Card - Increased width */}
+      <div className="relative z-10 bg-white dark:bg-gray-950 rounded-lg shadow-xl p-6 max-w-2xl w-full flex flex-col items-center">
 
-      {/* Overlay for better text/component visibility - Temporarily Commented Out for Debugging */}
-      {/* <div className="absolute inset-0 bg-black bg-opacity-40 z-0"></div> */}
-
-      {/* Content Container */}
-      <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center"> {/* Centered content */}
-
-        {/* Dialog for SEO Analysis */}
+        {/* Dialog Trigger Button - Moved to top-right */}
         <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
-          {/* Button to trigger the Dialog */}
           <DialogTrigger asChild>
             <Button
-              variant="secondary" // A less prominent variant for the trigger
-              className="absolute top-4 right-4 md:top-6 md:right-6 z-20 shadow-lg" // Ensure button is clickable
+              variant="secondary"
+              // Positioned absolute top-right relative to the card
+              className="absolute top-4 right-4 z-20 shadow-lg" 
             >
               Check SEO Fitness (Demo)
             </Button>
           </DialogTrigger>
 
-          {/* Dialog Content */}
-          <DialogContent className="sm:max-w-[425px] bg-white dark:bg-gray-950 rounded-lg shadow-xl"> {/* Style the dialog */}
+          {/* Image Container within the Card - Increased height */}
+          <div className="relative w-full h-64 mb-6 overflow-hidden rounded-md">
+            <Image
+              src={backgroundImageUrl}
+              alt="SEO Analysis Background"
+              fill
+              priority
+              className="object-cover object-center" // Removed -z-10
+            />
+          </div>
+
+          {/* Dialog Content is nested within Dialog, but trigger is above */}
+          {/* The structure implies DialogContent remains associated */} 
+          <DialogContent className="sm:max-w-[425px] bg-white dark:bg-gray-950 rounded-lg shadow-xl">
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold">SEO Fitness Analysis</DialogTitle>
               <DialogDescription className="text-sm text-gray-500 dark:text-gray-400">
@@ -237,6 +220,35 @@ export default function SeoFitPage({ searchParams: searchParamsProp }: SeoFitPag
                 <span className="text-sm text-gray-400 dark:text-gray-500">Enter a URL and run analysis.</span>
               )}
             </div>
+            
+            {/* Keyword Combinations Table - RE-INSERTED inside DialogContent */}
+            {keywordCombinations.length > 0 && (
+              <div className="mt-4 pt-4 border-t"> {/* Add margin and top border for separation */}
+                <h2 className="text-lg font-semibold mb-3 text-gray-800 dark:text-gray-200 text-center">Simulated Keyword Combinations</h2> {/* Adjusted heading size/margin */}
+                <div className="max-h-[200px] overflow-y-auto px-2"> {/* Scrollable area */}                
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[50px]">ID</TableHead> {/* Smaller ID column */}
+                        <TableHead>Combination</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {keywordCombinations.map((item) => (
+                        // Wrap TableRow in React Fragment to potentially help with hydration issues
+                        <React.Fragment key={item.id}>
+                          <TableRow>
+                            <TableCell className="font-medium">{item.id}</TableCell>
+                            <TableCell>{item.combination}</TableCell>
+                          </TableRow>
+                        </React.Fragment>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
             {/* Dialog Footer with Action Button */}
             <DialogFooter>
               <Button
@@ -260,42 +272,6 @@ export default function SeoFitPage({ searchParams: searchParamsProp }: SeoFitPag
           </DialogContent>
         </Dialog>
 
-        {/* Keyword Combinations Table */}
-        {keywordCombinations.length > 0 && (
-          <div className="w-full mt-8 bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Generated Keyword Combinations</h2>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[100px]">ID</TableHead>
-                  <TableHead>Combination</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keywordCombinations.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.id + 1}</TableCell> {/* Display 1-based ID */}
-                    <TableCell>{item.combination}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Optional: Add a message if no keywords are found */}
-        {resolvedParams && keywordCombinations.length === 0 && (
-           <div className="w-full mt-8 bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md text-center">
-               <p className="text-gray-600 dark:text-gray-400">No keyword parameters (e.g., ?kw1=term1&kw2=term2) found in the URL to generate combinations.</p>
-            </div>
-        )}
-
-        {/* Placeholder for other content if needed */}
-        {/* <div className="flex-grow flex items-center justify-center text-center p-8 mt-8">
-          <h1 className="text-4xl font-bold text-white drop-shadow-lg">
-            Keyword Tool Area
-          </h1>
-        </div> */}
       </div>
     </div>
   )

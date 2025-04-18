@@ -4,13 +4,13 @@ import { SettingsDialog } from "@/app/keyword-mapping/components/settings-dialog
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { BarChart, HelpCircle, List, Pen, Search, Settings, type LucideProps } from "lucide-react";
+import { BarChart, Box, HelpCircle, List, Pen, Search, Settings, type LucideProps } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
 import { type ForwardRefExoticComponent, type RefAttributes, useState } from "react";
 
-type IconName = "search" | "help" | "pen" | "bar-chart" | "list" | "settings";
+type IconName = "search" | "help" | "pen" | "bar-chart" | "list" | "settings" | "box";
 
 const iconMap: {
   [key in IconName]: ForwardRefExoticComponent<
@@ -23,6 +23,7 @@ const iconMap: {
   "bar-chart": BarChart,
   list: List,
   settings: Settings,
+  box: Box,
 };
 
 type NavItem = {
@@ -62,7 +63,7 @@ export function Navigation({ items, settingsItem, className }: NavigationProps) 
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className={cn("sr-only", isExpanded && "sr-only-hidden")}>PL</span>
           <span className={cn("whitespace-nowrap", !isExpanded && "sr-only")}>
-            Keyword Mama
+            Keyword Tools
           </span>
         </Link>
       </div>
@@ -106,34 +107,23 @@ export function Navigation({ items, settingsItem, className }: NavigationProps) 
       <nav className="mt-auto flex flex-col gap-1 border-t px-2 py-4">
         <SettingsDialog
           trigger={
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
-                    )}
-                    aria-label={settingsItem.label}
-                  >
-                    {React.createElement(iconMap[settingsItem.icon], { className: "h-5 w-5 flex-shrink-0" })}
-                    <span
-                      className={cn(
-                        "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
-                        isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
-                      )}
-                    >
-                      {settingsItem.label}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                {!isExpanded && (
-                  <TooltipContent side="right">
-                    <p>{settingsItem.label}</p>
-                  </TooltipContent>
+            <Button
+              variant="ghost"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
+              )}
+              aria-label={settingsItem.label}
+            >
+              {React.createElement(iconMap[settingsItem.icon], { className: "h-5 w-5 flex-shrink-0" })}
+              <span
+                className={cn(
+                  "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
+                  isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
                 )}
-              </Tooltip>
-            </TooltipProvider>
+              >
+                {settingsItem.label}
+              </span>
+            </Button>
           }
         />
       </nav>

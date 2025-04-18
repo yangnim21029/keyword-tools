@@ -6,7 +6,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Roboto } from 'next/font/google';
 import type React from 'react';
 import { Toaster as SonnerToaster } from 'sonner';
-import { BarChart, HelpCircle, List, Pen, Search, Settings } from 'lucide-react';
+import { BarChart, Box, HelpCircle, List, Pen, Search, Settings } from 'lucide-react';
 import './globals.css';
 import { Navigation } from './global-navigation';
 
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Keyword Mama'
+    title: 'Keyword Tools'
   }
 };
 
@@ -47,6 +47,7 @@ const navigationItems = [
   { href: '/writing', label: 'Writing', icon: 'pen' as const },
   { href: '/dev', label: '各站成效', icon: 'bar-chart' as const },
   { href: '/serp', label: 'SERP 分析', icon: 'list' as const },
+  { href: '/demo-product-function', label: 'Demo 功能', icon: 'box' as const },
 ];
 
 // Define settings item separately
