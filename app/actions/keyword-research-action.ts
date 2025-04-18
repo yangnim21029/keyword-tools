@@ -569,13 +569,13 @@ export async function processAndSaveKeywordQuery(
     if (currentInputType === 'keyword') {
       // --- Add Logging --- 
       console.log(`[Action: processAndSave] >>> Calling getKeywordSuggestions with useSymbols: ${useSymbols}`); // Log right before call
-      suggestionsResult = await getKeywordSuggestions(
-        query,
+      suggestionsResult = await getKeywordSuggestions({
+        query, // Pass as object property
         region,
         language,
-        useSymbols,
-        useAlphabet
-      );
+        useAlphabet, // Pass as object property
+        useSymbols   // Pass as object property
+      });
     } else {
       suggestionsResult = await getUrlSuggestions({
         url: query,

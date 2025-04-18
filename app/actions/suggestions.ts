@@ -36,11 +36,19 @@ import { KeywordSuggestionResult } from '@/lib/schema';
  * @returns 包含關鍵字建議的結果對象
  */
 export async function getKeywordSuggestions(
-  query: string,
-  region: string,
-  language: string,
-  useAlphabet: boolean,
-  useSymbols: boolean
+  {
+    query,
+    region,
+    language,
+    useAlphabet,
+    useSymbols
+  }: {
+    query: string;
+    region: string;
+    language: string;
+    useAlphabet: boolean;
+    useSymbols: boolean;
+  }
 ): Promise<KeywordSuggestionResult> {
   console.log(`[Action: getKeywordSuggestions] Received useSymbols: ${useSymbols}`);
 
