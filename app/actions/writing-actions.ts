@@ -303,7 +303,7 @@ export async function generateReaseachPrompt(
         };
     }
 
-    // --- Step 3: Generate Base Prompt String ---
+    // --- Step 3: Generate Final Prompt String (includes fine-tuning) ---
     if (step === 3) {
         if (!intermediateData) {
             throw new Error("[Research Action - Step 3] Intermediate data from Step 2 is required.");
@@ -314,39 +314,22 @@ export async function generateReaseachPrompt(
         contentTypeReportText = intermediateData.contentTypeReportText;
         userIntentReportText = intermediateData.userIntentReportText;
         actionPlanText = intermediateData.actionPlanText;
-        // fineTuneNames is still in intermediateData
+        const currentFineTuneNames = intermediateData.fineTuneNames; // Get names passed from step 1
 
         // Generate base prompt string
         researchPromptBase = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, contentTypeReportText, userIntentReportText);
         console.log('[Research Action - Step 3] Generated base Research Prompt.');
 
-        // Return data for the final step
-        return {
-            ...intermediateData, // Pass everything along
-            researchPromptBase
-        };
-    }
-
-    // --- Step 4: Append Fine-Tune Data ---
-    if (step === 4) {
-         if (!intermediateData) {
-            throw new Error("[Research Action - Step 4] Intermediate data from Step 3 is required.");
-        }
-        // Extract necessary data
-        researchPromptBase = intermediateData.researchPromptBase;
-        const currentFineTuneNames = intermediateData.fineTuneNames; // Get names passed from step 1
-
         // Get fine-tune data string
         const fineTuneDataString = getFineTuneDataStrings(currentFineTuneNames);
 
         // Append fine-tune data to the base prompt
-        const finalPrompt = researchPromptBase + fineTuneDataString;
+        const finalPrompt: string = researchPromptBase + fineTuneDataString;
 
-        console.log('[Research Action - Step 4] Appended fine-tune data. Final prompt generated.');
-        return finalPrompt; // Return the final string
+        console.log('[Research Action - Step 3] Appended fine-tune data. Final prompt generated.');
+        return finalPrompt as string; // Return the final string directly from step 3
     }
 
-
-    // Should not reach here if step is 1, 2, 3 or 4
-    throw new Error(`[Research Action] Invalid step number provided: ${step}`);
+    // Should not reach here if step is 1, 2, or 3
+    throw new Error(`[Research Action] Invalid step number provided: ${step}. Valid steps are 1, 2, or 3.`);
 }
