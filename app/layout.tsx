@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Keyword Killer'
+    title: 'Keyword Mama'
   }
 };
 

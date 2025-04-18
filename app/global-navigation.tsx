@@ -62,7 +62,7 @@ export function Navigation({ items, settingsItem, className }: NavigationProps) 
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className={cn("sr-only", isExpanded && "sr-only-hidden")}>PL</span>
           <span className={cn("whitespace-nowrap", !isExpanded && "sr-only")}>
-            Keyword Killer
+            Keyword Mama
           </span>
         </Link>
       </div>
