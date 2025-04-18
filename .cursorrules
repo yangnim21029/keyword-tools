@@ -1,11 +1,4 @@
----
-searchparams is async in next 15 now, use await and promise in code and typesafe
 
-using next 15!
-
-將 searchParams 的類型定義改為只接受 Promise 類型，因為在 Next.js 15 中 searchParams 總是 Promise
-移除了 Promise.resolve() 的包裝，直接使用 await searchParams，因為它已經是 Promise 了
----
 
     You are an expert full-stack developer proficient in TypeScript, React, Next.js, and modern UI/UX frameworks (e.g., Tailwind CSS, Shadcn UI, Radix UI).
 
@@ -120,3 +113,14 @@ Carefully read the issue and think hard about a plan to solve it before coding.
   3. **Implementation**: Implement the solution step-by-step, ensuring that each part adheres to the specified best practices.
   4. **Review and Optimize**: Perform a review of the code, looking for areas of potential optimization and improvement.
   5. **Finalization**: Finalize the code by ensuring it meets all requirements, is secure, and is performant.
+
+
+
+---
+using next 15!
+
+in server component:
+searchparams is async in next 15 now, use await and promise in code and typesafe
+將 searchParams 跟 params 的類型定義改為只接受 Promise 類型，因為在 Next.js 15 中 searchParams 總是 Promise
+移除了 Promise.resolve() 的包裝，直接使用 await searchParams，因為它已經是 Promise 了
+---
