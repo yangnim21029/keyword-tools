@@ -20,9 +20,15 @@ export default async function KeywordToolPage() {
 
   // Optional: Handle error state, e.g., display an error message
   if (error) {
-    console.error('Failed to fetch initial keyword research data:', error);
+    console.error(
+      "Failed to fetch initial keyword research data:",
+      error
+    );
     // You might want to render an error component or message here
   }
+
+  // Slice the results to get the top 50 (assuming they are sorted newest first)
+  const limitedResearches = initialResearches ? initialResearches.slice(0, 50) : [];
 
   return (
     <div className="flex flex-col items-center justify-start pt-10 px-4 space-y-8 min-h-screen">
@@ -33,9 +39,9 @@ export default async function KeywordToolPage() {
       <div className="w-full max-w-md">
         <h2 className="text-lg font-semibold mb-3 text-center">最近的搜索</h2>
         <div className="bg-card border rounded-lg p-2">
-          {/* Pass the potentially null data, ensure component handles it */}
+          {/* Pass the limited data */}
           <KeywordResearchList
-            initialResearches={initialResearches ?? []} // Pass empty array if null
+            initialResearches={limitedResearches} // Use the sliced array
             hideRefreshButton={true}
           />
         </div>

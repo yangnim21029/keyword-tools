@@ -23,9 +23,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { PersonaModelType } from '@/providers/settings-provider';
 import { useSettingsStore } from '@/store/settings-store';
 import { BarChart2, Check, Search, Settings } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-export function SettingsDialog() {
+// Define props type
+interface SettingsDialogProps {
+  trigger?: React.ReactNode;
+}
+
+export function SettingsDialog({ trigger }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState('general');
 
   // Use settings store
@@ -52,12 +57,17 @@ export function SettingsDialog() {
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-          <Settings className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-          <span className="sr-only">設置</span>
-        </Button>
-      </DialogTrigger>
+      {/* Conditionally render trigger */}
+      {trigger ? (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      ) : (
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+            <Settings className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+            <span className="sr-only">設置</span>
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

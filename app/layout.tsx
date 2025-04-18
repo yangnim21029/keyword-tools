@@ -4,10 +4,11 @@ import { SettingsProvider } from '@/providers/settings-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Roboto } from 'next/font/google';
-import Link from 'next/link';
 import type React from 'react';
 import { Toaster as SonnerToaster } from 'sonner';
+import { BarChart, HelpCircle, List, Pen, Search, Settings } from 'lucide-react';
 import './globals.css';
+import { Navigation } from './global-navigation';
 
 // 使用 Inter 作为主要字体
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -39,6 +40,22 @@ export const viewport: Viewport = {
   themeColor: 'white'
 };
 
+// Define navigation items with icons
+const navigationItems = [
+  { href: '/keyword-mapping', label: '關鍵字工具', icon: 'search' as const },
+  { href: '/help', label: '說明', icon: 'help' as const },
+  { href: '/writing', label: 'Writing', icon: 'pen' as const },
+  { href: '/dev', label: '各站成效', icon: 'bar-chart' as const },
+  { href: '/serp', label: 'SERP 分析', icon: 'list' as const },
+];
+
+// Define settings item separately
+const settingsItem = {
+  // No href needed if it just opens a dialog
+  label: '設定',
+  icon: 'settings' as const
+};
+
 export default function RootLayout({
   children
 }: {
@@ -51,58 +68,10 @@ export default function RootLayout({
       >
         <ThemeProvider defaultTheme="light" enableSystem={false}>
           <SettingsProvider>
-            <div className="flex flex-col h-full w-full">
-              <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 bg-background border-b px-4">
-                <div className="flex items-center gap-6">
-                  <Link
-                    href="/keyword-mapping"
-                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  >
-                    <span className="font-medium">關鍵字工具</span>
-                  </Link>
-                  <nav className="md:flex items-center gap-4">
-                    <Link
-                      href="/keyword-mapping"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      查詢
-                    </Link>
-                    <Link
-                      href="/help"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      說明
-                    </Link>
-                    <Link
-                      href="/writing"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      Writing
-                    </Link>
-                    <Link
-                      href="/dev"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      各站成效
-                    </Link>
-                    <Link
-                      href="/serp"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      SERP 分析
-                    </Link>
-                  </nav>
-                </div>
-                <div className="flex items-center gap-2 ml-auto">
-                  <div className="flex items-center gap-1">
-                    <SettingsDialog />
-                  </div>
-                </div>
-              </header>
-              <main className="flex-1 w-full overflow-auto p-4">
-                {children}
-              </main>
-            </div>
+            <Navigation items={navigationItems} settingsItem={settingsItem} />
+            <main className="w-full overflow-auto p-4 pt-4 pl-20 min-h-screen">
+              {children}
+            </main>
             <GlobalLoadingOverlay />
           </SettingsProvider>
           <SonnerToaster
