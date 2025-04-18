@@ -4,6 +4,8 @@ import { getContentTypeAnalysisPrompt, getUserIntentAnalysisPrompt } from '../pr
 import { generateText } from 'ai';
 import { z } from 'zod';
 import { MEDIASITE_DATA } from '../config/constants';
+// Import fine-tune data
+import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from '../prompt/fine-tune';
 
   
 const contentAngleReference = ''; // Corresponds to I4
@@ -102,11 +104,31 @@ async function generateActionPlan(keyword: string, serpTitleReport: string, serp
     return actionPlanText;
 }
 
+// Helper function to get fine-tune data as string
+function getFineTuneDataStrings(names?: string[]): string {
+    if (!names || names.length === 0) {
+        return "";
+    }
 
+    const allData = [
+        ...THEME_FINE_TUNE_DATA,
+        ...MEDIA_SITE_FINE_TUNE_DATA,
+        ...LANGUAGE_FINE_TUNE_DATA
+    ];
+
+    const filteredData = allData.filter(item => names.includes(item.name));
+
+    if (filteredData.length === 0) {
+        return "";
+    }
+
+    return `\n\n--- Fine-Tune Data ---\n${JSON.stringify(filteredData, null, 2)}`;
+}
 
 
 export function getResearchPrompt(keyword: string, actionPlan: string, mediaSiteDataString: string, serp: string, contentTypeReportText: string, userIntentReportText: string) {
-    return `
+    // Base prompt string
+    const basePrompt = `
 forget all previous instructions, do not repeat yourself, do not self reference, do not explain what you are doing, do not write any code, do not analyze this, do not explain.
 
 **🔑 重點項目（須提供）：**
@@ -188,15 +210,17 @@ Google 的核心排名系統旨在獎勵提供良好網頁體驗的內容。網�
 1. 輸出格式：僅輸出文章內容，SEO 分析的過程不要放入文章中
 1. 文章長段落內文，根據語意自動換行分段
 1. 文章中不需要放入連結及來源參考資料等欄位
-`
+`;
+    return basePrompt; // Fine-tune data will be appended in generateReaseachPrompt step 4
 }
 
-// Update function signature to accept optional region and language
+// Update function signature to accept optional region, language, and fineTuneNames
 export async function generateReaseachPrompt(
     keyword: string,
     mediaSiteName: string,
     step: number = 1,
-    intermediateData: any = null
+    intermediateData: any = null,
+    fineTuneNames?: string[] // Optional array of fine-tune dataset names
 ): Promise<string | object> {
 
     let mediaSite: any;
@@ -207,6 +231,7 @@ export async function generateReaseachPrompt(
     let contentTypeReportText: string;
     let userIntentReportText: string;
     let actionPlanText: string;
+    let researchPromptBase: string; // To store the base prompt from step 3
 
     console.log(`[Research Action] Entering Step ${step} for keyword: ${keyword}, site: ${mediaSiteName}`);
 
@@ -244,14 +269,15 @@ export async function generateReaseachPrompt(
         userIntentReportText = userIntentReport.text;
         console.log('[Research Action - Step 1] Generated User Intent Report.');
 
-        // Return intermediate data for the next step
+        // Return intermediate data for the next step, including fineTuneNames
         return {
             keyword,
             mediaSiteName,
             mediaSiteDataString,
             serpString,
             contentTypeReportText,
-            userIntentReportText
+            userIntentReportText,
+            fineTuneNames // Pass fineTuneNames along
         };
     }
 
@@ -265,18 +291,19 @@ export async function generateReaseachPrompt(
         serpString = intermediateData.serpString;
         contentTypeReportText = intermediateData.contentTypeReportText;
         userIntentReportText = intermediateData.userIntentReportText;
+        // fineTuneNames is already in intermediateData, no need to extract separately unless used here
 
         // Generate Action Plan
         actionPlanText = await generateActionPlan(keyword, contentTypeReportText, userIntentReportText, '', serpString, mediaSiteDataString);
 
         // Return combined data for the next step
         return {
-            ...intermediateData,
+            ...intermediateData, // Pass all previous data, including fineTuneNames
             actionPlanText
         };
     }
 
-    // --- Step 3: Generate Final Prompt String ---
+    // --- Step 3: Generate Base Prompt String ---
     if (step === 3) {
         if (!intermediateData) {
             throw new Error("[Research Action - Step 3] Intermediate data from Step 2 is required.");
@@ -287,14 +314,39 @@ export async function generateReaseachPrompt(
         contentTypeReportText = intermediateData.contentTypeReportText;
         userIntentReportText = intermediateData.userIntentReportText;
         actionPlanText = intermediateData.actionPlanText;
+        // fineTuneNames is still in intermediateData
 
-        // Generate final prompt string
-        const researchPrompt = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, contentTypeReportText, userIntentReportText);
-        console.log('[Research Action - Step 3] Generated final Research Prompt output.');
+        // Generate base prompt string
+        researchPromptBase = getResearchPrompt(keyword, actionPlanText, mediaSiteDataString, serpString, contentTypeReportText, userIntentReportText);
+        console.log('[Research Action - Step 3] Generated base Research Prompt.');
 
-        return researchPrompt;
+        // Return data for the final step
+        return {
+            ...intermediateData, // Pass everything along
+            researchPromptBase
+        };
     }
 
-    // Should not reach here if step is 1, 2, or 3
+    // --- Step 4: Append Fine-Tune Data ---
+    if (step === 4) {
+         if (!intermediateData) {
+            throw new Error("[Research Action - Step 4] Intermediate data from Step 3 is required.");
+        }
+        // Extract necessary data
+        researchPromptBase = intermediateData.researchPromptBase;
+        const currentFineTuneNames = intermediateData.fineTuneNames; // Get names passed from step 1
+
+        // Get fine-tune data string
+        const fineTuneDataString = getFineTuneDataStrings(currentFineTuneNames);
+
+        // Append fine-tune data to the base prompt
+        const finalPrompt = researchPromptBase + fineTuneDataString;
+
+        console.log('[Research Action - Step 4] Appended fine-tune data. Final prompt generated.');
+        return finalPrompt; // Return the final string
+    }
+
+
+    // Should not reach here if step is 1, 2, 3 or 4
     throw new Error(`[Research Action] Invalid step number provided: ${step}`);
 }

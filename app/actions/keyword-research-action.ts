@@ -33,8 +33,7 @@ interface ProcessQueryInput {
   language: string;
   useAlphabet: boolean;
   useSymbols: boolean;
-  maxKeywords?: number; // OBSOLETE - Now using fixed limit below
-  minSearchVolume?: number;
+  filterZeroVolume: boolean;
 }
 
 interface ProcessQueryResult {
@@ -513,21 +512,22 @@ Example Output:
 export async function processAndSaveKeywordQuery(
   input: ProcessQueryInput
 ): Promise<ProcessQueryResult> {
-  // ... (existing logic) ...
-  // --- Keyword Generation & Processing Flow ---
-  // 1. Query: Start with the user's input query.
-  // 2. Generate Space Variations: Create keywords by inserting spaces.
-  // 3. Get AI Suggestions: Generate supplementary keywords using AI.
-  // 4. Get Google Suggestions: Fetch suggestions from Google Autocomplete (base, alphabet, symbols).
-  // 5. Combine All & Deduplicate: Merge all sources and get a unique master list (`initialUniqueKeywords`).
-  // 6. Prioritize for Volume Check: Select up to MAX_VOLUME_CHECK_KEYWORDS (60) keywords from the master list, prioritizing: Space Variations > AI Suggestions > Google Suggestions.
-  // 7. Get Search Volume: Fetch search volume data from Google Ads API for the prioritized list.
-  // 8. Filter & Finalize: Filter keywords based on minSearchVolume, merge keywords (from volume check AND the full master list) ensuring final uniqueness and including zero-volume ones.
-  // 9. Save: Save the final list of KeywordVolumeItems to Firestore.
-  // -------------------------------------------
-
-  const { query, region, language, useAlphabet, useSymbols, minSearchVolume } =
+  console.log('[Action: processAndSave] Received input:', input);
+  
+  // Destructure input, excluding useAlphabet and useSymbols
+  const { query, region, language, filterZeroVolume } = 
     input;
+
+  // Hardcode useAlphabet and useSymbols
+  const useAlphabet = false;
+  const useSymbols = true;
+
+  console.log('[Server Action processAndSaveKeywordQuery] Processing keyword query:', query); 
+  console.log('[Server Action processAndSaveKeywordQuery] Region:', region);
+  console.log('[Server Action processAndSaveKeywordQuery] Language:', language);
+  console.log('[Server Action processAndSaveKeywordQuery] Use Alphabet:', useAlphabet); // Log hardcoded value
+  console.log('[Server Action processAndSaveKeywordQuery] Use Symbols:', useSymbols);   // Log hardcoded value
+  console.log('[Server Action processAndSaveKeywordQuery] Filter Zero Volume:', filterZeroVolume);
 
   let aiSuggestList: string[] = [];
   let googleSuggestList: string[] = [];
@@ -567,12 +567,14 @@ export async function processAndSaveKeywordQuery(
     );
     let suggestionsResult;
     if (currentInputType === 'keyword') {
+      // --- Add Logging --- 
+      console.log(`[Action: processAndSave] >>> Calling getKeywordSuggestions with useSymbols: ${useSymbols}`); // Log right before call
       suggestionsResult = await getKeywordSuggestions(
         query,
         region,
         language,
-        useAlphabet,
-        useSymbols
+        useSymbols,
+        useAlphabet
       );
     } else {
       suggestionsResult = await getUrlSuggestions({
@@ -702,7 +704,7 @@ export async function processAndSaveKeywordQuery(
 
     // --- Step 8: Filter & Finalize ---
     console.log(
-      '[Server Action] Starting Step 8: Filter & Finalize Keyword List'
+      `[Server Action] Starting Step 8: Filter & Finalize Keyword List (Filter Zero Volume: ${filterZeroVolume})`
     );
     const finalKeywordMap = new Map<string, KeywordVolumeItem>();
 
@@ -713,40 +715,41 @@ export async function processAndSaveKeywordQuery(
       const normalizedText = item.text.toLowerCase().replace(/\s+/g, '');
       processedVolumeKeywords.add(normalizedText); // Mark as processed
 
-      if ((item.searchVolume ?? 0) >= (minSearchVolume || 0)) {
+      // Filter based on filterZeroVolume setting
+      const currentVolume = item.searchVolume ?? 0;
+      const shouldKeep = filterZeroVolume ? currentVolume > 0 : currentVolume >= 0;
+
+      if (shouldKeep) {
         const existing = finalKeywordMap.get(normalizedText);
-        if (
-          !existing ||
-          (item.searchVolume ?? 0) > (existing.searchVolume ?? 0)
-        ) {
-          finalKeywordMap.set(normalizedText, item); // Add/update with higher volume
+        // Keep the item with the highest volume if duplicates exist after normalization
+        if (!existing || currentVolume > (existing.searchVolume ?? 0)) {
+          finalKeywordMap.set(normalizedText, item);
         }
       } else {
-        // Filtered out due to low volume
+        // Filtered out due to zero volume (when filterZeroVolume is true)
       }
     });
     console.log(
-      `[Server Action] ${
-        finalKeywordMap.size
-      } keywords kept after volume filtering (min vol: ${
-        minSearchVolume || 0
-      }).`
+      `[Server Action] ${finalKeywordMap.size} keywords kept after processing volume results (Filter Zero: ${filterZeroVolume}).`
     );
 
-    // Add back keywords from the *full master list* (`initialUniqueKeywords`) that were *not* processed
-    // (either not sent for volume check, or API didn't return data for them),
-    // or were filtered out by minSearchVolume, marking them as zero volume.
-    initialUniqueKeywords.forEach(keywordText => {
-      if (!keywordText) return;
-      const normalizedText = keywordText.toLowerCase().replace(/\s+/g, '');
-      // Add IF it's not already in the final map (meaning it passed volume filter)
-      if (!finalKeywordMap.has(normalizedText)) {
-        finalKeywordMap.set(normalizedText, {
-          text: keywordText, // Keep original text from the master list
-          searchVolume: 0
-        });
-      }
-    });
+    // Add back keywords from the *full master list* only if filterZeroVolume is FALSE
+    if (!filterZeroVolume) {
+      console.log('[Server Action] filterZeroVolume is false, adding back keywords missed/not processed as zero volume.');
+      initialUniqueKeywords.forEach(keywordText => {
+        if (!keywordText) return;
+        const normalizedText = keywordText.toLowerCase().replace(/\s+/g, '');
+        // Add IF it's not already in the final map 
+        if (!finalKeywordMap.has(normalizedText)) {
+          finalKeywordMap.set(normalizedText, {
+            text: keywordText, // Keep original text from the master list
+            searchVolume: 0
+          });
+        }
+      });
+    } else {
+       console.log('[Server Action] filterZeroVolume is true, skipping adding back zero-volume keywords.');
+    }
 
     const finalKeywordsToSave: KeywordVolumeItem[] = Array.from(
       finalKeywordMap.values()

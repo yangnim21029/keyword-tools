@@ -31,17 +31,19 @@ import { KeywordSuggestionResult } from '@/lib/schema';
  * @param query 要查詢的關鍵字或詞組
  * @param region 目標地區代碼 (例如: 'TW' 台灣, 'HK' 香港)
  * @param language 目標語言代碼 (例如: 'zh-TW' 繁體中文, 'en' 英文)
- * @param useAlphabet 是否使用字母(A-Z)擴展搜索 (預設: true)
- * @param useSymbols 是否使用符號擴展搜索 (預設: false)
+ * @param useAlphabet 是否使用字母(A-Z)擴展搜索
+ * @param useSymbols 是否使用符號擴展搜索
  * @returns 包含關鍵字建議的結果對象
  */
 export async function getKeywordSuggestions(
   query: string,
   region: string,
   language: string,
-  useAlphabet: boolean = true,
-  useSymbols: boolean = false
+  useAlphabet: boolean,
+  useSymbols: boolean
 ): Promise<KeywordSuggestionResult> {
+  console.log(`[Action: getKeywordSuggestions] Received useSymbols: ${useSymbols}`);
+
   const searchPrefix = query.trim();
 
   try {
@@ -57,39 +59,42 @@ export async function getKeywordSuggestions(
 
     // Alphabet expansion
     if (useAlphabet) {
-      const alphabetPromises = ALPHABET.map(letter =>
+      console.log(`[Action: getKeywordSuggestions] Starting alphabet expansion for: ${searchPrefix}`);
+      const alphabetPromisesPrefix = ALPHABET.map(letter =>
+        fetchAutocomplete(`${letter} ${searchPrefix}`, region, language)
+      );
+      const alphabetPromisesSuffix = ALPHABET.map(letter =>
         fetchAutocomplete(`${searchPrefix} ${letter}`, region, language)
       );
-      const alphabetResults = await Promise.all(alphabetPromises);
-      allSuggestions = [...allSuggestions, ...alphabetResults.flat()];
+
+      const alphabetResultsPrefix = await Promise.all(alphabetPromisesPrefix  );
+      const alphabetResultsSuffix = await Promise.all(alphabetPromisesSuffix);
+      console.log(alphabetResultsPrefix);
+      console.log(alphabetResultsSuffix);
+      allSuggestions = [...allSuggestions, ...alphabetResultsPrefix.flat(), ...alphabetResultsSuffix.flat()];
     }
 
     // Symbol expansion
     if (useSymbols) {
-      const symbolPromises = SYMBOLS.map(symbol =>
+      console.log(`[Action: getKeywordSuggestions] Starting symbol expansion for: ${searchPrefix}`);
+      const symbolPromisesPrefix = SYMBOLS.map(symbol =>
+        fetchAutocomplete(`${symbol} ${searchPrefix}`, region, language)
+      );
+      const symbolPromisesSuffix = SYMBOLS.map(symbol =>
         fetchAutocomplete(`${searchPrefix} ${symbol}`, region, language)
       );
-      const symbolResults = await Promise.all(symbolPromises);
-      allSuggestions = [...allSuggestions, ...symbolResults.flat()];
+      const symbolResultsPrefix = await Promise.all(symbolPromisesPrefix);
+      const symbolResultsSuffix = await Promise.all(symbolPromisesSuffix);
+      console.log(symbolResultsPrefix);
+      console.log(symbolResultsSuffix);
+      allSuggestions = [...allSuggestions, ...symbolResultsPrefix.flat(), ...symbolResultsSuffix.flat()];
     }
-
-    // Add space variations for chinese keywords, not CJK
-    const spaceVariations: string[] = [];
-    // use query without english letters and symbols
-    const queryWithoutEnglish = query.replace(/[a-zA-Z0-9]/g, '');
-    // 在不同的 index 插入空格
-    for (let i = 0; i < queryWithoutEnglish.length; i++) {
-      const spacedKeyword =
-        queryWithoutEnglish.slice(0, i) + ' ' + queryWithoutEnglish.slice(i);
-      spaceVariations.push(spacedKeyword);
-    }
-    console.log(spaceVariations);
-    allSuggestions = [...spaceVariations, ...allSuggestions];
 
     // Filter and deduplicate
     const filteredSuggestions = filterSimplifiedChinese(allSuggestions);
     const uniqueSuggestions = [...new Set(filteredSuggestions)];
 
+    console.log(`[Action: getKeywordSuggestions] Unique suggestions: ${uniqueSuggestions.length}`);
     console.log(uniqueSuggestions);
 
     // Calculate estimated time

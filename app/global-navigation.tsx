@@ -1,6 +1,5 @@
 "use client"
 
-import { SettingsDialog } from "@/app/keyword-mapping/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -9,6 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
 import { type ForwardRefExoticComponent, type RefAttributes, useState } from "react";
+import { toast } from "sonner";
 
 type IconName = "search" | "help" | "pen" | "bar-chart" | "list" | "settings" | "box";
 
@@ -105,27 +105,24 @@ export function Navigation({ items, settingsItem, className }: NavigationProps) 
         </TooltipProvider>
       </nav>
       <nav className="mt-auto flex flex-col gap-1 border-t px-2 py-4">
-        <SettingsDialog
-          trigger={
-            <Button
-              variant="ghost"
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
-              )}
-              aria-label={settingsItem.label}
-            >
-              {React.createElement(iconMap[settingsItem.icon], { className: "h-5 w-5 flex-shrink-0" })}
-              <span
-                className={cn(
-                  "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
-                  isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
-                )}
-              >
-                {settingsItem.label}
-              </span>
-            </Button>
-          }
-        />
+        <Button
+          variant="ghost"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
+          )}
+          aria-label={settingsItem.label}
+          onClick={() => toast.info('施工中')}
+        >
+          {React.createElement(iconMap[settingsItem.icon], { className: "h-5 w-5 flex-shrink-0" })}
+          <span
+            className={cn(
+              "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
+              isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
+            )}
+          >
+            {settingsItem.label}
+          </span>
+        </Button>
       </nav>
     </aside>
   );

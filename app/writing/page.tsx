@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, AlertTriangle, Copy, CheckCircle2, ChevronRight, Search, Globe, Sparkles, TerminalSquare } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Loader2, AlertTriangle, Copy, CheckCircle2, ChevronRight, Search, Globe, Sparkles, TerminalSquare, Settings2 } from "lucide-react"
 import { MEDIASITE_DATA } from "@/app/config/constants"
+import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from "@/app/prompt/fine-tune"
 import { toast } from "sonner"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
@@ -19,6 +21,13 @@ import { useClientStorage } from "@/components/hooks/use-client-storage"
 const STEP1_URL = "/api/writing/steps/1-analyze"
 const STEP2_URL = "/api/writing/steps/2-plan"
 const STEP3_URL = "/api/writing/steps/3-finalize"
+
+// Combine all fine-tune data names
+const allFineTuneNames = [
+    ...THEME_FINE_TUNE_DATA.map(item => item.name),
+    ...MEDIA_SITE_FINE_TUNE_DATA.map(item => item.name),
+    ...LANGUAGE_FINE_TUNE_DATA.map(item => item.name)
+];
 
 // Refined Step Indicator with progress bar
 const StepIndicator = ({ current, total, message }: { current: number; total: number; message: string }) => (
@@ -41,6 +50,7 @@ export default function WritingPage() {
   const [keyword, setKeyword] = useClientStorage("writing:keyword", "")
   const [mediaSiteName, setMediaSiteName] = useClientStorage("writing:mediaSiteName", "")
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>("writing:researchPrompt", null)
+  const [selectedFineTunes, setSelectedFineTunes] = useClientStorage<string[]>("writing:selectedFineTunes", [])
 
   // Keep local state for UI elements like loading, error, copied status, and visibility toggle
   const [isLoading, setIsLoading] = useState(false)
@@ -48,19 +58,15 @@ export default function WritingPage() {
   const [currentStep, setCurrentStep] = useState(0) // Initial step is 0
   const [copied, setCopied] = useState(false)
   const [showMediaSiteOptions, setShowMediaSiteOptions] = useState(false)
+  const [showFineTuneOptions, setShowFineTuneOptions] = useState(false)
 
   // Effect to set the initial step based on persisted researchPrompt
   useEffect(() => {
-    // If a researchPrompt exists in localStorage, jump to the final step view
     if (researchPrompt) {
       setCurrentStep(4)
     } else {
-      // Otherwise, ensure we are at step 0 if there's no prompt
-      // This handles cases where the component might re-render without a full page reload
-      // after the prompt was cleared.
       setCurrentStep(0)
     }
-    // Only re-run this effect if the researchPrompt value changes (e.g., loaded, set, or cleared)
   }, [researchPrompt])
 
   const getStepDescription = () => {
@@ -76,33 +82,32 @@ export default function WritingPage() {
     }
   }
 
-  // Updated function to handle copy with delay and async/await
-  const handleCopyToClipboard = async () => { // Make the function async
+  const handleCopyToClipboard = async () => {
     if (researchPrompt) {
       try {
-        await navigator.clipboard.writeText(researchPrompt); // Use await
+        await navigator.clipboard.writeText(researchPrompt);
         setCopied(true);
-
-        // Show toast with countdown message
         const redirectDelaySeconds = 3;
         toast.success(`Prompt copied! Redirecting to ChatGPT in ${redirectDelaySeconds} seconds...`);
-
-        // Set a timeout for the redirection
         setTimeout(() => {
           window.location.href = 'https://chatgpt.com/';
         }, redirectDelaySeconds * 1000);
-
-        // Optional: Reset copied state after a slightly longer delay if needed,
-        // but redirection will happen first.
-        // setTimeout(() => setCopied(false), (redirectDelaySeconds + 2) * 1000);
-
       } catch (err) {
         console.error("Failed to copy text: ", err);
         toast.error("Failed to copy prompt.");
-        // Ensure copied state is false if copy fails
         setCopied(false);
       }
     }
+  };
+
+  const handleFineTuneChange = (checked: boolean | string, name: string) => {
+    setSelectedFineTunes(prev => {
+      if (checked === true) {
+        return [...prev, name];
+      } else {
+        return prev.filter(item => item !== name);
+      }
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -118,7 +123,14 @@ export default function WritingPage() {
       return
     }
 
-    console.log(`Submitting: Keyword=${keyword}, MediaSiteName=${mediaSiteName}`)
+    const firstKeyword = keyword.split(",")[0].trim()
+    if (!firstKeyword) {
+        setError("Please provide a valid keyword.")
+        setIsLoading(false)
+        return
+    }
+
+    console.log(`Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(', ')}`)
 
     try {
       // API call sequence
@@ -126,7 +138,11 @@ export default function WritingPage() {
       const step1Response = await fetch(STEP1_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword, mediaSiteName }),
+        body: JSON.stringify({
+          keyword: firstKeyword,
+          mediaSiteName,
+          fineTuneNames: selectedFineTunes
+        }),
       })
       if (!step1Response.ok)
         throw new Error(
@@ -157,11 +173,7 @@ export default function WritingPage() {
       if (!step3Response.ok) {
         const errorText = await step3Response.text()
         let errorJson
-        try {
-          errorJson = JSON.parse(errorText)
-        } catch (e) {
-          /* ignore */
-        }
+        try { errorJson = JSON.parse(errorText) } catch (e) { /* ignore */ }
         throw new Error(
           errorJson?.details || errorJson?.error || `Step 3 Failed: ${step3Response.statusText || errorText}`,
         )
@@ -184,11 +196,11 @@ export default function WritingPage() {
       <div className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 max-w-4xl">
         <div className="space-y-8">
 
-          {/* Input Form Section - Replaces Card */}
           <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden">
-            {/* Header like dev page */}
+            {/* Header */}
             <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
               <div className="flex items-center gap-2">
+                 {/* Window controls */}
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
                   <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
@@ -196,25 +208,25 @@ export default function WritingPage() {
                 </div>
                 <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">INPUT_PARAMETERS</span>
               </div>
-              {/* Optional: Add a version or status text on the right */}
-              {/* <span className="text-gray-600 text-xs font-mono">v1.0</span> */}
+              {/* Fine-tune Toggle Button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowFineTuneOptions(!showFineTuneOptions)}
+                className="text-xs font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-neutral-700 px-2 py-1 h-auto"
+              >
+                <Settings2 className="h-3.5 w-3.5 mr-1" />
+                Fine-Tune ({selectedFineTunes.length})
+              </Button>
             </div>
             {/* Form Content Area */}
             <div className="p-6">
-              {/* <h2 className="text-2xl font-semibold flex items-center gap-2 mb-1">
-                <Search className="h-5 w-5 text-primary" />
-                Input Parameters
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Provide a keyword and select a target media site to generate your research prompt
-              </p> */}
-              
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Keyword Input */}
                 <div className="space-y-2">
                   <Label htmlFor="keyword" className="text-base font-medium">
                     Keyword
                   </Label>
-                  {/* Remove outer flex container, Input container is now just relative */}
                   <div className="relative">
                     <Input
                       id="keyword"
@@ -223,33 +235,24 @@ export default function WritingPage() {
                       placeholder="e.g., Passive income strategies"
                       required
                       disabled={isLoading}
-                      // Adjust right padding for the button group container
                       className="h-12 pl-10 pr-52 text-base bg-gray-50 dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 focus-visible:ring-primary w-full"
                     />
                     <Search className="absolute left-3 top-3.5 h-5 w-5 text-gray-400 dark:text-gray-500" />
-                    
-                    {/* Wrapper div for buttons inside input */}
                     <div className="absolute right-2 top-2 h-8 flex items-center gap-2">
-                      {/* Generate Button */} 
+                      {/* Generate Button */}
                       <Button
                         type="submit"
                         disabled={isLoading}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full", 
+                          "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
                           "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700"
                         )}
                       >
-                        {isLoading ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <TerminalSquare className="h-3.5 w-3.5" />
-                        )}
+                        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TerminalSquare className="h-3.5 w-3.5" />}
                         Generate
                       </Button>
-
-                      {/* Conditional Placeholder OR Selected Site Button INSIDE input */}
+                      {/* Media Site Button */}
                       {mediaSiteName && !showMediaSiteOptions ? (
-                        // Display Selected Site Button
                         (() => {
                           const site = MEDIASITE_DATA.find(s => s.name === mediaSiteName);
                           let hostname = "";
@@ -258,11 +261,11 @@ export default function WritingPage() {
                           return (
                               <Button
                                   type="button"
-                                  onClick={() => setShowMediaSiteOptions(true)} // Click this to show options below
+                                  onClick={() => setShowMediaSiteOptions(true)}
                                   disabled={isLoading}
                                   title={`Selected: ${mediaSiteName}`}
                                   className={cn(
-                                      "flex items-center gap-1.5 px-2 text-xs font-mono transition-colors border h-full", // Tag style
+                                      "flex items-center gap-1.5 px-2 text-xs font-mono transition-colors border h-full",
                                       "bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700"
                                   )}
                               >
@@ -272,26 +275,24 @@ export default function WritingPage() {
                           );
                         })()
                       ) : !showMediaSiteOptions ? (
-                        // Display Placeholder Button INSIDE if no site selected and options hidden
                         <Button
                           type="button"
                           onClick={() => setShowMediaSiteOptions(true)}
                           disabled={isLoading}
                           className={cn(
-                            "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full", // Style similar to Generate button
+                            "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
                             "bg-gray-50 text-gray-500 border-gray-300 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-400 dark:border-neutral-700 dark:hover:bg-neutral-800"
                           )}
                         >
                           [Select Site...]
                         </Button>
-                      ) : null} {/* Don't render button here if options are shown below */}
+                      ) : null}
                     </div>
                   </div>
                 </div>
 
-                {/* Media Site Selection Area - Renders ONLY Options List BELOW input */}
+                {/* Media Site Selection Area */}
                 <div className="space-y-2 pt-1">
-                  {/* Show Options List only when toggled */}
                   {showMediaSiteOptions && (
                     <div className="border border-gray-300 dark:border-neutral-700 p-3 space-y-2 bg-white dark:bg-neutral-900">
                        <p className="text-xs font-mono text-gray-500 dark:text-gray-400">SELECT_MEDIA_SITE:</p>
@@ -306,12 +307,11 @@ export default function WritingPage() {
                                    type="button"
                                    onClick={() => {
                                       setMediaSiteName(site.name);
-                                      setShowMediaSiteOptions(false); // Collapse list on selection
+                                      setShowMediaSiteOptions(false);
                                    }}
                                    disabled={isLoading}
                                    className={cn(
                                       "flex items-center gap-2 px-3 py-1.5 text-xs font-mono transition-colors border",
-                                      // Use default unselected style for options
                                       "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900"
                                    )}
                                 >
@@ -325,68 +325,80 @@ export default function WritingPage() {
                   )}
                 </div>
 
-                {/* Progress Indicator - Replaces Card */}
+                 {/* Fine-Tune Selection Area */}
+                 {showFineTuneOptions && (
+                  <div className="space-y-2 pt-1">
+                    <div className="border border-gray-300 dark:border-neutral-700 p-3 space-y-3 bg-white dark:bg-neutral-900">
+                      <p className="text-xs font-mono text-gray-500 dark:text-gray-400">SELECT_FINE_TUNE_SETS (Experimental):</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {allFineTuneNames.map((name) => (
+                          <div key={name} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`fine-tune-${name}`}
+                              checked={selectedFineTunes.includes(name)}
+                              onCheckedChange={(checked) => handleFineTuneChange(checked, name)}
+                              disabled={isLoading}
+                            />
+                            <Label
+                              htmlFor={`fine-tune-${name}`}
+                              className="text-sm font-mono text-gray-700 dark:text-gray-300 cursor-pointer"
+                            >
+                              {name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                        Selected sets will be appended to the final prompt for the AI.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+
+                {/* Progress Indicator */}
                 {isLoading && currentStep > 0 && currentStep < 4 && (
                   <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden">
-                    {/* Header */}
+                     {/* Header */}
                     <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1"> {/* Window controls */}
                           <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
                           <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
                           <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
                         </div>
                         <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">GENERATING_PROMPT</span>
                       </div>
-                      {/* Optional: Add status */}
                     </div>
-                    {/* Content Area */}
                     <div className="p-6">
-                      {/* Title/Description removed, StepIndicator handles it */}
-                      {/* <h2 className="text-2xl font-semibold mb-1">Generating Your Prompt</h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        Please wait while we analyze and create your optimized research prompt
-                      </p> */}
                       <StepIndicator current={currentStep} total={3} message={getStepDescription()} />
                     </div>
                   </div>
                 )}
 
-                {/* Error Display - Replaces Card */}
+                {/* Error Display */}
                 {error && !isLoading && (
-                  // Keep left border accent for error
                   <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden border-l-4 border-l-red-500">
                     {/* Header */}
-                    <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
+                     <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1"> {/* Window controls */}
                           <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
                           <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
                           <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
                         </div>
                         <span className="text-xs font-mono text-red-600 dark:text-red-400 uppercase">ERROR_OCCURRED</span>
                       </div>
-                      <AlertTriangle className="h-4 w-4 text-red-500" /> 
+                      <AlertTriangle className="h-4 w-4 text-red-500" />
                     </div>
-                    {/* Content Area */}
                     <div className="p-6">
-                      {/* Title/Description removed */}
-                      {/* <h2 className="text-2xl font-semibold flex items-center gap-2 text-red-600 dark:text-red-400 mb-1">
-                        <AlertTriangle className="h-5 w-5" />
-                        Error Occurred
-                      </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        We encountered a problem while generating your prompt
-                      </p> */} 
                       <div className="bg-red-50 dark:bg-red-900/10 p-4 text-red-800 dark:text-red-300 text-sm mb-4">
                         {error}
                       </div>
                       <Button
                         onClick={() => setError(null)}
                         className={cn(
-                            // Remove rounded-md, adjust unselected colors
                             "px-3 py-1.5 text-xs font-mono transition-colors border",
-                            // Unselected state with red hover accents
                             "bg-gray-50 text-gray-700 border-gray-300 hover:border-red-400 hover:bg-red-50/50 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:border-red-600 dark:hover:bg-red-900/20"
                         )}
                       >
@@ -396,14 +408,13 @@ export default function WritingPage() {
                   </div>
                 )}
 
-                {/* Result Display - Replaces Card */}
+                {/* Result Display */}
                 {!isLoading && researchPrompt && currentStep === 4 && (
-                  // Keep left border accent for success
                   <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden border-l-4 border-l-green-500">
                     {/* Header */}
                     <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1"> {/* Window controls */}
                           <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
                           <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
                           <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
@@ -412,16 +423,7 @@ export default function WritingPage() {
                       </div>
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                     </div>
-                    {/* Content Area */}
                     <div className="p-6">
-                      {/* Title/Description removed */}
-                      {/* <h2 className="text-2xl font-semibold flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
-                        <CheckCircle2 className="h-5 w-5" />
-                        Prompt Generated
-                      </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        Your research prompt is ready to use
-                      </p> */}
                       <div className="relative mb-4">
                         <Textarea
                           readOnly
@@ -438,29 +440,16 @@ export default function WritingPage() {
                             "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900"
                           )}
                         >
-                          {copied ? (
-                            <>
-                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                              Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3.5 w-3.5" />
-                              Copy
-                            </>
-                          )}
+                          {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-500" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}
                         </Button>
                       </div>
-                      {/* Footer Buttons */}
                       <div className="flex justify-between">
                         <Button
                           onClick={() => {
-                            setResearchPrompt(null) // This will clear localStorage via useClientStorage
-                            setMediaSiteName("") // This will clear localStorage via useClientStorage
-                            setCurrentStep(0) // Reset step locally
-                            // No need to remove from sessionStorage
-                            // sessionStorage.removeItem("researchPrompt") // Clear prompt from storage
-                            // sessionStorage.removeItem("mediaSiteName") // Clear media site from storage
+                            setResearchPrompt(null)
+                            setMediaSiteName("")
+                            setSelectedFineTunes([])
+                            setCurrentStep(0)
                           }}
                           className={cn(
                               "px-3 py-1.5 text-xs font-mono transition-colors border",
@@ -469,7 +458,7 @@ export default function WritingPage() {
                         >
                           Start Over
                         </Button>
-                        <Button 
+                        <Button
                           onClick={handleCopyToClipboard}
                           className={cn(
                             "flex items-center gap-1 px-3 py-1.5 text-xs font-mono transition-colors border",

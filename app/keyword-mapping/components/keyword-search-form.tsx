@@ -11,28 +11,15 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { useSettingsStore } from '@/store/settings-store';
 import { Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-interface KeywordSearchFormProps {
-  maxKeywords?: number;
-  minSearchVolume?: number;
-}
-
-export default function KeywordSearchForm({
-  maxKeywords = 16,
-  minSearchVolume = 100
-}: KeywordSearchFormProps) {
+export default function KeywordSearchForm() {
   // --- Hooks ---
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Only get settings that are still global
-  const { useAlphabet, useSymbols } = useSettingsStore(store => store.state);
-  // Remove setRegion and setLanguage actions
-  // const { setRegion, setLanguage } = useSettingsStore(store => store.actions);
 
   // --- Local State ---
   const [queryInput, setQueryInput] = useState<string>('');
@@ -69,14 +56,14 @@ export default function KeywordSearchForm({
     setError(null); // Clear previous errors
 
     try {
+      // Pass hardcoded values for settings now that store is removed
       const result = await processAndSaveKeywordQuery({
         query: queryInput,
-        region: selectedRegion, // Pass local state
-        language: selectedLanguage, // Pass local state
-        useAlphabet: useAlphabet, // Still from global store
-        useSymbols: useSymbols, // Still from global store
-        maxKeywords,
-        minSearchVolume
+        region: selectedRegion,
+        language: selectedLanguage,
+        useAlphabet: false, // Hardcoded
+        useSymbols: true,  // Hardcoded
+        filterZeroVolume: false // Hardcoded (previous default)
       });
 
       if (result.success && result.researchId) {
@@ -104,15 +91,10 @@ export default function KeywordSearchForm({
     }
   }, [
     queryInput,
-    // settingsState, // Remove settingsState dependency for region/lang
-    useAlphabet, // Keep dependency on global settings
-    useSymbols,
-    selectedRegion, // Add local state dependency
-    selectedLanguage, // Add local state dependency
+    selectedRegion, 
+    selectedLanguage, 
     router,
     isLoading,
-    maxKeywords,
-    minSearchVolume
   ]);
 
   // Keyboard shortcut (Enter in input field)

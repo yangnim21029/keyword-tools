@@ -1,6 +1,4 @@
-import { SettingsDialog } from '@/app/keyword-mapping/components/settings-dialog';
 import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
-import { SettingsProvider } from '@/providers/settings-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Roboto } from 'next/font/google';
@@ -68,13 +66,11 @@ export default function RootLayout({
         className={`${inter.variable} ${roboto.variable} font-sans bg-background text-foreground antialiased min-h-screen overflow-x-hidden`}
       >
         <ThemeProvider defaultTheme="light" enableSystem={false}>
-          <SettingsProvider>
-            <Navigation items={navigationItems} settingsItem={settingsItem} />
-            <main className="w-full overflow-auto p-4 pt-4 pl-20 min-h-screen">
-              {children}
-            </main>
-            <GlobalLoadingOverlay />
-          </SettingsProvider>
+          <Navigation items={navigationItems} settingsItem={settingsItem} />
+          <main className="w-full overflow-auto p-4 pt-4 pl-20 min-h-screen">
+            {children}
+          </main>
+          <GlobalLoadingOverlay />
           <SonnerToaster
             position="bottom-right"
             expand={true}

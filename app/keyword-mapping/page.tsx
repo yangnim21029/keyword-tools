@@ -33,7 +33,7 @@ export default async function KeywordToolPage() {
   return (
     <div className="flex flex-col items-center justify-start pt-10 px-4 space-y-8 min-h-screen">
       <React.Suspense fallback={<LoadingFallback />}>
-        <KeywordSearchForm maxKeywords={16} minSearchVolume={100} />
+        <KeywordSearchForm />
       </React.Suspense>
 
       <div className="w-full max-w-md">
