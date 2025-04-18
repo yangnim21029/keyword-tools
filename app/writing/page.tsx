@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
 import Image from 'next/image'
 import { cn } from "@/lib/utils"
+import { useClientStorage } from "@/components/hooks/use-client-storage"
 
 // Define API endpoints
 const STEP1_URL = "/api/writing/steps/1-analyze"
@@ -36,27 +37,31 @@ const StepIndicator = ({ current, total, message }: { current: number; total: nu
 )
 
 export default function WritingPage() {
-  const [keyword, setKeyword] = useState("")
-  const [mediaSiteName, setMediaSiteName] = useState("")
+  // Use useClientStorage for persistent state
+  const [keyword, setKeyword] = useClientStorage("writing:keyword", "")
+  const [mediaSiteName, setMediaSiteName] = useClientStorage("writing:mediaSiteName", "")
+  const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>("writing:researchPrompt", null)
+
+  // Keep local state for UI elements like loading, error, copied status, and visibility toggle
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [researchPrompt, setResearchPrompt] = useState<string | null>(null)
-  const [currentStep, setCurrentStep] = useState(0)
+  const [currentStep, setCurrentStep] = useState(0) // Initial step is 0
   const [copied, setCopied] = useState(false)
   const [showMediaSiteOptions, setShowMediaSiteOptions] = useState(false)
 
-  // Load prompt and media site from sessionStorage on initial mount
+  // Effect to set the initial step based on persisted researchPrompt
   useEffect(() => {
-    const storedPrompt = sessionStorage.getItem("researchPrompt")
-    const storedMediaSite = sessionStorage.getItem("mediaSiteName") // Load media site
-    if (storedPrompt) {
-      setResearchPrompt(storedPrompt)
-      setCurrentStep(4) // Assume if prompt exists, we are at the final step
+    // If a researchPrompt exists in localStorage, jump to the final step view
+    if (researchPrompt) {
+      setCurrentStep(4)
+    } else {
+      // Otherwise, ensure we are at step 0 if there's no prompt
+      // This handles cases where the component might re-render without a full page reload
+      // after the prompt was cleared.
+      setCurrentStep(0)
     }
-    if (storedMediaSite) {
-      setMediaSiteName(storedMediaSite) // Set media site state
-    }
-  }, []) // Empty dependency array ensures this runs only once on mount
+    // Only re-run this effect if the researchPrompt value changes (e.g., loaded, set, or cleared)
+  }, [researchPrompt])
 
   const getStepDescription = () => {
     switch (currentStep) {
@@ -71,24 +76,34 @@ export default function WritingPage() {
     }
   }
 
-  const handleCopyToClipboard = () => {
+  // Updated function to handle copy with delay and async/await
+  const handleCopyToClipboard = async () => { // Make the function async
     if (researchPrompt) {
-      navigator.clipboard
-        .writeText(researchPrompt)
-        .then(() => {
-          setCopied(true)
-          toast.success("Prompt copied! Redirecting to ChatGPT...")
-          // Redirect to ChatGPT after successful copy
-          window.location.href = 'https://chatgpt.com/'
-          // The setTimeout to reset copied state might not run before redirect, which is acceptable here.
-          // setTimeout(() => setCopied(false), 2000)
-        })
-        .catch((err) => {
-          console.error("Failed to copy text: ", err)
-          toast.error("Failed to copy prompt.")
-        })
+      try {
+        await navigator.clipboard.writeText(researchPrompt); // Use await
+        setCopied(true);
+
+        // Show toast with countdown message
+        const redirectDelaySeconds = 3;
+        toast.success(`Prompt copied! Redirecting to ChatGPT in ${redirectDelaySeconds} seconds...`);
+
+        // Set a timeout for the redirection
+        setTimeout(() => {
+          window.location.href = 'https://chatgpt.com/';
+        }, redirectDelaySeconds * 1000);
+
+        // Optional: Reset copied state after a slightly longer delay if needed,
+        // but redirection will happen first.
+        // setTimeout(() => setCopied(false), (redirectDelaySeconds + 2) * 1000);
+
+      } catch (err) {
+        console.error("Failed to copy text: ", err);
+        toast.error("Failed to copy prompt.");
+        // Ensure copied state is false if copy fails
+        setCopied(false);
+      }
     }
-  }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -153,8 +168,6 @@ export default function WritingPage() {
       }
       const finalPromptText = await step3Response.text()
       setResearchPrompt(finalPromptText)
-      sessionStorage.setItem("researchPrompt", finalPromptText) // Store prompt
-      sessionStorage.setItem("mediaSiteName", mediaSiteName) // Store media site
       setCurrentStep(4)
       console.log("[Step 3] Success. Final Research Prompt Generated.")
     } catch (err) {
@@ -442,11 +455,12 @@ export default function WritingPage() {
                       <div className="flex justify-between">
                         <Button
                           onClick={() => {
-                            setResearchPrompt(null)
-                            setMediaSiteName("") // Reset media site state
-                            setCurrentStep(0)
-                            sessionStorage.removeItem("researchPrompt") // Clear prompt from storage
-                            sessionStorage.removeItem("mediaSiteName") // Clear media site from storage
+                            setResearchPrompt(null) // This will clear localStorage via useClientStorage
+                            setMediaSiteName("") // This will clear localStorage via useClientStorage
+                            setCurrentStep(0) // Reset step locally
+                            // No need to remove from sessionStorage
+                            // sessionStorage.removeItem("researchPrompt") // Clear prompt from storage
+                            // sessionStorage.removeItem("mediaSiteName") // Clear media site from storage
                           }}
                           className={cn(
                               "px-3 py-1.5 text-xs font-mono transition-colors border",

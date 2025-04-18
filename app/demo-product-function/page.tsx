@@ -1,7 +1,7 @@
 'use client' // Needed for useState, event handlers
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect, use } from "react" // Added useEffect, use
 import Image from 'next/image' // Use next/image for optimization
 
 import { Button } from "@/components/ui/button" // Assuming Shadcn UI setup
@@ -17,15 +17,122 @@ import {
 import { Input } from "@/components/ui/input" // Assuming Shadcn UI setup
 import { Label } from "@/components/ui/label" // Assuming Shadcn UI setup
 import { Loader2 } from "lucide-react" // Assuming lucide-react is installed
+// Import Shadcn Table components
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 // Assuming the image is placed in the /public directory
 const backgroundImageUrl = '/image.png' // Path relative to the /public folder
 
-export default function SeoFitPage() {
+// Define type for searchParams according to Next.js 15 (Promise-based)
+// We expect keywords like kw1, kw2, etc.
+type SearchParams = {
+  [key: string]: string | string[] | undefined;
+}
+
+// Define type for the props including the searchParams Promise
+interface SeoFitPageProps {
+  searchParams: Promise<SearchParams>;
+}
+
+// Define type for a keyword combination
+interface KeywordCombination {
+  id: number; // For React key prop
+  combination: string;
+}
+
+// Helper function to generate keyword combinations
+const generateKeywordCombinations = (params: SearchParams): KeywordCombination[] => {
+  // Group keywords by their key (kw1, kw2, etc.)
+  const keywordGroups: { [key: string]: string[] } = {};
+  Object.entries(params).forEach(([key, value]) => {
+    if (key.startsWith('kw') && value) {
+      const groupKey = key; // Use the original key like kw1, kw2
+      if (!keywordGroups[groupKey]) {
+        keywordGroups[groupKey] = [];
+      }
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach(v => {
+          if (typeof v === 'string' && v.trim() !== '') {
+              keywordGroups[groupKey].push(v.trim());
+          }
+      });
+    }
+  });
+
+  const groups = Object.values(keywordGroups).filter(group => group.length > 0);
+
+  console.log("Keyword Groups:", groups);
+
+  if (groups.length === 0) {
+    return [];
+  }
+
+  // Cartesian product function
+  const cartesian = <T,>(...arrays: T[][]): T[][] => {
+    return arrays.reduce<T[][]>(
+      (acc, curr) => {
+        return acc.flatMap(a => curr.map(c => [...a, c]));
+      },
+      [[]] // Start with an array containing an empty array
+    );
+  };
+
+  // Generate combinations
+  const combinationsArrays = cartesian(...groups);
+
+  console.log("Raw Combinations Arrays:", combinationsArrays);
+
+  // Format the combinations
+  const formattedCombinations: KeywordCombination[] = combinationsArrays
+      .filter(combo => combo.length > 0) // Ensure no empty combinations if input was weird
+      .map((combo, index) => ({
+          id: index,
+          combination: combo.join(' '), // Join keywords with a space
+      }));
+
+  console.log("Formatted Combinations:", formattedCombinations);
+
+  return formattedCombinations;
+};
+
+// --- Component Definition ---
+// Use Promise<SearchParams> for Next.js 15
+export default function SeoFitPage({ searchParams: searchParamsProp }: SeoFitPageProps) {
+  // Resolve the searchParams promise
+  // Note: Using `use` hook requires the component to be async or be inside Suspense
+  // Since this is 'use client', we'll resolve it in useEffect or similar pattern.
+  // Let's try resolving directly and managing state.
+
   const [url, setUrl] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false) // Control dialog state
+  const [keywordCombinations, setKeywordCombinations] = useState<KeywordCombination[]>([]);
+  const [resolvedParams, setResolvedParams] = useState<SearchParams | null>(null);
+
+  // Effect to resolve searchParams and generate keywords
+  useEffect(() => {
+    const resolveParams = async () => {
+      try {
+        const params = await searchParamsProp;
+        setResolvedParams(params); // Store resolved params
+        console.log("Resolved searchParams:", params);
+        const combinations = generateKeywordCombinations(params);
+        setKeywordCombinations(combinations);
+      } catch (error) {
+        console.error("Failed to resolve searchParams:", error);
+        // Handle error appropriately, maybe set an error state
+      }
+    };
+    resolveParams();
+  }, [searchParamsProp]); // Re-run if the promise prop changes (though unlikely)
 
   const handleAnalysis = async () => {
     if (!url) return // Basic validation
@@ -60,7 +167,7 @@ export default function SeoFitPage() {
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center min-h-screen overflow-hidden" // Added overflow-hidden
+      className="relative flex flex-col items-center justify-start min-h-screen overflow-hidden pt-20" // Added pt-20 for spacing from top
     >
       {/* Background Image using next/image */}
       <Image
@@ -74,8 +181,8 @@ export default function SeoFitPage() {
       {/* Overlay for better text/component visibility - Temporarily Commented Out for Debugging */}
       {/* <div className="absolute inset-0 bg-black bg-opacity-40 z-0"></div> */}
 
-      {/* Content Container - positioned above the overlay */}
-      <div className="relative z-10 w-full h-full flex flex-col">
+      {/* Content Container */}
+      <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center"> {/* Centered content */}
 
         {/* Dialog for SEO Analysis */}
         <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
@@ -153,14 +260,42 @@ export default function SeoFitPage() {
           </DialogContent>
         </Dialog>
 
-        {/* You can add other page content here if needed, make sure it's visible against the background/overlay */}
-        {/* Example:
-           <div className="flex-grow flex items-center justify-center text-center p-8">
-             <h1 className="text-4xl font-bold text-white drop-shadow-lg">
-               Welcome to the SEO Fitness Checker
-             </h1>
-           </div>
-        */}
+        {/* Keyword Combinations Table */}
+        {keywordCombinations.length > 0 && (
+          <div className="w-full mt-8 bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Generated Keyword Combinations</h2>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">ID</TableHead>
+                  <TableHead>Combination</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {keywordCombinations.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-medium">{item.id + 1}</TableCell> {/* Display 1-based ID */}
+                    <TableCell>{item.combination}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {/* Optional: Add a message if no keywords are found */}
+        {resolvedParams && keywordCombinations.length === 0 && (
+           <div className="w-full mt-8 bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md text-center">
+               <p className="text-gray-600 dark:text-gray-400">No keyword parameters (e.g., ?kw1=term1&kw2=term2) found in the URL to generate combinations.</p>
+            </div>
+        )}
+
+        {/* Placeholder for other content if needed */}
+        {/* <div className="flex-grow flex items-center justify-center text-center p-8 mt-8">
+          <h1 className="text-4xl font-bold text-white drop-shadow-lg">
+            Keyword Tool Area
+          </h1>
+        </div> */}
       </div>
     </div>
   )
