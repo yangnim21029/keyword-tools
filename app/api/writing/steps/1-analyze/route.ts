@@ -4,14 +4,14 @@ import { generateReaseachPrompt } from '../../../../actions/writing-actions';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { keyword, mediaSiteName } = body;
+        const { keyword, mediaSiteName, fineTuneNames } = body;
 
         if (!keyword || !mediaSiteName) {
             return NextResponse.json({ error: 'Missing keyword or mediaSiteName' }, { status: 400 });
         }
 
-        // Call the action with step 1
-        const step1Result = await generateReaseachPrompt(keyword, mediaSiteName, 1);
+        // Call the action with step 1, passing fineTuneNames
+        const step1Result = await generateReaseachPrompt(keyword, mediaSiteName, 1, null, fineTuneNames);
 
         // Return the intermediate JSON data from step 1
         return NextResponse.json(step1Result, { status: 200 });
