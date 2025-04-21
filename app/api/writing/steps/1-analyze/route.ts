@@ -4,14 +4,25 @@ import { generateReaseachPrompt } from '../../../../actions/writing-actions';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { keyword, mediaSiteName, fineTuneNames } = body;
+        // Destructure all expected fields from the body
+        const { keyword, mediaSiteName, fineTuneNames, keywordReport, selectedClusterName } = body;
 
         if (!keyword || !mediaSiteName) {
             return NextResponse.json({ error: 'Missing keyword or mediaSiteName' }, { status: 400 });
         }
 
-        // Call the action with step 1, passing fineTuneNames
-        const step1Result = await generateReaseachPrompt(keyword, mediaSiteName, 1, null, fineTuneNames);
+        console.log(`[API Step 1] Received: keyword=${keyword}, mediaSite=${mediaSiteName}, cluster=${selectedClusterName ?? 'none'}`);
+
+        // Call the action with step 1, passing all relevant data
+        const step1Result = await generateReaseachPrompt(
+            keyword,
+            mediaSiteName,
+            1,
+            null, // No prior intermediate data for step 1
+            fineTuneNames,
+            keywordReport, // Pass the report object
+            selectedClusterName // Pass the selected cluster name (can be null)
+        );
 
         // Return the intermediate JSON data from step 1
         return NextResponse.json(step1Result, { status: 200 });

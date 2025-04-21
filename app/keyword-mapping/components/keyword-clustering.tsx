@@ -21,24 +21,32 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import type { KeywordVolumeItem } from '@/lib/schema'; // Import necessary type
+import { formatVolume } from '@/lib/utils'; // <-- Import formatVolume
 
+// Define ClusterItem locally (should match definition in parent)
+type ClusterItem = {
+  clusterName: string;
+  keywords: KeywordVolumeItem[]; // Assuming keywords have volume info
+  totalVolume?: number; // This might be calculated or already present
+};
 
-// Define structure for processed cluster data
+// Define structure for processed cluster data (used internally)
 interface ProcessedCluster {
   clusterName: string;
-  keywordList: string[];
+  keywordList: KeywordVolumeItem[]; // Keep original KeywordVolumeItem structure
   totalVolume: number;
-  longTailKeywords: string[]; // Keep list
-  highestVolumeKeyword: string | null;
+  longTailKeywords: KeywordVolumeItem[]; // Store KeywordVolumeItem
+  highestVolumeKeyword: KeywordVolumeItem | null;
 }
 
 // Updated Props for the display component
 interface KeywordClusteringProps {
-  keywordVolumeMap: Record<string, number>; // Map keyword text (lowercase) to search volume
-  clusters: Record<string, string[]> | null; // Cluster data passed from parent
-  personasMap?: Record<string, string> | null; // Persona data passed from parent
-  researchRegion: string; // Needed for SERP analysis
-  researchLanguage: string; // Needed for SERP analysis
+  keywordVolumeMap: Record<string, number>; // Keep this for quick lookups
+  clusters: ClusterItem[] | null; // <-- UPDATED: Expect an array
+  personasMap?: Record<string, string> | null;
+  researchRegion: string;
+  researchLanguage: string;
   currentKeywords: string[];
   selectedResearchDetail: {
     query: string;
@@ -90,78 +98,78 @@ export default function KeywordClustering({
     }));
   }, []);
 
-  // Check if clusters is valid and not empty
+  // Check if clusters array is valid and not empty (UPDATED)
   const hasValidClusters = useMemo(() => {
-    if (!clusters || typeof clusters !== 'object') return false;
-    
-    // Check if there's at least one valid cluster with keywords
-    return Object.entries(clusters).some(
-      ([name, keywords]) => 
-        name && 
-        name.trim() !== '' && 
-        Array.isArray(keywords) && 
-        keywords.length > 0
-    );
+    return clusters && Array.isArray(clusters) && clusters.length > 0;
   }, [clusters]);
 
-  // Memoize sorted clusters with summaries including long-tail keyword list
+  // Memoize sorted clusters with summaries (UPDATED)
   const sortedClusters = useMemo((): ProcessedCluster[] => {
-    if (!hasValidClusters || !keywordVolumeMap) return [];
+    if (!hasValidClusters || !clusters) return []; // Check clusters directly
     
-    const clustersWithSummaries = Object.entries(clusters!).map(
-      ([clusterName, keywordList]) => {
-        const validKeywordList = Array.isArray(keywordList) ? keywordList : [];
+    // Map over the input clusters array
+    const clustersWithSummaries = clusters.map(
+      (clusterItem) => {
+        // Ensure keywords is an array, default to empty if not
+        const validKeywordList: KeywordVolumeItem[] = Array.isArray(clusterItem.keywords) ? clusterItem.keywords : [];
+        
         if (validKeywordList.length === 0) {
-          console.warn(`Empty keyword list for cluster: ${clusterName}`);
+          console.warn(`Empty keyword list for cluster: ${clusterItem.clusterName}`);
         }
         
+        // Sort keywords within the cluster by volume (descending)
         const sortedKeywords = [...validKeywordList].sort(
-          (a, b) =>
-            (keywordVolumeMap[b.toLowerCase()] || 0) -
-            (keywordVolumeMap[a.toLowerCase()] || 0)
+          (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
         );
-        const totalVolume = sortedKeywords.reduce(
-          (sum, keyword) =>
-            sum +
-            (typeof keyword === 'string'
-              ? keywordVolumeMap[keyword.toLowerCase()] || 0
-              : 0),
-          0
-        );
+        
+        // Calculate total volume for the cluster
+        // Use volume directly from KeywordVolumeItem if available, otherwise sum up
+        const totalVolume = typeof clusterItem.totalVolume === 'number' 
+            ? clusterItem.totalVolume 
+            : sortedKeywords.reduce((sum, keyword) => sum + (keyword.searchVolume ?? 0), 0);
+            
+        // Find long-tail keywords (more than 2 words)
         const longTailKeywords = sortedKeywords.filter(
-          keyword =>
-            typeof keyword === 'string' && keyword.trim().split(/\s+/).length > 2
+          keyword => keyword.text && keyword.text.trim().split(/\s+/).length > 2
         );
+        
         return {
-          clusterName,
-          keywordList: sortedKeywords,
+          clusterName: clusterItem.clusterName,
+          keywordList: sortedKeywords, // Store the sorted KeywordVolumeItem array
           totalVolume,
-          longTailKeywords,
-          highestVolumeKeyword: sortedKeywords[0] || null
+          longTailKeywords, // Store filtered KeywordVolumeItem array
+          highestVolumeKeyword: sortedKeywords[0] || null // Store the highest volume KeywordVolumeItem
         };
       }
     );
+    
+    // Sort the processed clusters by total volume (descending)
     return clustersWithSummaries.sort((a, b) => b.totalVolume - a.totalVolume);
-  }, [clusters, keywordVolumeMap, hasValidClusters]);
+    
+  }, [clusters, hasValidClusters]); // Depend on the clusters array
 
 
   // Modified: Use the passed callback for starting persona generation/saving
   const onStartPersonaChat = useCallback(
-    (clusterName: string, keywords: string[]) => {
+    (clusterName: string, keywords: KeywordVolumeItem[]) => { // <-- Accept KeywordVolumeItem[]
       if (!clusterName || !keywords || keywords.length === 0) {
         toast.error('無法生成用戶畫像：缺少必要數據');
         return;
       }
       if (!researchId) {
-        toast.error('無法生成用戶畫像：未找到研究項目ID'); // Use prop for ID check
+        toast.error('無法生成用戶畫像：未找到研究項目ID');
         return;
       }
-      // Call the parent's handler
-      onSavePersona(clusterName, keywords);
-      // Note: Loading indication and toasts are now handled in the parent (KeywordResearchDetail)
+      // Extract just the text for the action
+      const keywordTexts = keywords.map(kw => kw.text || '').filter(Boolean);
+      if (keywordTexts.length === 0) {
+         toast.error('無法生成用戶畫像：關鍵字文本無效。 ');
+         return;
+      }
+      onSavePersona(clusterName, keywordTexts);
     },
     [researchId, onSavePersona]
-  ); // Depend on prop
+  ); 
 
   // Toggle function
   const toggleSupportingKeywords = (index: number) => {
@@ -178,22 +186,20 @@ export default function KeywordClustering({
     : new Set<string>();
 
   // Helper for Google Search
-  const handleGoogleSearch = (keyword: string) => {
-    if (!keyword) return;
-    const url = `https://www.google.com/search?q=${encodeURIComponent(
-      keyword
-    )}`;
+  const handleGoogleSearch = (keyword: KeywordVolumeItem | string | null) => {
+    const text = typeof keyword === 'string' ? keyword : keyword?.text;
+    if (!text) return;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   // Handler for starting new research - Simplified to use URL params
   const handleNewResearch = useCallback(
-    (keyword: string) => {
-      if (!keyword) return;
-      // Remove setQuery call
-      // setQuery(keyword);
-      toast.info(`開始新研究: "${keyword}"`);
-      const targetUrl = `/keyword-mapping?q=${encodeURIComponent(keyword)}`;
+    (keyword: KeywordVolumeItem | string | null) => {
+      const text = typeof keyword === 'string' ? keyword : keyword?.text;
+      if (!text) return;
+      toast.info(`開始新研究: "${text}"`);
+      const targetUrl = `/keyword-mapping?q=${encodeURIComponent(text)}`;
       router.push(targetUrl);
     },
     [router]
@@ -239,30 +245,27 @@ export default function KeywordClustering({
         {/* Use space-y for mobile card spacing, border for desktop */}
         <div className="md:border-x md:border-b md:border-border md:rounded-b-lg space-y-4 md:space-y-0">
           {displayClusters.map((cluster: ProcessedCluster, index) => {
-            const mainAxisKeyword = cluster.highestVolumeKeyword || '-';
-            const mainAxisVolume =
-              keywordVolumeMap[
-                mainAxisKeyword.toLowerCase()
-              ]?.toLocaleString() ?? '-';
+            // Use the KeywordVolumeItem object directly
+            const mainAxisKeywordItem = cluster.highestVolumeKeyword;
+            const mainAxisKeywordText = mainAxisKeywordItem?.text || '-';
+            const mainAxisVolume = formatVolume(mainAxisKeywordItem?.searchVolume ?? 0);
 
+            // Filter supporting keywords (which are KeywordVolumeItem)
             const allSupportingKeywords = cluster.keywordList
-              .filter(kw => kw !== mainAxisKeyword)
-              .sort(
-                (a, b) =>
-                  (keywordVolumeMap[b.toLowerCase()] || 0) -
-                  (keywordVolumeMap[a.toLowerCase()] || 0)
-              );
+              .filter(kw => kw.text !== mainAxisKeywordText) // Compare text
+              .sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
 
             const topSupportingKeywords = allSupportingKeywords.slice(0, 3);
-            const remainingCount =
-              allSupportingKeywords.length - topSupportingKeywords.length;
+            const remainingCount = allSupportingKeywords.length - topSupportingKeywords.length;
             const isExpanded = !!expandedSupportingMap[index];
 
+            // Calculate unique remainders based on KeywordVolumeItem.text
             let clusterUniqueRemaindersString = '-';
             if (mainQuery) {
               const remainderStrings = new Set<string>();
-              cluster.keywordList.forEach(keyword => {
-                const keywordChars = keyword.split('');
+              cluster.keywordList.forEach(keywordItem => {
+                if (!keywordItem.text) return;
+                const keywordChars = keywordItem.text.split('');
                 const remainder = keywordChars
                   .filter(char => !mainQueryChars.has(char))
                   .join('')
@@ -309,13 +312,13 @@ export default function KeywordClustering({
                   </div>
                 </div>
 
-                {/* Cell 2: Main Keyword / Volume */}
+                {/* Cell 2: Main Keyword / Volume (Use KeywordVolumeItem) */}
                 <div className="p-3 md:w-1/4 lg:w-[15%] flex-shrink-0 border-b md:border-b-0 md:border-r border-border">
                   <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
                     主軸關鍵字 / 量
                   </div>
-                  <div title={mainAxisKeyword}>
-                    {mainAxisKeyword}{' '}
+                  <div title={mainAxisKeywordText}>
+                    {mainAxisKeywordText}{' '}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <span className="text-xs font-mono text-indigo-600/80 dark:text-indigo-400/80 cursor-pointer hover:underline">
@@ -324,15 +327,15 @@ export default function KeywordClustering({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
                         <DropdownMenuItem
-                          onClick={() => handleNewResearch(mainAxisKeyword)}
-                          disabled={!mainAxisKeyword || mainAxisKeyword === '-'}
+                          onClick={() => handleNewResearch(mainAxisKeywordItem)} // Pass item
+                          disabled={!mainAxisKeywordItem}
                         >
                           <FilePlus2 className="mr-2 h-4 w-4" />
                           <span>以此關鍵詞開始新研究</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleGoogleSearch(mainAxisKeyword)}
-                          disabled={!mainAxisKeyword || mainAxisKeyword === '-'}
+                          onClick={() => handleGoogleSearch(mainAxisKeywordItem)} // Pass item
+                          disabled={!mainAxisKeywordItem}
                         >
                           <ExternalLink className="mr-2 h-4 w-4" />
                           <span>Google 查詢</span>
@@ -342,7 +345,7 @@ export default function KeywordClustering({
                   </div>
                 </div>
 
-                {/* Cell 3: Supporting Keywords / Volume */}
+                {/* Cell 3: Supporting Keywords / Volume (Use KeywordVolumeItem) */}
                 <div className="p-3 md:w-1/2 lg:w-[30%] flex-grow border-b md:border-b-0 md:border-r border-border">
                   <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
                     輔助關鍵字 / 量
@@ -351,28 +354,24 @@ export default function KeywordClustering({
                     {(isExpanded
                       ? allSupportingKeywords
                       : topSupportingKeywords
-                    ).map((kw, i, arr) => (
-                      <span key={kw} className="inline-flex items-baseline">
-                        <span>{kw}</span>
+                    ).map((kwItem, i, arr) => (
+                      <span key={kwItem.text || i} className="inline-flex items-baseline">
+                        <span>{kwItem.text}</span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <span className="text-xs font-mono text-indigo-600/80 dark:text-indigo-400/80 ml-0.5 cursor-pointer hover:underline">
-                              (
-                              {keywordVolumeMap[
-                                kw.toLowerCase()
-                              ]?.toLocaleString() ?? '-'}
-                              )
+                              ({formatVolume(kwItem.searchVolume ?? 0)})
                             </span>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start">
                             <DropdownMenuItem
-                              onClick={() => handleNewResearch(kw)}
+                              onClick={() => handleNewResearch(kwItem)} // Pass item
                             >
                               <FilePlus2 className="mr-2 h-4 w-4" />
                               <span>以此關鍵詞開始新研究</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleGoogleSearch(kw)}
+                              onClick={() => handleGoogleSearch(kwItem)} // Pass item
                             >
                               <ExternalLink className="mr-2 h-4 w-4" />
                               <span>Google 查詢</span>
@@ -380,9 +379,7 @@ export default function KeywordClustering({
                           </DropdownMenuContent>
                         </DropdownMenu>
                         {i < arr.length - 1 && (
-                          <span className="text-muted-foreground/60 mx-1">
-                            /
-                          </span>
+                          <span className="text-muted-foreground/60 mx-1">/</span>
                         )}
                       </span>
                     ))}
@@ -392,8 +389,7 @@ export default function KeywordClustering({
                         className="text-xs h-auto px-1.5 py-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded ml-1"
                         onClick={() => toggleSupportingKeywords(index)}
                       >
-                        <PlusCircle className="h-3 w-3 mr-0.5" />+
-                        {remainingCount}
+                        <PlusCircle className="h-3 w-3 mr-0.5" />+{remainingCount}
                       </Button>
                     )}
                   </div>
@@ -448,7 +444,7 @@ export default function KeywordClustering({
                       onClick={() =>
                         onStartPersonaChat(
                           cluster.clusterName,
-                          cluster.keywordList
+                          cluster.keywordList // Pass KeywordVolumeItem[]
                         )
                       }
                       disabled={isGeneratingThisPersona || !!isSavingPersona} // Disable if generating this OR any other persona

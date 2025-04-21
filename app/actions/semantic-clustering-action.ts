@@ -305,10 +305,12 @@ async function _saveClusteringResults(
       return { success: true }; // Successfully handled the "no clusters" case
     }
 
+    // --- Add Logging --- 
+    console.log(`[Clustering Save - Debug] Clusters object structure to be saved for ${researchId}:`, JSON.stringify(clusters, null, 2));
+    // --- End Logging --- 
+
     console.log(
-      `[Clustering Save] Saving ${
-        Object.keys(clusters).length
-      } clusters for ${researchId}`
+      `[Clustering Save] Saving ${Object.keys(clusters).length} clusters for ${researchId}`
     );
     const updateResult = await updateKeywordResearchClusters(researchId, {
       clusters,

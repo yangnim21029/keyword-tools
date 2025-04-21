@@ -119,7 +119,8 @@ Carefully read the issue and think hard about a plan to solve it before coding.
 
 
 ---
-using next 15!
+
+補充：你要 using next 15!
 
 in server component:
 searchparams is async in next 15 now, use await and promise in code and typesafe

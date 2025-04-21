@@ -3,18 +3,23 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type React from 'react';
+import { useMemo } from 'react';
 
 import { deleteKeywordResearch } from '@/app/actions';
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatVolume } from '@/lib/utils';
+import { cn, formatVolume } from '@/lib/utils';
 import {
   Clock,
   Globe,
   Languages,
   RefreshCw,
   Sigma,
-  Trash2
+  Trash2,
+  Loader2,
+  AlertTriangle,
+  CalendarDays
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -32,7 +37,30 @@ interface KeywordResearchListProps {
   initialResearches: KeywordResearchSummaryItem[];
 }
 
-// Helper to format date/time nicely (Consider moving to utils if used elsewhere)
+// --- Date Grouping Helper ---
+const getRelativeDateGroup = (date: Date): string => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const inputDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (inputDate.getTime() === today.getTime()) {
+    return '今天'; // Today
+  }
+  if (inputDate.getTime() === yesterday.getTime()) {
+    return '昨天'; // Yesterday
+  }
+  // Format as YYYY/MM/DD for older dates
+  return inputDate.toLocaleDateString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+};
+
+// --- Formatter ---
 const formatDateTime = (date: Date | string | undefined): string => {
   if (!date) return 'N/A';
   try {
@@ -57,6 +85,30 @@ export default function KeywordResearchList({
   // --- 本地狀態只保留刪除中的 ID ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // --- Group Researches by Date using useMemo ---
+  const groupedResearches = useMemo(() => {
+    const groups = new Map<string, (KeywordResearchSummaryItem & { status?: 'pending' | 'completed' | 'failed' })[]>();
+    // Sort researches by date descending first (might already be sorted)
+    const sortedResearches = [...initialResearches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    sortedResearches.forEach(research => {
+      // Ensure createdAt is valid before grouping
+      let groupTitle = 'Invalid Date';
+      try {
+          const createdAtDate = new Date(research.createdAt);
+          if (!isNaN(createdAtDate.getTime())) { // Check if date is valid
+              groupTitle = getRelativeDateGroup(createdAtDate);
+          }
+      } catch { /* ignore error, keep default title */ }
+
+      if (!groups.has(groupTitle)) {
+        groups.set(groupTitle, []);
+      }
+      groups.get(groupTitle)?.push(research);
+    });
+    return groups;
+  }, [initialResearches]); // Recalculate only if initialResearches changes
+
   // 處理刪除研究記錄
   const handleDelete = async (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -77,7 +129,7 @@ export default function KeywordResearchList({
       if (result.success) {
         console.log(`${COMPONENT_LOG_PREFIX} Server Action successful`);
         toast.success(UI_STRINGS.deleteSuccess);
-        router.refresh();
+        router.refresh(); // Re-fetches data, which updates initialResearches and triggers useMemo
       } else {
         throw new Error(result.error || UI_STRINGS.deleteError);
       }
@@ -123,63 +175,140 @@ export default function KeywordResearchList({
           <p className="text-muted-foreground">{UI_STRINGS.emptyState}</p>
         </div>
       ) : (
-        <div className="space-y-0 px-0">
-          {initialResearches.map(research => (
-            <Link
-              key={research.id}
-              href={`/keyword-mapping/${research.id}`}
-              className={`group py-3 px-3 cursor-pointer flex flex-col sm:flex-row sm:items-center max-w-full border-b border-border/50 last:border-b-0 rounded-sm hover:bg-accent/50 transition-colors duration-150`}
-            >
-              {/* Left Side: Query and Details */}
-              <div className="min-w-0 flex-1 overflow-hidden mb-2 sm:mb-0 sm:mr-4">
-                <h3 className="text-sm font-medium truncate mb-1">
-                  {research.query}
-                </h3>
-                <div className="flex items-center space-x-3 text-xs text-muted-foreground">
-                  <span className="flex items-center">
-                    <Clock size={12} className="mr-1 flex-shrink-0" />
-                    {formatDateTime(research.createdAt)}
-                  </span>
-                  {research.region && (
-                    <span className="flex items-center">
-                      <Globe size={12} className="mr-1 flex-shrink-0" />
-                      {research.region}
-                    </span>
-                  )}
-                  {research.language && (
-                    <span className="flex items-center">
-                      <Languages size={12} className="mr-1 flex-shrink-0" />
-                      {research.language}
-                    </span>
-                  )}
-                </div>
-              </div>
+        // --- Render Grouped List ---
+        <div className="px-0">
+          {Array.from(groupedResearches.entries()).map(([dateGroupTitle, researchesInGroup]) => (
+            <div key={dateGroupTitle} className="mb-3 last:mb-0">
+              {/* Date Group Header */}
+              <h4 className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm text-xs font-medium text-muted-foreground mb-2 pt-2 pb-1 px-3 flex items-center">
+                <CalendarDays size={13} className="mr-1.5" />
+                {dateGroupTitle}
+              </h4>
+              {/* Items within the group */}
+              <div className='space-y-0'>
+                {researchesInGroup.map(research => {
+                  const isPending = research.status === 'pending';
+                  const isFailed = research.status === 'failed';
+                  const isCompleted = !isPending && !isFailed;
 
-              {/* Right Side: Volume and Delete Button */}
-              <div className="flex items-center justify-end sm:justify-normal flex-shrink-0">
-                {/* Total Volume */}
-                <div className="flex items-center text-xs text-muted-foreground mr-2">
-                  <Sigma size={12} className="mr-0.5 flex-shrink-0" />
-                  {formatVolume(research.totalVolume)}
-                </div>
-
-                {/* Delete Button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                  onClick={e => handleDelete(e, research.id)}
-                  disabled={deletingId === research.id}
-                  aria-label={`刪除研究記錄: ${research.query}`}
-                >
-                  {deletingId === research.id ? (
-                    <div className="h-3 w-3 border-t-2 border-b-2 border-destructive/50 rounded-full animate-spin"></div>
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
+                  return (
+                    isCompleted ? (
+                      <Link
+                        key={research.id}
+                        href={`/keyword-mapping/${research.id}`}
+                        className={cn(
+                          `group flex items-center justify-between py-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
+                          'cursor-pointer hover:bg-accent/50'
+                        )}
+                      >
+                        {/* Left Column (Completed - Simplified Metadata) */}
+                        <div className="min-w-0 flex-1 overflow-hidden mr-4">
+                          <h3 className="text-sm font-medium truncate mb-1"> {/* Adjusted margin */}
+                            {research.query}
+                          </h3>
+                          {/* Metadata Row - ONLY Badges */}
+                          <div className="flex items-center gap-x-2 text-xs">
+                            {/* REMOVED Timestamp Span 
+                            <span className="flex items-center text-muted-foreground" title={formatDateTime(research.createdAt)}>
+                              <Clock size={12} className="mr-1 flex-shrink-0" />
+                              {formatDateTime(research.createdAt)}
+                            </span>
+                            */}
+                            {research.region && (
+                              <Badge variant="outline" className="font-normal py-0.5 px-1.5 text-xs">
+                                <Globe size={11} className="mr-1" />{research.region}
+                              </Badge>
+                            )}
+                            {research.language && (
+                              <Badge variant="outline" className="font-normal py-0.5 px-1.5 text-xs">
+                                <Languages size={11} className="mr-1" />{research.language}
+                              </Badge>
+                            )}
+                             {/* Add a non-breaking space if no badges to prevent height collapse? Or adjust h3 margin */} 
+                            {(!research.region && !research.language) && <>&nbsp;</>}
+                          </div>
+                        </div>
+                        {/* Right Column (Completed) */}
+                        <div className="flex items-center flex-shrink-0 space-x-2">
+                           {/* ... Volume ... */} 
+                           <div className="flex items-center text-sm font-medium text-foreground/90">
+                            <Sigma size={13} className="mr-0.5 flex-shrink-0 text-muted-foreground" />
+                            {formatVolume(research.totalVolume)}
+                           </div>
+                           {/* ... Delete Button ... */} 
+                           <Button
+                             variant="ghost"
+                             size="icon"
+                             className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-150")}
+                             onClick={e => handleDelete(e, research.id)}
+                             disabled={deletingId === research.id}
+                             aria-label={`刪除研究記錄: ${research.query}`}
+                           >
+                            {deletingId === research.id ? (
+                              <div className="h-3 w-3 border-t-2 border-b-2 border-destructive/50 rounded-full animate-spin"></div>
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                           </Button>
+                        </div>
+                      </Link>
+                    ) : (
+                       // --- Pending/Failed Item Layout (Unchanged from previous step) --- 
+                      <div
+                        key={research.id}
+                        className={cn(
+                          `group flex items-center justify-between py-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
+                          isPending && 'opacity-70 bg-muted/30 cursor-default', // Adjusted pending style
+                          isFailed && 'bg-destructive/10 border-l-2 border-destructive cursor-default' // Adjusted failed style
+                        )}
+                      >
+                        {/* Left Column (Pending/Failed) */} 
+                        <div className="min-w-0 flex-1 overflow-hidden mr-4">
+                          <h3 className="text-sm font-medium truncate mb-1.5">
+                            {research.query}
+                          </h3>
+                          {/* Metadata Row - Status takes precedence */} 
+                          <div className="flex items-center gap-x-2 text-xs">
+                            <span className="flex items-center text-muted-foreground" title={formatDateTime(research.createdAt)}>
+                              <Clock size={12} className="mr-1 flex-shrink-0" />
+                              {formatDateTime(research.createdAt)}
+                            </span>
+                            {isPending && (
+                              <Badge variant="secondary" className="font-normal py-0.5 px-1.5 text-xs border border-primary/20">
+                                <Loader2 size={11} className="mr-1 animate-spin" />處理中...
+                              </Badge>
+                            )}
+                            {isFailed && (
+                              <Badge variant="destructive" className="font-normal py-0.5 px-1.5 text-xs">
+                                <AlertTriangle size={11} className="mr-1" />處理失敗
+                              </Badge>
+                            )}
+                           </div>
+                        </div>
+                        {/* Right Column (Pending/Failed) */} 
+                        <div className="flex items-center flex-shrink-0 space-x-2">
+                          {/* ... Placeholder ... */} 
+                          {/* ... Disabled Delete Button ... */} 
+                          <div className="flex items-center text-sm font-medium text-transparent">
+                            <Sigma size={13} className="mr-0.5" />0
+                           </div>
+                           <Button /* ... disabled delete button props ... */ 
+                             variant="ghost"
+                             size="icon"
+                             className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground/50 transition-opacity duration-150", "cursor-not-allowed")}
+                             onClick={e => {e.stopPropagation(); e.preventDefault();}}
+                             disabled={true} 
+                             aria-label={`刪除研究記錄: ${research.query}`}
+                           >
+                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50" />
+                           </Button>
+                        </div>
+                      </div>
+                    )
+                  );
+                })}
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}

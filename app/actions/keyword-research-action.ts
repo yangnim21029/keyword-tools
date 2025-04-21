@@ -2,7 +2,17 @@
 
 import { getKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
 import { generateRelatedKeywordsAI } from '@/app/services/ai-keyword-patch';
-import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
+import {
+  createKeywordResearchEntry,
+  deleteKeywordResearchEntry,
+  findAndRemoveDuplicateEntries,
+  getKeywordResearchDetail,
+  getKeywordResearchSummaryList,
+  updateKeywordResearchClusters as updateKeywordResearchClustersDb,
+  updateKeywordResearchEntry,
+  updateKeywordResearchResults,
+  type KeywordResearchSummaryItem
+} from '@/app/services/firebase/db-keyword-research';
 import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
 // Import types primarily from schemas
 import {
@@ -15,14 +25,9 @@ import {
   type UserPersona // <-- Import UserPersona type
 } from '@/lib/schema'; // Adjusted import path
 // Import the extended list item and potentially Keyword from our specific types file
-import { updateKeywordResearchResults } from '@/app/services/firebase/db-keyword-research';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 // --- Import the Chinese type detection utility ---
-import {
-  getKeywordResearchSummaryList, // <-- Import NEW DB function
-  type KeywordResearchSummaryItem // <-- Import NEW DB type
-} from '@/app/services/firebase/db-keyword-research';
 import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
@@ -52,53 +57,16 @@ export type KeywordResearchListItemWithTotalVolume = KeywordResearchItem & {
   totalVolume: number;
 };
 
-// --- Firestore Helper Functions (Internal) ---
-
-/**
- * Converts Firestore Timestamps to Dates.
- */
-function convertTimestamps<
-  T extends {
-    id?: string;
-    createdAt?: Timestamp | Date | string | number | unknown;
-    updatedAt?: Timestamp | Date | string | number | unknown;
-  } & Record<string, unknown>
->(
-  data: T
-): Omit<T, 'createdAt' | 'updatedAt'> & { createdAt?: Date; updatedAt?: Date } {
-  const result = { ...data } as any; // Start with a copy
-
-  // Simplified conversion logic (similar to previous working version)
-  if (data.createdAt instanceof Timestamp) {
-    result.createdAt = data.createdAt.toDate();
-  } else if (data.createdAt) {
-    try {
-      result.createdAt = new Date(data.createdAt as any);
-    } catch {
-      /* ignore */
-    }
-    if (!result.createdAt || isNaN(result.createdAt.getTime()))
-      delete result.createdAt;
-  } else {
-    delete result.createdAt; // Ensure property is removed if not convertible
-  }
-
-  if (data.updatedAt instanceof Timestamp) {
-    result.updatedAt = data.updatedAt.toDate();
-  } else if (data.updatedAt) {
-    try {
-      result.updatedAt = new Date(data.updatedAt as any);
-    } catch {
-      /* ignore */
-    }
-    if (!result.updatedAt || isNaN(result.updatedAt.getTime()))
-      delete result.updatedAt;
-  } else {
-    delete result.updatedAt; // Ensure property is removed if not convertible
-  }
-
-  return result; // Return type is inferred correctly by TS now
-}
+// --- Define a new type for the transformed item --- 
+// It extends the base item but overrides the clusters property
+type KeywordResearchItemWithArrayClusters = Omit<KeywordResearchItem, 'clusters'> & {
+  clusters: Array<{
+      clusterName: string;
+      keywords: KeywordVolumeItem[];
+      totalVolume?: number; 
+  }> | null; // Explicitly define the expected array structure
+};
+// --- End New Type Definition --- 
 
 // --- Exported Cache Revalidation Helper ---
 /**
@@ -151,12 +119,11 @@ const getCachedKeywordResearchSummaryList = unstable_cache(
     limit = 50
   ): Promise<KeywordResearchSummaryItem[]> => {
     console.log(
-      `[Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(
+      `[Action Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(
         filters
       )}`
     );
     // Directly call the DB function
-    // TODO: Apply filters if/when implemented in getKeywordResearchSummaryList or here
     const summaryList = await getKeywordResearchSummaryList(limit, userId);
     return summaryList;
   },
@@ -194,48 +161,111 @@ export async function fetchKeywordResearchSummaryAction(
   }
 }
 
-// Re-introduce unstable_cache wrapper for detail fetching
+// --- Fetch Detail Action (Refactored Cache Wrapper) ---
 const getCachedKeywordResearchDetail = unstable_cache(
   async (researchId: string): Promise<KeywordResearchItem | null> => {
     // Direct fetch logic moved here
-    console.log(`[Cache Miss] Fetching detail for researchId: ${researchId}`);
-    if (!db) throw new Error('Database not initialized');
+    console.log(`[Action Cache Miss] Fetching detail for researchId: ${researchId}`);
     if (!researchId) return null;
 
-    const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
-    const docSnap = await docRef.get();
-
-    if (!docSnap.exists) {
-      console.warn(`找不到記錄: ${researchId}`);
-      return null;
+    try {
+      // Call the DB service function directly
+      const detail = await getKeywordResearchDetail(researchId);
+      // DB service now handles timestamp conversion
+      return detail;
+    } catch (error) {
+        console.error(`[Action Cache Miss] Error fetching detail from DB for ${researchId}:`, error);
+        // Return null or rethrow based on how caching should handle DB errors
+        return null;
     }
-    const data = docSnap.data();
-    if (!data) return null;
-
-    // Cast to KeywordResearchItem after converting timestamps
-    return convertTimestamps({
-      ...data,
-      id: docSnap.id
-    }) as KeywordResearchItem;
   },
   // Key Parts: Base + researchId makes the cache key unique per item
-  ['keywordResearchDetail'], // researchId argument is automatically part of the key
-  // Use specific tag for item revalidation, matching revalidateKeywordResearchCache
-  // Remove explicit type annotations from the function signature and return type
-  { tags: [KEYWORD_RESEARCH_TAG] }
+  ['keywordResearchDetail'], // Base key part remains
+  {
+    // Revert to static tags - revalidation will handle invalidation
+    tags: [KEYWORD_RESEARCH_TAG],
+  }
 );
 
 // 获取特定 Keyword Research 详情 (Uses cached function again)
+// Update the return type to use the new internal type
 export async function fetchKeywordResearchDetail(
   researchId: string
-): Promise<KeywordResearchItem | null> {
+): Promise<KeywordResearchItemWithArrayClusters | null> { // <-- Updated return type
   try {
     console.log(
       `[Server Action] Attempting to fetch detail via cache for: ${researchId}`
     );
-    // Note: We pass researchId directly. unstable_cache handles key generation.
+    // Fetch using the original type internally
     const detail = await getCachedKeywordResearchDetail(researchId);
-    return detail;
+
+    if (!detail) {
+      return null;
+    }
+
+    // --- Add Transformation Logic Here --- 
+    let transformedClustersArray: KeywordResearchItemWithArrayClusters['clusters'] = null; 
+
+    if (detail.clusters) {
+      if (!Array.isArray(detail.clusters)) {
+        // If clusters is an object (old format), transform it
+        console.log(`[Action ${researchId}] Transforming clusters from object format to array format.`);
+        try {
+          transformedClustersArray = Object.entries(detail.clusters as Record<string, any>).map(([clusterName, keywordsData]) => {
+            let keywordsArray: KeywordVolumeItem[] = [];
+            if (Array.isArray(keywordsData)) {
+              keywordsArray = keywordsData.map((kw: any) => {
+                 if (typeof kw === 'string') {
+                   return { text: kw, searchVolume: null, competition: null, competitionIndex: null, cpc: null };
+                 } else if (typeof kw === 'object' && kw !== null && kw.text) {
+                   return {
+                      text: kw.text,
+                      searchVolume: kw.searchVolume ?? null,
+                      competition: kw.competition ?? null,
+                      competitionIndex: kw.competitionIndex ?? null,
+                      cpc: kw.cpc ?? null
+                   };
+                 } else {
+                   return { text: JSON.stringify(kw), searchVolume: null, competition: null, competitionIndex: null, cpc: null };
+                 }
+              });
+            }
+            const totalVolume = keywordsArray.reduce((sum, kw) => sum + (kw.searchVolume ?? 0), 0);
+            return {
+              clusterName: clusterName,
+              keywords: keywordsArray,
+              totalVolume: totalVolume
+            };
+          });
+        } catch (transformError) {
+            console.error(`[Action ${researchId}] Failed to transform clusters object:`, transformError);
+            transformedClustersArray = null; // Set to null on error
+        }
+      } else {
+        // Clusters field exists and is already an array - ensure totalVolume exists
+        console.log(`[Action ${researchId}] Clusters field is already an array. Ensuring totalVolume exists.`);
+        transformedClustersArray = detail.clusters.map((cluster: any) => {
+           if (typeof cluster.totalVolume !== 'number' && Array.isArray(cluster.keywords)) {
+              const calculatedVolume = cluster.keywords.reduce((sum: number, kw: any) => sum + (kw?.searchVolume ?? 0), 0);
+              return { ...cluster, totalVolume: calculatedVolume };
+           } 
+           return cluster; 
+        });
+      }
+    } else {
+      console.log(`[Action ${researchId}] No clusters found in detail object.`);
+      transformedClustersArray = null;
+    }
+    // --- End Transformation Logic ---
+
+    // Construct the final object conforming to the new return type
+    const result: KeywordResearchItemWithArrayClusters = {
+        ...detail, // Spread properties from original detail
+        clusters: transformedClustersArray // Assign the correctly typed transformed clusters
+    };
+
+    return result; // No need to cast 'any' anymore
+
   } catch (error) {
     console.error(`獲取詳情 (${researchId}) 失敗:`, error);
     return null;
@@ -246,13 +276,21 @@ export async function fetchKeywordResearchDetail(
 export async function deleteKeywordResearch(
   researchId: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!db) return { success: false, error: 'Database not initialized' };
+  console.log(`[Action] Attempting to delete research: ${researchId}`);
   if (!researchId) return { success: false, error: 'Research ID is required' };
 
   try {
-    await db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId).delete();
-    await revalidateKeywordResearchCache(researchId); // Use exported helper
-    return { success: true };
+    // Call the DB service function
+    const success = await deleteKeywordResearchEntry(researchId);
+    if (success) {
+      await revalidateKeywordResearchCache(researchId); // Use exported helper
+      console.log(`[Action] Successfully deleted research: ${researchId} and revalidated cache.`);
+      return { success: true };
+    } else {
+      // This path might not be reached if DB function throws on failure
+      console.warn(`[Action] DB function reported failure deleting ${researchId}, but did not throw.`);
+      return { success: false, error: 'Failed to delete research record (DB)' };
+    }
   } catch (error) {
     console.error(`刪除 (${researchId}) 失敗:`, error);
     return {
@@ -262,11 +300,50 @@ export async function deleteKeywordResearch(
   }
 }
 
+// --- NEW: Remove Duplicate Keyword Research Entries ---
+/**
+ * Removes duplicate keyword research entries based on query, language, and region.
+ * Keeps the newest entry for each unique combination.
+ */
+export async function removeDuplicateKeywordResearch(): Promise<{
+  success: boolean;
+  removedCount?: number;
+  error?: string;
+}> {
+  console.log('[Action] Starting duplicate keyword research removal process...');
+  try {
+    // Call the DB service function
+    const removedCount = await findAndRemoveDuplicateEntries();
+
+    console.log(`[Action] Duplicate removal completed by DB service. Total removed: ${removedCount}`);
+
+    // Revalidate the list cache if any items were removed
+    if (removedCount > 0) {
+      await revalidateKeywordResearchCache(); // Revalidate list only
+      console.log('[Action] Revalidated keyword research list cache.');
+    }
+
+    return { success: true, removedCount };
+
+  } catch (error) {
+    console.error('[Action] Error removing duplicate keyword research entries:', error);
+    return {
+      success: false,
+      removedCount: 0,
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to remove duplicate entries.'
+    };
+  }
+}
+// --- End NEW Action ---
+
 // 创建 Keyword Research
 export async function createKeywordResearch(
   input: CreateKeywordResearchInput
-): Promise<{ data: KeywordResearchItem | null; error: string | null }> {
-  if (!db) return { data: null, error: 'Database not initialized' };
+): Promise<{ researchId: string | null; error: string | null }> {
+  console.log('[Action] Attempting to create keyword research...');
 
   // TODO: Add Zod validation here if desired
   // Note: input type only guarantees fields like query, location?, language?, etc.
@@ -276,7 +353,8 @@ export async function createKeywordResearch(
     const now = Timestamp.now();
     // Construct the data to save explicitly.
     // Pull available fields from input, provide defaults for the rest.
-    const dataToSave = {
+    // Prepare the full data object expected by the DB service function
+    const dataToSave: Omit<KeywordResearchItem, 'id'> & { createdAt: Timestamp, updatedAt: Timestamp } = {
       query: input.query, // Mandatory from CreateKeywordResearchInput
       region: input.region ?? '', // Optional from input
       language: input.language ?? '', // Optional from input
@@ -285,55 +363,30 @@ export async function createKeywordResearch(
       isFavorite: input.isFavorite ?? false, // Optional from input
       tags: input.tags ?? [], // Optional from input
       // --- Fields NOT in CreateKeywordResearchInput, provide defaults ---
-      name: 'Untitled Research', // Default name
-      description: '', // Default description
       keywords: [], // Default empty array
       clusters: {}, // Default empty object
       personas: [], // CORRECT: Initialize as empty array
       // ---------------------------------------------------------------
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
 
-    const docRef = await db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .add(dataToSave);
-    const newResearchId = docRef.id;
-    // Add the generated id to the object before converting timestamps
-    const newResearchData = { ...dataToSave, id: newResearchId };
+    // Call the DB service function
+    const newResearchId = await createKeywordResearchEntry(dataToSave);
 
-    await revalidateKeywordResearchCache(); // Revalidate list only
+    console.log(`[Action] Successfully created research record with ID: ${newResearchId}`);
+    await revalidateKeywordResearchCache(); // Revalidate list cache
 
-    // Convert timestamps
-    const convertedData = convertTimestamps(newResearchData);
-
-    // Explicitly construct the return object to match KeywordResearchItem schema
-    const returnData: KeywordResearchItem = {
-      id: newResearchId,
-      query: convertedData.query,
-      createdAt: convertedData.createdAt as Date, // We know it's a Date here
-      updatedAt: convertedData.updatedAt as Date, // We know it's a Date here
-      searchEngine: convertedData.searchEngine,
-      region: convertedData.region,
-      language: convertedData.language,
-      device: convertedData.device,
-      isFavorite: convertedData.isFavorite,
-      tags: convertedData.tags,
-      keywords: convertedData.keywords as KeywordVolumeItem[], // Ensure keywords array is correct type
-      clusters: convertedData.clusters as Record<string, string[]>, // Ensure clusters object is correct type
-      personas: convertedData.personas as UserPersona[] // Ensure personas array is correct type
-      // Add any other fields from KeywordResearchItem if necessary
-    };
-
+    // Return only the ID and success status
     return {
-      data: returnData,
+      researchId: newResearchId,
       error: null
     };
   } catch (error) {
     console.error('創建 Keyword Research 失敗:', error);
     return {
-      data: null,
-      error: error instanceof Error ? error.message : 'Failed to create'
+      researchId: null,
+      error: error instanceof Error ? error.message : 'Failed to create research record'
     };
   }
 }
@@ -343,25 +396,34 @@ export async function updateKeywordResearch(
   researchId: string,
   input: UpdateKeywordResearchInput
 ): Promise<{ success: boolean; error?: string }> {
-  if (!db) return { success: false, error: 'Database not initialized' };
+  console.log(`[Action] Attempting to update research: ${researchId}`);
   if (!researchId) return { success: false, error: 'Research ID is required' };
-  if (Object.keys(input).length === 0)
-    return { success: false, error: 'No update data' };
+  if (Object.keys(input).length === 0) {
+    console.log(`[Action] Update called with empty input for ${researchId}, skipping DB call.`);
+    // Optionally still revalidate if timestamp update is desired implicitly
+    // await revalidateKeywordResearchCache(researchId);
+    // return { success: true }; // Or return error? Let's return error.
+    return { success: false, error: 'No update data provided' };
+  }
 
   try {
-    const dataToUpdate = { ...input, updatedAt: Timestamp.now() };
-    await db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .doc(researchId)
-      .update(dataToUpdate);
-    // Keep revalidation here for general updates like name/description
-    await revalidateKeywordResearchCache(researchId); // Use exported helper
-    return { success: true };
+    // Call the DB service function
+    const success = await updateKeywordResearchEntry(researchId, input);
+
+    if (success) {
+      console.log(`[Action] Successfully updated research: ${researchId}`);
+      await revalidateKeywordResearchCache(researchId); // Revalidate on success
+      return { success: true };
+    } else {
+      // This path might not be reached if DB function throws on failure
+      console.warn(`[Action] DB function reported failure updating ${researchId}, but did not throw.`);
+      return { success: false, error: 'Failed to update research record (DB)' };
+    }
   } catch (error) {
     console.error(`更新 (${researchId}) 失敗:`, error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update'
+      error: error instanceof Error ? error.message : 'Failed to update research record'
     };
   }
 }
@@ -373,19 +435,25 @@ export async function updateKeywordResearchClusters(
   researchId: string,
   input: UpdateClustersInput
 ): Promise<{ success: boolean; error?: string }> {
-  if (!db) return { success: false, error: 'Database not initialized' };
+  console.log(`[Action] Attempting to update clusters for: ${researchId}`);
   if (!researchId) return { success: false, error: 'Research ID is required' };
 
-  // TODO: Add validation for input.clusters structure if necessary
+  // --- Add Logging --- 
+  console.log(`[Action - Debug] Received clusters input for ${researchId}:`, JSON.stringify(input.clusters, null, 2));
+  // --- End Logging --- 
 
   try {
-    await db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .doc(researchId)
-      .update({ clusters: input.clusters, updatedAt: Timestamp.now() });
-    // Revalidation is now handled by the caller (requestClustering)
-    // await revalidateKeywordResearchCache(researchId);
-    return { success: true };
+    // Call the specific DB service function (already existed, check name)
+    const success = await updateKeywordResearchClustersDb(researchId, input.clusters);
+
+    if (success) {
+       console.log(`[Action] Successfully updated clusters for: ${researchId}`);
+       // Revalidation is handled by the caller (requestClustering)
+      return { success: true };
+    } else {
+      console.warn(`[Action] DB function failed to update clusters for ${researchId}.`);
+      return { success: false, error: 'Failed to update clusters (DB)' };
+    }
   } catch (error) {
     console.error(`更新 Clusters (${researchId}) 失敗:`, error);
     return {
@@ -401,27 +469,31 @@ export async function updateKeywordResearchKeywords(
   researchId: string,
   keywords: KeywordVolumeItem[] // Expects KeywordVolumeItem array now
 ): Promise<{ success: boolean; error?: string }> {
-  // Remove direct db access check if db is handled within the service function
-  // if (!db) return { success: false, error: 'Database not initialized' };
+  console.log(`[Action] Attempting to update keywords for: ${researchId}`);
   if (!researchId) return { success: false, error: 'Research ID is required' };
 
   // TODO: Add validation for the structure of each Keyword in the array using a Zod schema if needed
 
   try {
+    // Call the specific DB service function (already existed, check name: updateKeywordResearchResults)
     const success = await updateKeywordResearchResults(researchId, keywords);
     if (success) {
       // Revalidation should be handled by the calling action if needed
       // await revalidateKeywordResearchCache(researchId);
+      console.log(`[Action] Successfully updated keywords for: ${researchId}`);
+      // Revalidation might be needed here or handled by caller (processAndSave)
+      // Let's assume caller handles it for now.
       return { success: true };
     } else {
+      console.warn(`[Action] DB function failed to update keywords for ${researchId}.`);
       return {
         success: false,
-        error: 'Failed to update keywords via service function'
+        error: 'Failed to update keywords via DB service'
       };
     }
   } catch (error) {
     // Catch errors from the service function call itself
-    console.error(`更新 Keywords (${researchId}) 失敗 via service:`, error);
+    console.error(`[Action] Error updating keywords for ${researchId}:`, error);
     return {
       success: false,
       error:
@@ -515,8 +587,7 @@ export async function processAndSaveKeywordQuery(
   console.log('[Action: processAndSave] Received input:', input);
   
   // Destructure input, excluding useAlphabet and useSymbols
-  const { query, region, language, filterZeroVolume } = 
-    input;
+  const { query, region, language, filterZeroVolume } = input;
 
   // Hardcode useAlphabet and useSymbols
   const useAlphabet = false;
@@ -621,11 +692,11 @@ export async function processAndSaveKeywordQuery(
         region,
         language
       });
-      if (createResult.error || !createResult.data?.id)
+      if (createResult.error || !createResult.researchId)
         throw new Error(createResult.error || 'Failed to create empty record');
       return {
         success: true,
-        researchId: createResult.data.id,
+        researchId: createResult.researchId,
         error: 'No keywords found to process.'
       };
     }
@@ -759,63 +830,103 @@ export async function processAndSaveKeywordQuery(
     );
     // console.log("[Server Action] Final list to save:", finalKeywordsToSave);
 
-    // --- Step 9: Save ---
-    console.log('[Server Action] Starting Step 9: Save Results');
-    const researchInput: CreateKeywordResearchInput = {
-      query,
-      region,
-      language
-    };
-    const saveResult = await createKeywordResearch(researchInput);
+    // --- Step 9: Save (Refactored) ---
+    try { // Wrap final save steps in try/catch
 
-    if (saveResult.error || !saveResult.data?.id) {
-      throw new Error(
-        `Failed to create research record: ${
-          saveResult.error || 'Missing ID after creation'
-        }`
-      );
-    }
-    savedResearchId = saveResult.data.id;
-    console.log(`[Server Action] Research record created: ${savedResearchId}`);
+      // --- Step 9: Save (Refactored) ---
+      console.log('[Action: processAndSave] Starting Step 9: Save Results');
+      const now = Timestamp.now();
+      // Prepare data for the *new* DB creation function
+       const researchDataToCreate: Omit<KeywordResearchItem, 'id'> & { createdAt: Timestamp, updatedAt: Timestamp } = {
+        query: query,
+        region: region ?? '',
+        language: language ?? '',
+        // Add other required fields with defaults
+        searchEngine: 'google',
+        device: 'desktop',
+        isFavorite: false,
+        tags: [],
+        keywords: [], // Will be updated shortly
+        clusters: {},
+        personas: [],
+        createdAt: now,
+        updatedAt: now,
+      };
 
-    // Update record with the final keyword list
-    if (finalKeywordsToSave.length > 0) {
-      console.log(
-        `[Server Action] Updating record ${savedResearchId} with ${finalKeywordsToSave.length} final keywords...`
-      );
-      const updateKeywordsResult = await updateKeywordResearchKeywords(
-        savedResearchId,
-        finalKeywordsToSave
-      );
-      if (!updateKeywordsResult.success) {
-        console.error(
-          `[Server Action] Failed to update keywords for ${savedResearchId}:`,
-          updateKeywordsResult.error
+      // Call the NEW DB service function to create the entry
+      savedResearchId = await createKeywordResearchEntry(researchDataToCreate);
+      console.log(`[Action: processAndSave] Research record created via DB service: ${savedResearchId}`);
+
+      // Update record with the final keyword list
+      if (finalKeywordsToSave.length > 0) {
+        console.log(
+          `[Server Action] Updating record ${savedResearchId} with ${finalKeywordsToSave.length} final keywords...`
         );
-        // Decide if this should throw an error or just be logged
+        // Call the action which in turn calls the specific DB update function
+        const updateKeywordsResult = await updateKeywordResearchKeywords(
+          savedResearchId,
+          finalKeywordsToSave
+        );
+        if (!updateKeywordsResult.success) {
+          // Log error but don't necessarily fail the whole process?
+          console.error(
+            `[Action: processAndSave] Failed to update keywords for ${savedResearchId}:`,
+            updateKeywordsResult.error
+          );
+          // Maybe throw here if keywords are critical?
+          // throw new Error(`Failed to save keywords: ${updateKeywordsResult.error}`);
+        } else {
+          console.log(
+            `[Action: processAndSave] Successfully updated keywords for ${savedResearchId}`
+          );
+        }
       } else {
         console.log(
-          `[Server Action] Successfully updated keywords for ${savedResearchId}`
+          `[Server Action] No keywords to save for record ${savedResearchId}.`
         );
       }
-    } else {
-      console.log(
-        `[Server Action] No keywords to save for record ${savedResearchId}.`
-      );
-    }
 
-    // After saving keywords (or if none), revalidate the specific item cache
-    if (savedResearchId) {
-      await revalidateKeywordResearchCache(savedResearchId);
-      console.log(
-        `[Server Action] Revalidated cache for ${savedResearchId} after keyword processing.`
-      );
-    }
+      // After saving keywords (or if none), revalidate the specific item cache
+      if (savedResearchId) {
+        await revalidateKeywordResearchCache(savedResearchId);
+        console.log(
+          `[Action: processAndSave] Revalidated cache for ${savedResearchId} after processing.`
+        );
+      }
 
-    console.log(
-      `[Server Action] Process completed successfully for ${savedResearchId}.`
-    );
-    return { success: true, researchId: savedResearchId, error: null };
+      console.log(
+        `[Action: processAndSave] Process completed successfully for ${savedResearchId}.`
+      );
+      return { success: true, researchId: savedResearchId, error: null };
+
+    } catch (error: unknown) { // Catch errors during save/update/revalidate
+      console.error(
+        '[Action: processAndSave] Critical error during final save/update steps:',
+        error
+      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred during processing.';
+
+       // Attempt to revalidate cache even on failure if we have an ID
+      if (savedResearchId) {
+        try {
+          await revalidateKeywordResearchCache(savedResearchId);
+          console.log(
+            `[Action: processAndSave] Revalidated cache for ${savedResearchId} after process error.`
+          );
+        } catch (revalError) {
+          console.error(
+            `[Action: processAndSave] Failed to revalidate cache for ${savedResearchId} after process error:`,
+            revalError
+          );
+        }
+      }
+
+      // Return failure, include ID if creation succeeded but update/revalidate failed
+      return { success: false, researchId: savedResearchId, error: message };
+    }
   } catch (error: unknown) {
     console.error(
       '[Server Action] Critical error in processAndSaveKeywordQuery:',

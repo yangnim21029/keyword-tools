@@ -4,6 +4,7 @@ const themeFineTuneDataSchema = z.object({
     "name": z.string(),
     "tag": z.string(),
     "date": z.string(),
+    "data_set_description": z.string(),
     "data": z.array(z.object({
         "Bad": z.string(),
         "Good": z.string(),
@@ -21,6 +22,7 @@ const mediaSiteFineTuneDataSchema = z.object({
     "name": z.string(),
     "tag": z.string(),
     "date": z.string(),
+    "data_set_description": z.string(),
     "data": z.array(z.object({
         "Guide": z.string(),
     }))
@@ -31,6 +33,7 @@ const languageFineTuneDataSchema = z.object({
     "name": z.string(), 
     "tag": z.string(),
     "date": z.string(),
+    "data_set_description": z.string(),
     "data": z.array(z.object({
         "bad": z.string(),
         "good": z.string(),
@@ -46,27 +49,8 @@ export const THEME_FINE_TUNE_DATA = [{
     "name": "recipe-fine-tune",
     "tag": "recipe",
     "date": "2025-04-18",
+    "data_set_description": "這個資料集是針對食譜文章的優化，主要針對食譜文章的結構進行優化，包括食譜的結構、食譜的內容、食譜的格式等。",
     "data":[
-      {
-        "Bad": "安神助眠： 中醫認為失眠多夢多屬心腎不交或心神不寧，可透過燉湯食補調理。例如蓮子性平味甘，入心、脾、腎經，能補益心氣、健脾安神，對心腎不交所致的失眠有幫助，每晚睡前食用蓮子湯有助入睡 (春眠睡不著？百合蓮子湯助好眠 - 華人健康網)。百合亦入心經，清心除煩，寧心安神，可改善虛煩失眠症狀 (春眠睡不著？百合蓮子湯助好眠 - 華人健康網)。若搭配桂圓（龍眼肉）等食材，其富含的γ-胺基丁酸（GABA）有鎮靜神經作用，能讓亢奮的大腦細胞休息，提升睡眠品質 (《〖舒壓助眠〗杞子圓肉花膠湯》by 營養師 Cassie Li-DayDayCook)。",
-        "Good": "養生功效與注意事項：這款湯品能補益氣血、安神養心，同時潤燥止咳、健脾養胃，特別適合經常疲倦失眠、秋冬燥咳或胃口不佳者調理飲用。蓮子粉糯，百合軟爛而不失形，瘦肉嫩而不柴。由於湯中藥材多屬滋補平和，不燥不寒，一家大小皆可適量飲用。桂圓肉雖有安神甜味，但屬溫補，易上火體質者可減半或省略。此湯不加過多藥材，孕婦和小孩也可少量品嘗，但糖尿病者紅棗與桂圓宜適量食用以免血糖波動。",
-        "Reason": "",
-        "Guide": "",
-        "ErrorType": "",
-        "Process": "",
-        "Section": "功效",
-        "From": "燉湯食譜"
-      },
-      {
-        "Bad": "特色與注意事項 + 養生功效",
-        "Good": "養生功效與注意事項",
-        "Reason": "",
-        "Guide": "",
-        "ErrorType": "",
-        "Process": "",
-        "Section": "功效",
-        "From": "燉湯食譜"
-      },
       {
         "Bad": "延伸推薦：更多食譜推介",
         "Good": "食譜A+食譜B+食譜C",
@@ -736,6 +720,7 @@ export const MEDIA_SITE_FINE_TUNE_DATA = [{
     "name": "urban-life-fine-tune",
     "tag": "UL",
     "date": "2025-04-18",
+    "data_set_description": "這個資料集是針對都市生活文章的優化，主要針對都市生活文章的結構進行優化，包括都市生活文章的結構、都市生活文章的內容、都市生活文章的格式等。",
     "data": [
       {
         "Guide": "標題提到關鍵字，要【】"
@@ -749,6 +734,7 @@ export const LANGUAGE_FINE_TUNE_DATA = [
     "name": "language-fine-tune",
     "tag": "language",
     "date": "2025-04-18",
+    "data_set_description": "這個資料集是針對中文繁體的錯字進行優化，主要針對中文繁體的錯字進行優化，包括中文繁體的錯字、中文繁體的錯字、中文繁體的錯字等。",
     "data": [
       {
         "Error": "薏苡仁",
@@ -776,6 +762,7 @@ export const LANGUAGE_FINE_TUNE_DATA = [
     "name": "language-fine-tune-hk",
     "tag": "hk",
     "date": "2025-04-18",
+    "data_set_description": "這個資料集是針對香港繁體的錯字進行優化，主要針對香港繁體的錯字進行優化，包括香港繁體的錯字、香港繁體的錯字、香港繁體的錯字等。",
     "data": [
       {
         "HK": "粟玉",

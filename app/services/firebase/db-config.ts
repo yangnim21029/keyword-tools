@@ -66,7 +66,11 @@ if (!getApps().length) {
 
 // 只保留實際使用的集合
 export const COLLECTIONS = {
-  KEYWORD_RESEARCH: 'keyword-research',
+  // --- CRITICAL LESSON --- 
+  // ALWAYS use the EXACT collection name as it appears in Firestore.
+  // In this case, it MUST be 'keyword-research'. Using variations like 
+  // 'keywordResearch' WILL lead to errors or saving data in the wrong place.
+  KEYWORD_RESEARCH: 'keyword-research', 
   SERP: 'serp',
   SERP_ANALYSIS: 'serp-analysis'
 } as const;

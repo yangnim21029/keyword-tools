@@ -36,12 +36,19 @@ import KeywordVolumeVisualization, {
 import {
   type KeywordResearchItem,
   type KeywordVolumeItem,
-  type UserPersona
+  type UserPersona,
 } from '@/lib/schema';
 
+// Define ClusterItem locally based on expected structure from action
+type ClusterItem = {
+  clusterName: string;
+  keywords: KeywordVolumeItem[]; // Assuming keywords within cluster have volume info
+  totalVolume?: number;
+};
+
 interface KeywordResearchDetailProps {
-  initialResearchDetail: KeywordResearchItem & {
-    clusters?: Record<string, string[]> | null;
+  initialResearchDetail: Omit<KeywordResearchItem, 'clusters'> & {
+    clusters: ClusterItem[] | null;
     personas?: Partial<UserPersona>[];
     clusteringStatus?: string;
   };
@@ -168,26 +175,21 @@ export default function KeywordResearchDetail({
     }
   }, [currentPage, totalPages]);
 
-  // --- Memos for Clustering (Re-added) ---
-  const currentClusters = useMemo(() => {
-    const clusters = initialResearchDetail?.clusters || null;
-    if (clusters && typeof clusters === 'object') {
-      const validClusters: Record<string, string[]> = {};
-      let hasValidCluster = false;
-      Object.entries(clusters).forEach(([clusterName, keywords]) => {
-        if (clusterName && Array.isArray(keywords) && keywords.length > 0) {
-          validClusters[clusterName] = keywords;
-          hasValidCluster = true;
-        }
-      });
-      return hasValidCluster ? validClusters : null;
+  // --- Memos for Clustering (UPDATED) ---
+  const currentClustersArray = useMemo(() => {
+    // Directly use the clusters array if it's valid
+    const clusters = initialResearchDetail?.clusters;
+    if (clusters && Array.isArray(clusters) && clusters.length > 0) {
+        // Optional: Add validation/filtering for individual cluster items if needed
+        return clusters.filter(c => c && c.clusterName && Array.isArray(c.keywords));
     }
-    return null;
+    return null; // Return null if not a valid array or empty
   }, [initialResearchDetail?.clusters]);
 
-  const hasValidClusters = useMemo(
-    () => !!currentClusters && Object.keys(currentClusters).length > 0,
-    [currentClusters]
+  // Update hasValidClusters to check the array
+  const hasValidClusters = useMemo(() => 
+    !!currentClustersArray && currentClustersArray.length > 0,
+    [currentClustersArray]
   );
 
   // Note: Personas are passed down but not displayed/generated here currently
@@ -459,7 +461,7 @@ export default function KeywordResearchDetail({
 
         {/* Right Column (2/3 width): Clustering Results - Replace Card with Div */}
         <div className="md:col-span-2">
-          {hasValidClusters && currentClusters && (
+          {hasValidClusters && currentClustersArray && (
             <div className="h-full space-y-3">
               <div>
                 <h3 className="text-lg font-semibold leading-none tracking-tight flex items-center">
@@ -470,7 +472,7 @@ export default function KeywordResearchDetail({
                 </p>
               </div>
               <KeywordClustering
-                clusters={currentClusters}
+                clusters={currentClustersArray}
                 keywordVolumeMap={keywordVolumeRecord}
                 personasMap={personasMapForClustering}
                 researchRegion={initialResearchDetail.region || 'us'}

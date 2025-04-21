@@ -1,4 +1,10 @@
-import { type KeywordResearchItem, type KeywordVolumeItem } from '@/lib/schema'; // Use correct types
+import {
+  type CreateKeywordResearchInput,
+  type KeywordResearchItem,
+  type KeywordVolumeItem,
+  type UpdateKeywordResearchInput,
+  type UserPersona
+} from '@/lib/schema'; // Use correct types
 import { Timestamp } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from './db-config';
 
@@ -12,6 +18,48 @@ export type KeywordResearchSummaryItem = {
   language: string | undefined;
 };
 // --- End NEW Type ---
+
+// --- Helper to convert Timestamps (moved here for DB layer use) ---
+/**
+ * Converts Firestore Timestamps to Dates within a DB object.
+ * Returns the object with Date types for createdAt/updatedAt.
+ */
+function convertDbTimestamps<
+  T extends {
+    id?: string;
+    createdAt?: Timestamp | Date | string | number | unknown;
+    updatedAt?: Timestamp | Date | string | number | unknown;
+  } & Record<string, unknown>
+>(
+  data: T
+): Omit<T, 'createdAt' | 'updatedAt'> & { createdAt?: Date; updatedAt?: Date } {
+  const result = { ...data } as any;
+
+  if (data.createdAt instanceof Timestamp) {
+    result.createdAt = data.createdAt.toDate();
+  } else if (data.createdAt && !(data.createdAt instanceof Date)) {
+    try {
+      result.createdAt = new Date(data.createdAt as any);
+      if (isNaN(result.createdAt.getTime())) delete result.createdAt;
+    } catch { delete result.createdAt; }
+  } else if (!(data.createdAt instanceof Date)) {
+     delete result.createdAt;
+  }
+
+
+  if (data.updatedAt instanceof Timestamp) {
+    result.updatedAt = data.updatedAt.toDate();
+  } else if (data.updatedAt && !(data.updatedAt instanceof Date)) {
+     try {
+      result.updatedAt = new Date(data.updatedAt as any);
+      if (isNaN(result.updatedAt.getTime())) delete result.updatedAt;
+    } catch { delete result.updatedAt; }
+  } else if (!(data.updatedAt instanceof Date)) {
+     delete result.updatedAt;
+  }
+
+  return result;
+}
 
 /**
  * 保存 Keyword Research 到 Firebase
@@ -168,8 +216,8 @@ export async function getKeywordResearchDetail(
       createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
       updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
       keywords: data.keywords || [],
-      clusters: data.clusters || null,
-      personas: data.personas || null,
+      clusters: data.clusters || null, // <-- Return raw clusters from DB
+      personas: data.personas || null, 
       searchEngine: data.searchEngine,
       region: data.region,
       language: data.language,
@@ -223,6 +271,10 @@ export async function updateKeywordResearchClusters(
     console.error('Error updating clusters: clusters data is invalid.');
     return false;
   }
+
+  // --- Add Logging --- 
+  console.log(`[DB - Debug] Updating Firestore for ${researchId} with clusters:`, JSON.stringify(clusters, null, 2));
+  // --- End Logging ---
 
   try {
     const researchRef = db
@@ -288,19 +340,18 @@ export async function updateKeywordResearchResults(
  */
 export async function updateKeywordResearchPersonas(
   researchId: string,
-  personas: Record<string, string> // Parameter accepts the map
+  personas: UserPersona[]
 ): Promise<boolean> {
   if (!db) {
-    console.error('Database instance (db) is not initialized.');
+    console.error('[DB] Database instance (db) is not initialized.');
     return false;
   }
   if (!researchId) {
-    console.error('Error updating user personas: researchId is missing.'); // Log msg updated
+    console.error('Error updating user personas: researchId is missing.');
     return false;
   }
-  if (typeof personas !== 'object' || personas === null) {
-    // Check if personas is an object
-    console.error('Error updating user personas: personas data is invalid.'); // Log msg updated
+  if (!personas || !Array.isArray(personas) || personas.length === 0) {
+    console.error('Error updating user personas: personas data is invalid.');
     return false;
   }
 
@@ -309,18 +360,172 @@ export async function updateKeywordResearchPersonas(
       .collection(COLLECTIONS.KEYWORD_RESEARCH)
       .doc(researchId);
     await researchRef.update({
-      personas: personas, // Save the entire map to a field named 'personas'
+      personas: personas,
       updatedAt: Timestamp.now()
     });
     console.log(
-      `Successfully updated personas for research item: ${researchId}`
-    ); // Log msg updated
+      `[DB] Updating personas for research item: ${researchId}`
+    );
     return true;
   } catch (error) {
     console.error(
       `Error updating personas for research item ${researchId}:`,
       error
-    ); // Log msg updated
+    );
     return false;
   }
+}
+
+// --- NEW: Create Keyword Research Entry ---
+/**
+ * Creates a new keyword research document in Firestore.
+ * @param dataToSave The data object adhering to Firestore structure (uses Timestamps).
+ * @returns The ID of the newly created document.
+ * @throws Throws error if creation fails.
+ */
+export async function createKeywordResearchEntry(
+  dataToSave: Omit<KeywordResearchItem, 'id' | 'createdAt' | 'updatedAt'> & {
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+  }
+): Promise<string> {
+  if (!db) throw new Error('Database not initialized');
+  console.log('[DB] Creating new keyword research entry...');
+  try {
+    // Ensure all fields expected by Firestore are present, even if empty/default
+    // The input `dataToSave` should now fully conform to KeywordResearchItem structure (minus id, with Timestamps)
+    const fullDataToSave = {
+        ...dataToSave,
+        // Ensure potentially undefined array/object fields have defaults if needed by Firestore
+        keywords: dataToSave.keywords || [],
+        clusters: dataToSave.clusters || {},
+        personas: dataToSave.personas || [],
+        tags: dataToSave.tags || [],
+    };
+    const docRef = await db
+      .collection(COLLECTIONS.KEYWORD_RESEARCH)
+      // Firestore expects a plain object, ensure dataToSave matches
+      .add(fullDataToSave); // Use the potentially defaulted object
+    console.log(`[DB] Successfully created entry with ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error('[DB] Error creating keyword research entry:', error);
+    throw new Error(`Failed to create keyword research entry: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// --- NEW: Update Keyword Research Entry (General) ---
+/**
+ * Updates an existing keyword research document in Firestore.
+ * @param researchId The ID of the document to update.
+ * @param input The fields to update.
+ * @returns True if update was successful.
+ * @throws Throws error if update fails.
+ */
+export async function updateKeywordResearchEntry(
+  researchId: string,
+  input: UpdateKeywordResearchInput
+): Promise<boolean> {
+  if (!db) throw new Error('Database not initialized');
+  if (!researchId) throw new Error('Research ID is required for update');
+
+  console.log(`[DB] Updating keyword research entry: ${researchId}`);
+  try {
+    const dataToUpdate = { ...input, updatedAt: Timestamp.now() };
+    await db
+      .collection(COLLECTIONS.KEYWORD_RESEARCH)
+      .doc(researchId)
+      .update(dataToUpdate);
+    console.log(`[DB] Successfully updated entry: ${researchId}`);
+    return true;
+  } catch (error) {
+    console.error(`[DB] Error updating keyword research entry ${researchId}:`, error);
+     throw new Error(`Failed to update keyword research entry ${researchId}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// --- NEW: Delete Keyword Research Entry ---
+/**
+ * Deletes a specific keyword research document from Firestore.
+ * @param researchId The ID of the document to delete.
+ * @returns True if deletion was successful.
+ * @throws Throws error if deletion fails.
+ */
+export async function deleteKeywordResearchEntry(
+  researchId: string
+): Promise<boolean> {
+  if (!db) throw new Error('Database not initialized');
+  if (!researchId) throw new Error('Research ID is required for deletion');
+
+  console.log(`[DB] Deleting keyword research entry: ${researchId}`);
+  try {
+    await db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId).delete();
+    console.log(`[DB] Successfully deleted entry: ${researchId}`);
+    return true;
+  } catch (error) {
+    console.error(`[DB] Error deleting keyword research entry ${researchId}:`, error);
+    throw new Error(`Failed to delete keyword research entry ${researchId}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// --- NEW: Find and Remove Duplicate Entries ---
+/**
+ * Finds and removes duplicate keyword research entries based on query, language, and region.
+ * Keeps the newest entry for each unique combination.
+ * @returns The number of entries removed.
+ * @throws Throws error if the process fails.
+ */
+export async function findAndRemoveDuplicateEntries(): Promise<number> {
+   if (!db) throw new Error('Database not initialized');
+   console.log('[DB] Starting duplicate removal process...');
+
+   let removedCount = 0;
+   try {
+     const snapshot = await db
+       .collection(COLLECTIONS.KEYWORD_RESEARCH)
+       .orderBy('createdAt', 'desc') // Get newest first
+       .get();
+
+     const seen = new Map<string, string>(); // Key: "query|lang|region", Value: docId
+     let batch = db.batch();
+     let batchSize = 0;
+     const MAX_BATCH_SIZE = 400;
+
+     console.log(`[DB] Found ${snapshot.size} total entries to check for duplicates.`);
+
+     for (const doc of snapshot.docs) {
+       const data = doc.data() as Partial<Pick<KeywordResearchItem, 'query' | 'language' | 'region'>>;
+       const query = data.query || 'unknown_query';
+       const language = data.language || 'unknown_language';
+       const region = data.region || 'unknown_region';
+       const key = `${query}|${language}|${region}`;
+
+       if (seen.has(key)) {
+         batch.delete(doc.ref);
+         removedCount++;
+         batchSize++;
+       } else {
+         seen.set(key, doc.id);
+       }
+
+       if (batchSize >= MAX_BATCH_SIZE) {
+         console.log(`[DB] Committing batch of ${batchSize} deletions...`);
+         await batch.commit();
+         batch = db.batch();
+         batchSize = 0;
+       }
+     }
+
+     if (batchSize > 0) {
+       console.log(`[DB] Committing final batch of ${batchSize} deletions...`);
+       await batch.commit();
+     }
+
+     console.log(`[DB] Duplicate removal completed. Total removed: ${removedCount}`);
+     return removedCount;
+
+   } catch (error) {
+     console.error('[DB] Error removing duplicate entries:', error);
+     throw new Error(`Failed to remove duplicate entries: ${error instanceof Error ? error.message : String(error)}`);
+   }
 }
