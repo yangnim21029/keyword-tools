@@ -92,19 +92,29 @@ export async function revalidateKeywordResearchAction(
 const getCachedKeywordResearchSummaryList = unstable_cache(
   async (
     userId?: string,
-    filters?: KeywordResearchFilter, // Keep filters param for future use
+    filters?: KeywordResearchFilter,
     limit = 50
   ): Promise<KeywordResearchSummaryItem[]> => {
     console.log(
-      `[Action Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}`
+      `[Action Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(filters)}`
     );
     // Directly call the DB function
-    const summaryList = await getKeywordResearchSummaryList(limit, userId);
+    const summaryList = await getKeywordResearchSummaryList(
+      limit,
+      userId,
+      filters?.language,
+      filters?.region
+    );
     return summaryList;
   },
   // Base key parts. Arguments (userId, filters, limit) differentiate cache entries.
-  ['keywordResearchSummaryList'], // Use a new base key
-  { tags: [KEYWORD_RESEARCH_TAG] } // Use the same tag for revalidation
+  ['keywordResearchSummaryList'], // Base key
+  {
+    // Use the same tag for general list revalidation
+    tags: [KEYWORD_RESEARCH_TAG],
+    // Add revalidation logic based on filters if needed later,
+    // but for now, differentiating the cache key by filters argument is sufficient.
+  }
 );
 
 // --- NEW: Action to fetch the summary list (replaces old fetchKeywordResearchList) ---

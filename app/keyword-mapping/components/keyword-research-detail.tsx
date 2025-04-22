@@ -25,7 +25,7 @@ import {
   TableRow
 } from '@/components/ui/table';
 import { formatVolume } from '@/lib/utils';
-import { Clock, Globe, Languages, ListTree, Tag } from 'lucide-react';
+import { ListTree } from 'lucide-react';
 
 // Internal Components
 import KeywordClustering from './keyword-clustering';
@@ -51,8 +51,9 @@ export default function KeywordResearchDetail({
 
   // --- Volume Filter State ---
   const [volumeFilter, setVolumeFilter] = useState<VolumeFilterType>('all');
-  const [highVolumeThreshold] = useState(10000);
-  const [mediumVolumeThreshold] = useState(1000);
+  // Define thresholds consistent with the visualization component
+  const HIGH_VOLUME_THRESHOLD = 10000;
+  const MEDIUM_VOLUME_THRESHOLD = 500;
 
   // Local State
   const [isRequestingClustering, setIsRequestingClustering] = useState(false);
@@ -82,37 +83,23 @@ export default function KeywordResearchDetail({
       const volume = kw.searchVolume;
       switch (volumeFilter) {
         case 'high':
-          return (
-            volume !== null &&
-            volume !== undefined &&
-            volume >= highVolumeThreshold
-          );
+          // Handle null/undefined as 0 for filtering
+          return (volume ?? 0) >= HIGH_VOLUME_THRESHOLD;
         case 'medium':
           return (
-            volume !== null &&
-            volume !== undefined &&
-            volume >= mediumVolumeThreshold &&
-            volume < highVolumeThreshold
+            (volume ?? 0) >= MEDIUM_VOLUME_THRESHOLD &&
+            (volume ?? 0) < HIGH_VOLUME_THRESHOLD
           );
         case 'low':
           return (
-            volume !== null &&
-            volume !== undefined &&
-            volume > 0 &&
-            volume < mediumVolumeThreshold
+            (volume ?? 0) > 0 &&
+            (volume ?? 0) < MEDIUM_VOLUME_THRESHOLD
           );
-        case 'na':
-          return volume === null || volume === undefined;
         default:
           return true;
       }
     });
-  }, [
-    sortedUniqueKeywords,
-    volumeFilter,
-    highVolumeThreshold,
-    mediumVolumeThreshold
-  ]);
+  }, [sortedUniqueKeywords, volumeFilter]); // Removed thresholds from dependencies
 
   // --- Pagination Calculation (based on filteredKeywords) ---
   const totalFilteredKeywords = filteredKeywords.length;
@@ -274,32 +261,7 @@ export default function KeywordResearchDetail({
         </div>
       )}
       {/* Section 1: Metadata and Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        {/* Metadata - Use keywordResearchObject */}
-        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-          <div className="flex items-center">
-            <Globe className="mr-1.5 h-4 w-4" />
-            地區: {keywordResearchObject.region || '未指定'}
-          </div>
-          <div className="flex items-center">
-            <Languages className="mr-1.5 h-4 w-4" />
-            語言: {keywordResearchObject.language || '未指定'}
-          </div>
-          <div className="flex items-center">
-            <Clock className="mr-1.5 h-4 w-4" />
-            最後更新: {formatDateTime(keywordResearchObject.updatedAt)}
-          </div>
-          {keywordResearchObject.tags && keywordResearchObject.tags.length > 0 && (
-              <div className="flex items-center gap-1">
-                <Tag className="mr-1 h-4 w-4" />
-                {keywordResearchObject.tags.map((tag: string) => ( 
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-        </div>
+      <div className="flex items-center justify-end mb-6">
         {/* Action Button */}
         <LoadingButton
           onClick={handleRequestClustering}
@@ -314,8 +276,6 @@ export default function KeywordResearchDetail({
       {/* Section 2: Volume Visualization */}
       <KeywordVolumeVisualization
         keywords={sortedUniqueKeywords}
-        highVolumeThreshold={highVolumeThreshold}
-        mediumVolumeThreshold={mediumVolumeThreshold}
         currentFilter={volumeFilter}
         onFilterChange={handleVolumeFilterChange}
       />
@@ -423,32 +383,4 @@ export default function KeywordResearchDetail({
       {/* End Grid */}
     </div>
   );
-}
-
-// Helper function to format date/time
-function formatDateTime(
-  date: Date | { seconds: number; nanoseconds: number } | string | undefined
-): string {
-  if (!date) return 'N/A';
-  let dateObj: Date;
-  if (
-    typeof date === 'object' &&
-    date !== null &&
-    'seconds' in date &&
-    'nanoseconds' in date
-  ) {
-    dateObj = new Date(date.seconds * 1000 + date.nanoseconds / 1000000);
-  } else if (date instanceof Date) {
-    dateObj = date;
-  } else {
-    try {
-      dateObj = new Date(date);
-      if (isNaN(dateObj.getTime())) {
-        return 'Invalid Date';
-      }
-    } catch (error) {
-      return 'Invalid Date Format';
-    }
-  }
-  return dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 }

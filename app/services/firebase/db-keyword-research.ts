@@ -122,14 +122,16 @@ export async function saveKeywordResearch(
  */
 export async function getKeywordResearchSummaryList(
   limit: number = 50,
-  userId?: string
+  userId?: string,
+  language?: string,
+  region?: string
 ): Promise<KeywordResearchSummaryItem[]> {
   if (!db) return [];
 
   console.log(
     `[DB] Fetching keyword research summary list (limit: ${limit}, userId: ${
       userId || 'N/A'
-    })`
+    }, lang: ${language || 'N/A'}, region: ${region || 'N/A'})`
   );
 
   try {
@@ -141,6 +143,16 @@ export async function getKeywordResearchSummaryList(
     // Optional: Filter by userId if provided
     if (userId) {
       queryBuilder = queryBuilder.where('userId', '==', userId);
+    }
+
+    // Optional: Filter by language if provided
+    if (language) {
+      queryBuilder = queryBuilder.where('language', '==', language);
+    }
+
+    // Optional: Filter by region if provided
+    if (region) {
+      queryBuilder = queryBuilder.where('region', '==', region);
     }
 
     // Fetch the full documents including the 'keywords' field

@@ -3,17 +3,16 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 
 import { deleteKeywordResearch } from '@/app/actions';
+import { MEDIASITE_DATA } from '@/app/global-config'; // Import media site data
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn, formatVolume } from '@/lib/utils';
 import {
   Clock,
-  Globe,
-  Languages,
   RefreshCw,
   Sigma,
   Trash2,
@@ -21,7 +20,6 @@ import {
   AlertTriangle,
   CalendarDays
 } from 'lucide-react';
-import { useState } from 'react';
 import { toast } from 'sonner';
 
 // 定義常量以提高可維護性
@@ -81,6 +79,18 @@ export default function KeywordResearchList({
   initialResearches = []
 }: KeywordResearchListProps) {
   const router = useRouter();
+
+  // Filter media sites based on language and region
+  const getMatchingSites = useCallback((language?: string, region?: string) => {
+    // Filter only by region now
+    if (!region) return [];
+    // Convert incoming region to lowercase for case-insensitive comparison
+    const lowerCaseRegion = region.toLowerCase();
+    console.log(`[getMatchingSites] Called with language: ${language}, region: ${region} (matching as ${lowerCaseRegion})`);
+    return MEDIASITE_DATA.filter(
+      site => site.region?.toLowerCase() === lowerCaseRegion
+    );
+  }, []);
 
   // --- 本地狀態只保留刪除中的 ID ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -197,36 +207,15 @@ export default function KeywordResearchList({
                         key={research.id}
                         href={`/keyword-mapping/${research.id}`}
                         className={cn(
-                          `group flex items-center justify-between py-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
+                          `relative group flex items-center justify-between py-2 pb-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
                           'cursor-pointer hover:bg-accent/50'
                         )}
                       >
                         {/* Left Column (Completed - Simplified Metadata) */}
                         <div className="min-w-0 flex-1 overflow-hidden mr-4">
-                          <h3 className="text-sm font-medium truncate mb-1"> {/* Adjusted margin */}
+                          <h3 className="text-sm font-medium truncate">
                             {research.query}
                           </h3>
-                          {/* Metadata Row - ONLY Badges */}
-                          <div className="flex items-center gap-x-2 text-xs">
-                            {/* REMOVED Timestamp Span 
-                            <span className="flex items-center text-muted-foreground" title={formatDateTime(research.createdAt)}>
-                              <Clock size={12} className="mr-1 flex-shrink-0" />
-                              {formatDateTime(research.createdAt)}
-                            </span>
-                            */}
-                            {research.region && (
-                              <Badge variant="outline" className="font-normal py-0.5 px-1.5 text-xs">
-                                <Globe size={11} className="mr-1" />{research.region}
-                              </Badge>
-                            )}
-                            {research.language && (
-                              <Badge variant="outline" className="font-normal py-0.5 px-1.5 text-xs">
-                                <Languages size={11} className="mr-1" />{research.language}
-                              </Badge>
-                            )}
-                             {/* Add a non-breaking space if no badges to prevent height collapse? Or adjust h3 margin */} 
-                            {(!research.region && !research.language) && <>&nbsp;</>}
-                          </div>
                         </div>
                         {/* Right Column (Completed) */}
                         <div className="flex items-center flex-shrink-0 space-x-2">
@@ -256,9 +245,40 @@ export default function KeywordResearchList({
                             )}
                            </Button>
                         </div>
+
+                        {/* Hover - Applicable Media Site Icons */} 
+                        <div className="absolute top-1 right-10 z-10 flex items-center gap-1.5 p-1 rounded-md bg-background/80 shadow-sm border border-border/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+                          {(() => { // Use IIFE to calculate and log before mapping
+                            const matchingSites = getMatchingSites(research.language, research.region);
+                            // Log the region and the number of sites found for this item
+                            console.log(`[Icon Match Debug] Research ID: ${research.id}, Region: ${research.region}, Matched Sites: ${matchingSites.length}`);
+                            
+                            // Return the elements to render
+                            return (
+                              <>
+                                {matchingSites.map(site => (
+                                  <img
+                                    key={site.name}
+                                    src={`https://www.google.com/s2/favicons?sz=16&domain_url=${site.url}`}
+                                    alt={`${site.name} icon`}
+                                    title={site.title} // Show full title on hover
+                                    width={16}
+                                    height={16}
+                                    className="rounded-sm"
+                                  />
+                                ))}
+                                {/* Show message if no sites match */} 
+                                {matchingSites.length === 0 && (
+                                  <span className="text-xs text-muted-foreground italic px-1">No matching sites</span> 
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+
                       </Link>
                     ) : (
-                       // --- Pending/Failed Item Layout (Unchanged from previous step) --- 
+                       // --- Pending/Failed Item Layout --- 
                       <div
                         key={research.id}
                         className={cn(
@@ -280,7 +300,7 @@ export default function KeywordResearchList({
                             </span>
                             {isPending && (
                               <Badge variant="secondary" className="font-normal py-0.5 px-1.5 text-xs border border-primary/20">
-                                <Loader2 size={11} className="mr-1 animate-spin" />處理中...
+                                <Loader2 size={11} className="mr-1 animate-spin" />處 理 中...
                               </Badge>
                             )}
                             {isFailed && (
@@ -297,16 +317,16 @@ export default function KeywordResearchList({
                           <div className="flex items-center text-sm font-medium text-transparent">
                             <Sigma size={13} className="mr-0.5" />0
                            </div>
-                           <Button /* ... disabled delete button props ... */ 
-                             variant="ghost"
-                             size="icon"
-                             className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground/50 transition-opacity duration-150", "cursor-not-allowed")}
-                             onClick={e => {e.stopPropagation(); e.preventDefault();}}
-                             disabled={true} 
-                             aria-label={`刪除研究記錄: ${research.query}`}
-                           >
-                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50" />
-                           </Button>
+                           <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground/50 transition-opacity duration-150", "cursor-not-allowed")}
+                              onClick={e => {e.stopPropagation(); e.preventDefault();}}
+                              disabled={true} 
+                              aria-label={`刪除研究記錄: ${research.query}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50" />
+                            </Button>
                         </div>
                       </div>
                     )

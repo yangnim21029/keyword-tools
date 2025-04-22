@@ -12,58 +12,63 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Search } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useCallback, useEffect, useState, startTransition } from 'react';
 import { toast } from 'sonner';
 
 export default function KeywordSearchForm() {
   // --- Hooks ---
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   // --- Local State ---
   const [queryInput, setQueryInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Add local state for region and language selection
-  const [selectedRegion, setSelectedRegion] = useState<string>(
-    Object.values(REGIONS)[0] || ''
-  ); // Default to first region value
-  const [selectedLanguage, setSelectedLanguage] = useState<string>(
-    Object.keys(LANGUAGES)[0] || ''
-  ); // Default to first language code
+  const [selectedRegion, setSelectedRegion] = useState<string>(() => {
+    return searchParams.get('region') || Object.values(REGIONS)[0] || '';
+  });
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
+    return searchParams.get('language') || Object.keys(LANGUAGES)[0] || '';
+  });
 
   // --- Logic ---
 
-  // Effect to initialize input from URL parameter
   useEffect(() => {
     const initialQueryFromUrl = searchParams.get('q');
-    // Only set if local state is empty and param exists
     if (initialQueryFromUrl && !queryInput) {
       setQueryInput(decodeURIComponent(initialQueryFromUrl));
     }
-    // Dependency array includes queryInput to prevent overriding user input
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, queryInput]); // Ensure queryInput is a dependency if we only set when empty
 
-  // Function to handle search submission - Refactored
+    const initialRegion = searchParams.get('region');
+    if (initialRegion && initialRegion !== selectedRegion) {
+      setSelectedRegion(initialRegion);
+    }
+
+    const initialLanguage = searchParams.get('language');
+    if (initialLanguage && initialLanguage !== selectedLanguage) {
+      setSelectedLanguage(initialLanguage);
+    }
+
+  }, [searchParams]);
+
   const triggerQuery = useCallback(async () => {
-    if (!queryInput.trim() || isLoading) return; // Prevent double submission
+    if (!queryInput.trim() || isLoading) return;
 
     setIsLoading(true);
     setLoadingMessage('正在處理請求...');
-    setError(null); // Clear previous errors
+    setError(null);
 
     try {
-      // Pass hardcoded values for settings now that store is removed
       const result = await processAndSaveKeywordQuery({
         query: queryInput,
         region: selectedRegion,
         language: selectedLanguage,
-        useAlphabet: false, // Hardcoded
-        useSymbols: true,  // Hardcoded
-        filterZeroVolume: false // Hardcoded (previous default)
+        useAlphabet: false,
+        useSymbols: true,
+        filterZeroVolume: false
       });
 
       if (result.success && result.researchId) {
@@ -97,7 +102,33 @@ export default function KeywordSearchForm() {
     isLoading,
   ]);
 
-  // Keyboard shortcut (Enter in input field)
+  const updateSearchParams = (key: string, value: string) => {
+    const current = new URLSearchParams(searchParams.toString());
+
+    if (value) {
+      current.set(key, value);
+    } else {
+      current.delete(key);
+    }
+
+    const search = current.toString();
+    const query = search ? `?${search}` : '';
+
+    startTransition(() => {
+      router.push(`${pathname}${query}`);
+    });
+  };
+
+  const handleRegionChange = (value: string) => {
+    setSelectedRegion(value);
+    updateSearchParams('region', value);
+  };
+
+  const handleLanguageChange = (value: string) => {
+    setSelectedLanguage(value);
+    updateSearchParams('language', value);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !isLoading) {
       triggerQuery();
@@ -143,12 +174,11 @@ export default function KeywordSearchForm() {
         {/* Region and Language Selection - Updated */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
           {/* Region Select */}
-          <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+          <Select value={selectedRegion} onValueChange={handleRegionChange}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="選擇地區" />
             </SelectTrigger>
             <SelectContent>
-              {/* Use REGIONS constant */}
               {Object.entries(REGIONS).map(([name, code]) => (
                 <SelectItem key={code} value={code}>
                   {name} ({code})
@@ -158,12 +188,11 @@ export default function KeywordSearchForm() {
           </Select>
 
           {/* Language Select */}
-          <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+          <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="選擇語言" />
             </SelectTrigger>
             <SelectContent>
-              {/* Use LANGUAGES constant */}
               {Object.entries(LANGUAGES).map(([code, name]) => (
                 <SelectItem key={code} value={code}>
                   {name} ({code})
