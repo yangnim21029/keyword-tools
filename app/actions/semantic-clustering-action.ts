@@ -8,11 +8,16 @@ import { z } from 'zod';
 // Note: Ensure these are exported from keyword-research.ts
 import {
   fetchKeywordResearchDetail,
-  revalidateKeywordResearchCache, // Renamed from revalidateResearch
+  revalidateKeywordResearchAction,
   updateKeywordResearchClusters
 } from '@/app/actions/keyword-research-action'; // Adjust path if needed
+import { 
+  // Import the NEW DB service function
+  updateKeywordResearchClustersWithVolume, 
+  getKeywordResearchDetail // Import for getting raw data
+} from '@/app/services/firebase/db-keyword-research'; 
 import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
-import type { KeywordVolumeItem } from '@/lib/schema';
+import type { KeywordVolumeItem, ClusterItem, KeywordResearchItem } from '@/app/services/firebase/types';
 
 // Input for the main AI function
 const aiInputSchema = z.object({
@@ -23,11 +28,11 @@ const aiInputSchema = z.object({
     .optional() // Updated model list
 });
 
-// Schema for the final JSON output (clusters)
-const clusterOutputSchema = z.object({
+// Schema for the RAW AI output (Record<string, string[]>)
+const rawClusterOutputSchema = z.object({
   clusters: z
     .record(z.string(), z.array(z.string()))
-    .describe('主題名稱映射到關鍵字數組的分群結果')
+    .describe('Raw AI output: cluster name mapped to keyword text array')
 });
 
 // --- Prompts ---
@@ -117,12 +122,11 @@ Respond ONLY with the valid JSON object.`;
 
 /**
  * Uses a two-step AI process: generate text (Markdown), then convert text to JSON.
- * @param input Contains keywords and optional model.
- * @returns The validated JSON clustering result.
+ * Returns the RAW cluster definition (Record<string, string[]>).
  */
 export async function performSemanticClusteringAI(
   input: z.infer<typeof aiInputSchema>
-): Promise<z.infer<typeof clusterOutputSchema>> {
+): Promise<z.infer<typeof rawClusterOutputSchema>> {
   try {
     const validatedInput = aiInputSchema.parse(input); // Use parse, throws on error
     const { keywords, model } = validatedInput;
@@ -168,23 +172,20 @@ export async function performSemanticClusteringAI(
     console.log(
       `[Server Action] Clustering Step 2: Requesting JSON Conversion. Model=${openaiModel}`
     );
-    const conversionPrompt = getClusteringConversionPrompt(trimmedMarkdown); // Use trimmed markdown
+    const conversionPrompt = getClusteringConversionPrompt(trimmedMarkdown); 
     console.log('[AI Call] Calling AI for Clustering JSON Conversion...');
 
-    // --- Add explicit mode and use refined prompt ---
     const { object: jsonResult } = await generateObject({
       model: openai(openaiModel),
-      schema: clusterOutputSchema, // Use the defined Zod schema
+      schema: rawClusterOutputSchema, // Use the RAW output schema here
       prompt: conversionPrompt,
-      mode: 'json' // Explicitly set mode to 'json'
+      mode: 'json' 
     });
 
     console.log(
-      '[Server Action] Clustering Step 2: Received and validated JSON result.'
+      '[Server Action] Clustering Step 2: Received and validated RAW JSON result.'
     );
-
-    // The result from generateObject is already validated against the schema
-    return jsonResult;
+    return jsonResult; // Return the raw { clusters: Record<string, string[]> }
   } catch (error) {
     console.error('[Server Action] Semantic Clustering AI Error:', error);
     if (error instanceof z.ZodError) {
@@ -239,104 +240,128 @@ async function _prepareKeywordsForClustering(
   }
 
   try {
-    // Check document existence first (optional but good practice)
-    const docRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
+    // Use non-null assertion db! since we checked above
+    const docRef = db!.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
     const docSnap = await docRef.get();
     if (!docSnap.exists) {
       console.warn(`[Clustering Prep] Document not found: ${researchId}`);
-      return {
-        success: false,
-        keywords: null,
-        error: 'Research item not found.'
-      };
+      return { success: false, keywords: null, error: 'Research document not found' };
     }
 
-    // Fetch details (handles cache internally)
-    console.log(`[Clustering Prep] Fetching keywords for ${researchId}`);
-    const researchDetail = await fetchKeywordResearchDetail(researchId);
-    if (
-      !researchDetail ||
-      !researchDetail.keywords ||
-      researchDetail.keywords.length === 0
-    ) {
-      console.log(`[Clustering Prep] No keywords found for ${researchId}.`);
-      // Successfully checked, but no keywords found. Return empty array.
-      return { success: true, keywords: [] };
+    const data = docSnap.data() as KeywordResearchItem; // Assuming type
+    if (!data || !Array.isArray(data.keywords) || data.keywords.length === 0) {
+      console.warn(`[Clustering Prep] No keywords found in document: ${researchId}`);
+      return { success: false, keywords: null, error: 'No keywords found in research data' };
     }
 
-    // Prepare final keyword texts directly from fetched data
-    // Filter out any potential null/undefined texts just in case
-    const keywordTexts = (researchDetail.keywords as KeywordVolumeItem[])
-      .map(kw => kw.text)
-      .filter((text): text is string => !!text);
+    // Extract keyword texts
+    const keywordTexts: string[] = data.keywords
+                                    .map((kw: KeywordVolumeItem) => kw.text)
+                                    .filter((text): text is string => !!text); // Filter out null/undefined/empty strings
 
-    console.log(
-      `[Clustering Prep] Found ${keywordTexts.length} keywords for ${researchId}.`
-    );
+    if (keywordTexts.length === 0) {
+        console.warn(`[Clustering Prep] Keywords array exists but contains no valid text for ${researchId}`);
+        return { success: false, keywords: null, error: 'No valid keyword text found' };
+    }
+
+    // console.log(`[Clustering Prep] Prepared ${keywordTexts.length} keywords for ${researchId}`);
     return { success: true, keywords: keywordTexts };
+
   } catch (error) {
-    console.error(`[Clustering Prep] Failed for ${researchId}:`, error);
-    const message =
-      error instanceof Error ? error.message : 'Keyword preparation failed.';
-    return { success: false, keywords: null, error: message };
+    console.error(`[Clustering Prep] Error preparing keywords for ${researchId}:`, error);
+    return { success: false, keywords: null, error: error instanceof Error ? error.message : 'Failed to prepare keywords' };
   }
 }
 
-// --- Helper Function: Save Results & Revalidate ---
+// --- Helper Function: Save Clustering Results with Volume ---
 /**
- * Saves the clustering results to the database and revalidates the cache.
- * Handles the case where no clusters were generated.
+ * Calculates volumes for clusters and saves them to the `clustersWithVolume` field.
  * @param researchId The ID of the Keyword Research item.
- * @param clusters The generated clusters.
- * @returns Object indicating success or failure.
+ * @param rawClusters The raw cluster output from the AI (Record<string, string[]>).
+ * @returns Object indicating success or an error message.
  * @private Internal helper function.
  */
-async function _saveClusteringResults(
+async function _calculateAndSaveClustersWithVolume(
   researchId: string,
-  clusters: Record<string, string[]>
+  rawClusters: Record<string, string[]>
 ): Promise<{ success: boolean; error?: string }> {
+  console.log(`[Clustering Save] Starting calculation and save for ${researchId}`);
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  if (!rawClusters || Object.keys(rawClusters).length === 0) {
+    console.log(`[Clustering Save] No raw clusters provided for ${researchId}. Skipping save.`);
+    // Decide if this is success or failure - let's say success as there was nothing to save
+    return { success: true }; 
+  }
+
   try {
-    if (Object.keys(clusters).length === 0) {
-      console.log(
-        `[Clustering Save] No clusters generated by AI for ${researchId}. Skipping save.`
-      );
-      // Still revalidate even if no clusters were saved to ensure data consistency
-      await revalidateKeywordResearchCache(researchId);
-      return { success: true }; // Successfully handled the "no clusters" case
+    // 1. Fetch the keyword data (including volumes) for this research item
+    // Use the DB service directly to avoid potential stale cache from action
+    console.log(`[Clustering Save] Fetching keyword volume data for ${researchId}...`);
+    const researchDetail = await getKeywordResearchDetail(researchId); 
+    if (!researchDetail || !Array.isArray(researchDetail.keywords)) {
+      console.error(`[Clustering Save] Failed to fetch keyword volume data for ${researchId}.`);
+      return { success: false, error: 'Could not retrieve keyword volume data.' };
     }
 
-    // --- Add Logging --- 
-    console.log(`[Clustering Save - Debug] Clusters object structure to be saved for ${researchId}:`, JSON.stringify(clusters, null, 2));
-    // --- End Logging --- 
-
-    console.log(
-      `[Clustering Save] Saving ${Object.keys(clusters).length} clusters for ${researchId}`
-    );
-    const updateResult = await updateKeywordResearchClusters(researchId, {
-      clusters,
-      updatedAt: new Date() // Placeholder, actual value set in update action
+    // 2. Create the volume lookup map
+    const keywordVolumeMap = new Map<string, KeywordVolumeItem>();
+    researchDetail.keywords.forEach((kw: KeywordVolumeItem) => {
+      if (kw && kw.text) {
+        const normalizedText = kw.text.trim().toLowerCase();
+        const volume = typeof kw.searchVolume === 'number' ? kw.searchVolume : 0;
+        keywordVolumeMap.set(normalizedText, { ...kw, searchVolume: volume });
+      }
     });
-    if (!updateResult.success) {
-      // Propagate error from the update action
-      throw new Error(
-        updateResult.error ||
-          'Failed to save clusters via updateKeywordResearchClusters'
-      );
+    console.log(`[Clustering Save] Created volume map with ${keywordVolumeMap.size} entries for ${researchId}.`);
+
+    // Helper to get volume item or default
+    const getKeywordVolumeItem = (text: string): KeywordVolumeItem => {
+      const normalizedText = text.trim().toLowerCase();
+      const foundItem = keywordVolumeMap.get(normalizedText);
+      if (foundItem) return foundItem;
+      console.warn(`[Clustering Save ${researchId}] Keyword "${text}" from cluster not found in main list. Defaulting volume.`);
+      return { text: text.trim(), searchVolume: 0 };
+    };
+
+    // 3. Process raw clusters into ClusterItem[] structure
+    const clustersWithVolume: ClusterItem[] = Object.entries(rawClusters).map(([clusterName, keywordTexts]) => {
+      const clusterKeywords = (Array.isArray(keywordTexts) ? keywordTexts : [])
+                              .map(text => getKeywordVolumeItem(text)); 
+      const totalVolume = clusterKeywords.reduce((sum, kw: KeywordVolumeItem) => sum + (kw.searchVolume ?? 0), 0);
+      return { 
+        clusterName: clusterName,
+        keywords: clusterKeywords,
+        totalVolume: totalVolume,
+      };
+    });
+
+    console.log(`[Clustering Save] Processed ${clustersWithVolume.length} clusters with volumes for ${researchId}.`);
+    // console.log(`[Clustering Save - Debug] Clusters with Volume:`, JSON.stringify(clustersWithVolume, null, 2));
+
+    // 4. Save the processed array to the new DB field
+    console.log(`[Clustering Save] Saving processed clusters to DB for ${researchId}...`);
+    const updateResult = await updateKeywordResearchClustersWithVolume(researchId, clustersWithVolume);
+
+    if (updateResult) {
+      console.log(`[Clustering Save] Successfully saved clusters with volume for ${researchId}.`);
+      await revalidateKeywordResearchAction(researchId); 
+      console.log(`[Clustering Save] Revalidated cache for ${researchId}.`);
+      return { success: true };
+    } else {
+      console.error(`[Clustering Save] DB update function failed for ${researchId}.`);
+      await _attemptRevalidationOnError(researchId, 'DB save failure');
+      return { success: false, error: 'Failed to save processed clusters to database.' };
     }
 
-    // Revalidate *after* successful save
-    await revalidateKeywordResearchCache(researchId);
-
-    return { success: true };
   } catch (error) {
-    console.error(`[Clustering Save] Failed for ${researchId}:`, error);
-    // Attempt revalidation even on save failure, as state might be inconsistent.
-    await _attemptRevalidationOnError(researchId, 'save failure');
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Saving clustering results failed.';
-    return { success: false, error: message };
+    console.error(`[Clustering Save] Error calculating/saving clusters with volume for ${researchId}:`, error);
+    await _attemptRevalidationOnError(researchId, 'save calculation error');
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error processing cluster volumes.'
+    };
   }
 }
 
@@ -356,7 +381,7 @@ async function _attemptRevalidationOnError(
     console.warn(
       `[Clustering Action] Attempting cache revalidation for ${researchId} after ${context}.`
     );
-    await revalidateKeywordResearchCache(researchId);
+    await revalidateKeywordResearchAction(researchId);
   } catch (revalError) {
     // Log critical failure but don't let it stop the main error flow
     console.error(
@@ -377,42 +402,28 @@ export async function requestClustering(
   researchId: string
 ): Promise<{ success: boolean; error?: string }> {
   console.log(
-    `[Clustering Action] requestClustering started for researchId: ${researchId}`
+    `[Clustering Action] Received request to cluster researchId: ${researchId}`
   );
-
+  
+  // Use a try...finally block to ensure certain actions run even on error
   try {
-    // 1. Prepare Keywords (Fetch only)
+    // 1. Prepare Keywords
     const prepResult = await _prepareKeywordsForClustering(researchId);
-    if (!prepResult.success) {
-      // Error already logged by helper
-      return { success: false, error: prepResult.error };
-    }
-    // If preparation was successful but returned no keywords (empty array),
-    // it means no keywords were found in the source document.
-    if (!prepResult.keywords || prepResult.keywords.length === 0) {
-      console.log(
-        `[Clustering Action] No keywords found for ${researchId}. Process finished.`
-      );
-      // No need to save or revalidate further as nothing changed.
-      return { success: true }; // Successfully determined no action needed.
-    }
-    // --- Add minimum keyword check ---
-    if (prepResult.keywords.length < 5) {
-      console.warn(
-        `[Clustering Action] Insufficient keywords (${prepResult.keywords.length}) for clustering for ${researchId}. Minimum 5 required.`
-      );
+    if (!prepResult.success || !prepResult.keywords) {
       return {
         success: false,
-        error: `Insufficient keywords (${prepResult.keywords.length}). Minimum 5 required for clustering.`
+        error: prepResult.error || 'Keyword preparation failed.'
       };
     }
+    if (prepResult.keywords.length < 5) {
+      return { success: false, error: 'Insufficient keywords for clustering (minimum 5 required).' };
+    }
 
-    // 2. Perform Clustering (Call AI)
-    let clusteringResult: z.infer<typeof clusterOutputSchema>;
+    // 2. Perform AI Clustering to get RAW results
+    let rawClusteringResult: z.infer<typeof rawClusterOutputSchema>;
     try {
-      clusteringResult = await performSemanticClusteringAI({
+      rawClusteringResult = await performSemanticClusteringAI({
         keywords: prepResult.keywords
-        // Consider passing the model if configurable
       });
     } catch (aiError) {
       console.error(
@@ -420,27 +431,51 @@ export async function requestClustering(
         aiError
       );
       await _attemptRevalidationOnError(researchId, 'AI failure');
-      // Use the potentially more specific error message from performSemanticClusteringAI
       const message =
         aiError instanceof Error ? aiError.message : 'AI clustering failed.';
       return { success: false, error: message };
     }
 
-    // 3. Save Results & Revalidate Cache
-    const saveResult = await _saveClusteringResults(
+    // --- 3. Calculate Volumes and Save Processed Clusters --- 
+    const saveResult = await _calculateAndSaveClustersWithVolume(
       researchId,
-      clusteringResult.clusters
+      rawClusteringResult.clusters // Pass the raw Record<string, string[]>
     );
+    
+    // --- 4. IMMEDIATE Verification Step --- 
+    if (saveResult.success) {
+        console.log(`[Clustering Action] Save reported success. Performing IMMEDIATE verification read for ${researchId}...`);
+        try {
+            const docRef = db!.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                const rawData = docSnap.data();
+                console.log(`[Clustering Action - Verification] Document exists. Data snapshot:`, JSON.stringify(rawData, null, 2));
+                if (rawData && rawData.clustersWithVolume) {
+                    console.log(`[Clustering Action - Verification] SUCCESS: clustersWithVolume field FOUND immediately after save!`);
+                } else {
+                    console.error(`[Clustering Action - Verification] FAILURE: clustersWithVolume field NOT FOUND immediately after save! Raw data keys:`, rawData ? Object.keys(rawData) : 'No data');
+                }
+            } else {
+                console.error(`[Clustering Action - Verification] FAILURE: Document ${researchId} does not exist immediately after save!`);
+            }
+        } catch (verifyError) {
+            console.error(`[Clustering Action - Verification] Error during immediate verification read for ${researchId}:`, verifyError);
+        }
+    }
+    // --- End Verification Step --- 
+
     if (!saveResult.success) {
-      // Error logging and revalidation attempt handled within the save helper
+      // Error logging and revalidation attempts handled within the helper
       return { success: false, error: saveResult.error };
     }
 
-    // 4. Final Success Log
+    // 5. Final Success Log (moved from step 4)
     console.log(
-      `[Clustering Action] Clustering completed successfully for ${researchId}.`
+      `[Clustering Action] Clustering process completed successfully for ${researchId}.`
     );
     return { success: true };
+    
   } catch (error) {
     // Catch unexpected errors during the orchestration logic itself
     console.error(

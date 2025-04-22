@@ -21,15 +21,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { KeywordVolumeItem } from '@/lib/schema'; // Import necessary type
+import type { KeywordVolumeItem, ClusterItem } from '@/app/services/firebase/types'; // <-- CORRECT PATH & Added ClusterItem
 import { formatVolume } from '@/lib/utils'; // <-- Import formatVolume
-
-// Define ClusterItem locally (should match definition in parent)
-type ClusterItem = {
-  clusterName: string;
-  keywords: KeywordVolumeItem[]; // Assuming keywords have volume info
-  totalVolume?: number; // This might be calculated or already present
-};
 
 // Define structure for processed cluster data (used internally)
 interface ProcessedCluster {
@@ -38,13 +31,13 @@ interface ProcessedCluster {
   totalVolume: number;
   longTailKeywords: KeywordVolumeItem[]; // Store KeywordVolumeItem
   highestVolumeKeyword: KeywordVolumeItem | null;
+  personaDescription?: string; // Optional persona description
 }
 
 // Updated Props for the display component
 interface KeywordClusteringProps {
   keywordVolumeMap: Record<string, number>; // Keep this for quick lookups
-  clusters: ClusterItem[] | null; // <-- UPDATED: Expect an array
-  personasMap?: Record<string, string> | null;
+  clusters: ClusterItem[] | null; // ClusterItem now includes personaDescription?
   researchRegion: string;
   researchLanguage: string;
   currentKeywords: string[];
@@ -57,20 +50,13 @@ interface KeywordClusteringProps {
 }
 
 export default function KeywordClustering({
-  keywordVolumeMap,
   clusters,
-  personasMap,
-  researchRegion,
-  researchLanguage,
-  currentKeywords,
   selectedResearchDetail,
   researchId,
   onSavePersona,
   isSavingPersona,
 }: KeywordClusteringProps) {
   const router = useRouter();
-  // Remove setQuery from store
-  // const setQuery = useQueryStore((state) => state.actions.setQuery);
 
   // Local UI state
   const [uiState, setUiState] = useState({
@@ -81,40 +67,21 @@ export default function KeywordClustering({
     Record<number, boolean>
   >({});
 
-  // --- State for Persona Expansion ---
-  const [expandedPersonas, setExpandedPersonas] = useState<
-    Record<string, boolean>
-  >({});
-
-  const updateUiState = useCallback((newState: Partial<typeof uiState>) => {
-    setUiState(prev => ({ ...prev, ...newState }));
-  }, []);
-
-  // --- Toggle Persona Expansion Function ---
-  const togglePersonaExpansion = useCallback((clusterName: string) => {
-    setExpandedPersonas(prev => ({
-      ...prev,
-      [clusterName]: !prev[clusterName]
-    }));
-  }, []);
-
-  // Check if clusters array is valid and not empty (UPDATED)
+  // Check if clusters array is valid and not empty 
   const hasValidClusters = useMemo(() => {
     return clusters && Array.isArray(clusters) && clusters.length > 0;
   }, [clusters]);
 
-  // Memoize sorted clusters with summaries (UPDATED)
+  // Memoize sorted clusters with summaries (SIMPLIFIED)
   const sortedClusters = useMemo((): ProcessedCluster[] => {
-    if (!hasValidClusters || !clusters) return []; // Check clusters directly
+    if (!hasValidClusters || !clusters) return []; 
     
-    // Map over the input clusters array
     const clustersWithSummaries = clusters.map(
-      (clusterItem) => {
-        // Ensure keywords is an array, default to empty if not
+      (clusterItem) => { // clusterItem is ClusterItem, includes personaDescription?
         const validKeywordList: KeywordVolumeItem[] = Array.isArray(clusterItem.keywords) ? clusterItem.keywords : [];
         
         if (validKeywordList.length === 0) {
-          console.warn(`Empty keyword list for cluster: ${clusterItem.clusterName}`);
+          console.warn(`[KeywordClustering] Empty keyword list for cluster: ${clusterItem.clusterName}`);
         }
         
         // Sort keywords within the cluster by volume (descending)
@@ -122,11 +89,11 @@ export default function KeywordClustering({
           (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
         );
         
-        // Calculate total volume for the cluster
-        // Use volume directly from KeywordVolumeItem if available, otherwise sum up
+        // Directly use the pre-calculated totalVolume from the prop
+        // Provide a default of 0 if it's somehow missing or not a number
         const totalVolume = typeof clusterItem.totalVolume === 'number' 
             ? clusterItem.totalVolume 
-            : sortedKeywords.reduce((sum, keyword) => sum + (keyword.searchVolume ?? 0), 0);
+            : 0; 
             
         // Find long-tail keywords (more than 2 words)
         const longTailKeywords = sortedKeywords.filter(
@@ -135,10 +102,11 @@ export default function KeywordClustering({
         
         return {
           clusterName: clusterItem.clusterName,
-          keywordList: sortedKeywords, // Store the sorted KeywordVolumeItem array
-          totalVolume,
-          longTailKeywords, // Store filtered KeywordVolumeItem array
-          highestVolumeKeyword: sortedKeywords[0] || null // Store the highest volume KeywordVolumeItem
+          keywordList: sortedKeywords, 
+          totalVolume, // Use the direct totalVolume
+          longTailKeywords, 
+          highestVolumeKeyword: sortedKeywords[0] || null,
+          personaDescription: clusterItem.personaDescription // Pass it through if needed
         };
       }
     );
@@ -146,7 +114,7 @@ export default function KeywordClustering({
     // Sort the processed clusters by total volume (descending)
     return clustersWithSummaries.sort((a, b) => b.totalVolume - a.totalVolume);
     
-  }, [clusters, hasValidClusters]); // Depend on the clusters array
+  }, [clusters, hasValidClusters]); // Depend on the clusters prop
 
 
   // Modified: Use the passed callback for starting persona generation/saving
@@ -259,6 +227,11 @@ export default function KeywordClustering({
             const remainingCount = allSupportingKeywords.length - topSupportingKeywords.length;
             const isExpanded = !!expandedSupportingMap[index];
 
+            // Find original ClusterItem to get personaDescription if not passed through ProcessedCluster
+            // OR assume ProcessedCluster now includes it
+            const originalClusterItem = clusters?.find(c => c.clusterName === cluster.clusterName);
+            const currentPersona = originalClusterItem?.personaDescription; // <-- Get description directly
+
             // Calculate unique remainders based on KeywordVolumeItem.text
             let clusterUniqueRemaindersString = '-';
             if (mainQuery) {
@@ -267,7 +240,7 @@ export default function KeywordClustering({
                 if (!keywordItem.text) return;
                 const keywordChars = keywordItem.text.split('');
                 const remainder = keywordChars
-                  .filter(char => !mainQueryChars.has(char))
+                  .filter((char: string) => !mainQueryChars.has(char)) // <-- ADDED TYPE
                   .join('')
                   .trim();
                 if (remainder) {
@@ -284,10 +257,7 @@ export default function KeywordClustering({
             const rowBackground =
               index % 2 === 0 ? 'md:bg-card' : 'md:bg-muted/40';
 
-            const isPersonaExpanded = !!expandedPersonas[cluster.clusterName];
-            const currentPersona = personasMap?.[cluster.clusterName] || null;
-            const isGeneratingThisPersona =
-              isSavingPersona === cluster.clusterName;
+            const isGeneratingThisPersona = isSavingPersona === cluster.clusterName;
 
             return (
               // Mobile: card layout. Desktop: row layout.
@@ -308,7 +278,7 @@ export default function KeywordClustering({
                   </div>
                   <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
                     <TrendingUp className="inline-block h-3 w-3 mr-0.5" />
-                    {cluster.totalVolume.toLocaleString()}
+                    {formatVolume(cluster.totalVolume)}
                   </div>
                 </div>
 
@@ -417,22 +387,15 @@ export default function KeywordClustering({
                   <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
                     用戶畫像
                   </div>
-                  {currentPersona ? (
-                    // Display existing persona directly
+                  {currentPersona ? ( // <-- Check currentPersona directly
+                    // Display existing persona
                     <div>
-                      {/* Remove the toggle Button */}
-                      {/* <Button ... /> */}
-
-                      {/* Add a simple label */}
                       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center">
                         <User className="h-3.5 w-3.5 mr-1.5" />
                         用戶畫像
                       </div>
-                      {/* Display persona text directly */}
                       <div className="whitespace-pre-wrap break-words text-sm">
-                        {' '}
-                        {/* Retain text styling */}
-                        {currentPersona}
+                        {currentPersona} {/* <-- Display description */} 
                       </div>
                     </div>
                   ) : (
@@ -444,10 +407,10 @@ export default function KeywordClustering({
                       onClick={() =>
                         onStartPersonaChat(
                           cluster.clusterName,
-                          cluster.keywordList // Pass KeywordVolumeItem[]
+                          cluster.keywordList 
                         )
                       }
-                      disabled={isGeneratingThisPersona || !!isSavingPersona} // Disable if generating this OR any other persona
+                      disabled={isGeneratingThisPersona || !!isSavingPersona} 
                     >
                       {isGeneratingThisPersona ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />

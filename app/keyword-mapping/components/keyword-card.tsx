@@ -1,6 +1,6 @@
 'use client';
 
-import type { KeywordVolumeItem } from '@/lib/schema';
+import type { KeywordVolumeItem } from '@/app/services/firebase/types';
 import { BarChart2, Tag } from 'lucide-react';
 import { memo } from 'react';
 

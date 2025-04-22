@@ -17,10 +17,10 @@ const firestoreTimestampSchema = z
  */
 export const keywordVolumeItemSchema = z.object({
   text: z.string(),
-  searchVolume: z.number().int().nonnegative().optional(),
-  competition: z.string().optional(), // '低', '中', '高' 等字符串值
-  competitionIndex: z.number().int().min(0).max(100).optional(), // 0-100
-  cpc: z.number().positive().nullable().optional() // Cost Per Click
+  searchVolume: z.number().int().nonnegative().nullish(),
+  competition: z.string().optional().nullish(), // '低', '中', '高' 等字符串值
+  competitionIndex: z.number().int().min(0).max(100).optional().nullish(), // 0-100
+  cpc: z.number().positive().nullish() // Cost Per Click
 });
 
 /**
@@ -36,10 +36,18 @@ export const UserPersonaSchema = z.object({
   goals: z.array(z.string())
 });
 
-// 語義分群結果 Schema
+// DEPRECATED? Original Schema for raw AI cluster output
 export const ClusterSchema = z
   .record(z.string(), z.array(z.string()))
-  .describe('語義分群結果: 主題名稱映射到關鍵字數組');
+  .describe('(Legacy) Raw AI output: Cluster name mapped to keyword text array');
+
+// NEW: Schema for a single cluster item with volume data included
+export const ClusterItemSchema = z.object({
+  clusterName: z.string(),
+  keywords: z.array(keywordVolumeItemSchema), // Keywords include volume info
+  totalVolume: z.number().int().nonnegative().default(0), // Calculated total volume
+  personaDescription: z.string().optional().describe('AI生成的用戶畫像描述 (如果存在)')
+});
 
 // Base schema for keyword research data
 export const KeywordResearchBaseSchema = z.object({
@@ -49,8 +57,11 @@ export const KeywordResearchBaseSchema = z.object({
   keywords: z
     .array(keywordVolumeItemSchema)
     .optional()
-    .describe('關鍵字列表及其搜索量數據'),
-  clusters: ClusterSchema.optional().describe('語義分群結果'),
+    .describe('Top-level list of keywords and their volume data'),
+  // Legacy field for raw AI cluster output
+  clusters: ClusterSchema.optional().describe('(Legacy) Raw AI Cluster Output'), 
+  // NEW field storing clusters pre-calculated with volumes
+  clustersWithVolume: z.array(ClusterItemSchema).optional().describe('Clusters with pre-calculated volumes'),
   personas: z.array(UserPersonaSchema).optional().describe('詳細用戶畫像列表'),
   searchEngine: z.string().optional().describe('使用的搜尋引擎 (例如 google)'),
   region: z.string().optional().describe('地區代碼 (例如 TW)'),
@@ -65,7 +76,7 @@ export const KeywordResearchSchema = KeywordResearchBaseSchema.extend({
   id: z.string().describe('記錄的唯一標識符')
 });
 
-// Schema for creating new research entries
+// Schema for creating new research entries (No clusters fields)
 export const CreateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
   query: true,
   searchEngine: true,
@@ -81,13 +92,14 @@ export const CreateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
   device: true,
   isFavorite: true,
   tags: true
-}); // Note: id, createdAt, updatedAt, keywords, clusters, personas are excluded
+}); 
 
-// Schema for updating existing research entries (general update)
+// Schema for general updates (might include legacy clusters or new clustersWithVolume)
 export const UpdateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
   query: true,
   keywords: true,
-  clusters: true,
+  clusters: true, // Keep for potential updates
+  clustersWithVolume: true, // Allow updating the new field
   personas: true,
   searchEngine: true,
   region: true,
@@ -101,10 +113,16 @@ export const UpdateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
     updatedAt: firestoreTimestampSchema.default(() => new Date())
   });
 
-// Specific update schemas
+// Specific update schema for legacy clusters (might deprecate)
 export const UpdateClustersSchema = z.object({
   clusters: ClusterSchema,
   updatedAt: firestoreTimestampSchema.default(() => new Date())
+});
+
+// NEW: Specific update schema for clusters with volume
+export const UpdateClustersWithVolumeSchema = z.object({
+    clustersWithVolume: z.array(ClusterItemSchema), 
+    updatedAt: firestoreTimestampSchema.default(() => new Date())
 });
 
 // Schema for a keyword research item (full data)
@@ -133,25 +151,7 @@ export const keywordResearchStatsSchema = z.object({
   favoriteCount: z.number().int().nonnegative()
 });
 
-// Exported types inferred from schemas
-export type KeywordResearchBase = z.infer<typeof KeywordResearchBaseSchema>;
-export type KeywordResearchItem = z.infer<typeof keywordResearchItemSchema>;
-export type KeywordResearchFilter = z.infer<typeof keywordResearchFilterSchema>;
-export type KeywordResearchStats = z.infer<typeof keywordResearchStatsSchema>;
-export type CreateKeywordResearchInput = z.infer<
-  typeof CreateKeywordResearchSchema
->;
-export type UpdateKeywordResearchInput = z.infer<
-  typeof UpdateKeywordResearchSchema
->;
-export type UpdateClustersInput = z.infer<typeof UpdateClustersSchema>;
-export type Cluster = z.infer<typeof ClusterSchema>;
-export type Persona = z.infer<typeof UserPersonaSchema>;
-
-// --- User Persona Section (Already defined above, consolidating) ---
-// Note: The UserPersonaSchema definition is moved to the top for clarity.
-//       The types below are derived from that single definition.
-
+// --- User Persona Section ---
 export const UserPersonaResponseSchema = z.object({
   personas: z.array(UserPersonaSchema),
   metadata: z.object({
@@ -161,20 +161,12 @@ export const UserPersonaResponseSchema = z.object({
   })
 });
 
-export type UserPersona = z.infer<typeof UserPersonaSchema>;
-export type UserPersonaResponse = z.infer<typeof UserPersonaResponseSchema>;
-
 // Schema possibly for logging which persona description was generated or selected for a research
 export const KeywordResearchUserPersonaSchema = z.object({
   id: z.string(),
   persona: z.string().min(10, '用戶畫像描述過短'),
   createdAt: firestoreTimestampSchema.default(() => new Date())
 });
-
-// Type for the persona log entry
-export type KeywordResearchUserPersona = z.infer<
-  typeof KeywordResearchUserPersonaSchema
->;
 
 // --- Keyword Form/Suggestion/Volume Section ---
 import { LANGUAGES, REGIONS } from '@/app/config/constants';
@@ -246,15 +238,6 @@ export const keywordVolumeResultSchema = z.object({
  */
 export const keywordClustersSchema = z.record(z.string(), z.array(z.string()));
 
-// 從 Schema 推導出 TypeScript 類型
-export type KeywordFormData = z.infer<typeof keywordFormSchema>;
-export type KeywordVolumeItem = z.infer<typeof keywordVolumeItemSchema>;
-export type KeywordSuggestionResult = z.infer<
-  typeof keywordSuggestionResultSchema
->;
-export type KeywordVolumeResult = z.infer<typeof keywordVolumeResultSchema>;
-export type KeywordClusters = z.infer<typeof keywordClustersSchema>;
-
 // --- SERP Schemas ---
 
 /**
@@ -268,7 +251,6 @@ export const apifyOrganicResultSchema = z.object({
   description: z.string().optional()
   // Add other fields returned by Apify if necessary
 });
-export type ApifyOrganicResult = z.infer<typeof apifyOrganicResultSchema>;
 
 /**
  * Schema for an enhanced organic result (potentially after processing)
@@ -279,7 +261,6 @@ export const enhancedOrganicResultSchema = apifyOrganicResultSchema.extend({
   // Example: Adding HTML analysis summary directly
   htmlAnalysisSummary: z.string().optional()
 });
-export type EnhancedOrganicResult = z.infer<typeof enhancedOrganicResultSchema>;
 
 /**
  * Schema for overall SERP analysis (example structure)
@@ -292,7 +273,6 @@ export const serpAnalysisSchema = z.object({
   averageWordCount: z.number().optional(),
   intent: z.string().optional()
 });
-export type SerpAnalysis = z.infer<typeof serpAnalysisSchema>;
 
 /**
  * Schema for the complete processed SERP result to be stored
@@ -307,7 +287,6 @@ export const processedSerpResultSchema = z.object({
   retrievedAt: firestoreTimestampSchema, // When the raw SERP was fetched
   processedAt: firestoreTimestampSchema // When processing/analysis was done
 });
-export type ProcessedSerpResult = z.infer<typeof processedSerpResultSchema>;
 
 // --- UI/Component Specific Schemas/Types ---
 
@@ -318,13 +297,7 @@ export const volumeDistributionDataItemSchema = z.object({
   range: z.string(), // e.g., "1-10", "11-100", "101-1K", etc.
   count: z.number().int().nonnegative() // Number of keywords in this volume range
 });
-export type VolumeDistributionDataItem = z.infer<
-  typeof volumeDistributionDataItemSchema
->;
 
 export const volumeDistributionDataSchema = z.array(
   volumeDistributionDataItemSchema
 );
-export type VolumeDistributionData = z.infer<
-  typeof volumeDistributionDataSchema
->;

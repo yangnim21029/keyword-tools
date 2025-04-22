@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/popover"
 import { fetchKeywordResearchSummaryAction, fetchKeywordResearchDetail } from "@/app/actions/keyword-research-action";
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
+import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
 
 // Define API endpoints
 const STEP1_URL = "/api/writing/steps/1-analyze"
@@ -75,27 +76,25 @@ export default function WritingPage() {
   const [mediaSiteName, setMediaSiteName] = useClientStorage("writing:mediaSiteName", "")
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>("writing:researchPrompt", null)
   const [selectedFineTunes, setSelectedFineTunes] = useClientStorage<string[]>("writing:selectedFineTunes", [])
-  const [selectedKeywordReport, setSelectedKeywordReport] = useClientStorage<Record<string, any> | null>("writing:selectedKeywordReport", null)
+  const [selectedKeywordReport, setSelectedKeywordReport] = useClientStorage<KeywordResearchClientData | null>("writing:selectedKeywordReport", null)
 
-  // --- Add State for Cluster Selection --- 
+  // --- Cluster Selection State --- 
   const [selectedClusterName, setSelectedClusterName] = useState<string>(ALL_CLUSTERS_VALUE);
-  const [useClusterSelection, setUseClusterSelection] = useState<boolean>(false);
-  // --- End Cluster State --- 
+  
+  // --- UPDATED: State for the displayed Persona description --- 
+  const [displayedPersona, setDisplayedPersona] = useState<string | null>(null);
 
   // --- State for real data ---
   const [realKeywordList, setRealKeywordList] = useState<KeywordResearchSummaryItem[]>([]);
   const [isListLoading, setIsListLoading] = useState(true); // Start loading initially
   const [listFetchError, setListFetchError] = useState<string | null>(null);
-  // --- End State --- 
-
+  
   // --- State for loading detail ---
   const [isDetailLoading, setIsDetailLoading] = useState(false);
-  // --- End State ---
-
+  
   // --- State for hydration fix ---
   const [isMounted, setIsMounted] = useState(false);
-  // --- End State ---
-
+  
   // Keep local state for UI elements like loading, error, copied status, and visibility toggle
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -145,10 +144,29 @@ export default function WritingPage() {
 
   // --- Effect to reset cluster selection when keyword report changes --- 
   useEffect(() => {
-    // Reset to default whenever the report changes (or is cleared)
     setSelectedClusterName(ALL_CLUSTERS_VALUE);
   }, [selectedKeywordReport]);
   // --- End Cluster Reset Effect --- 
+
+  // --- UPDATED: Effect to find and set the displayed Persona description --- 
+  useEffect(() => {
+    if (selectedClusterName === ALL_CLUSTERS_VALUE || !selectedKeywordReport?.clusters) {
+      setDisplayedPersona(null);
+      return;
+    }
+    // Find the cluster with the matching name
+    const foundCluster = selectedKeywordReport.clusters.find(
+      (c) => c.clusterName === selectedClusterName
+    );
+    // Set the persona description from the found cluster, or null if not found/no description
+    setDisplayedPersona(foundCluster?.personaDescription || null); 
+    
+    if(selectedClusterName !== ALL_CLUSTERS_VALUE && !foundCluster?.personaDescription) {
+        console.warn(`[UI Persona Sync] Persona description not found for selected cluster: ${selectedClusterName}`);
+    }
+
+  }, [selectedClusterName, selectedKeywordReport]);
+  // --- End Persona Sync Effect --- 
 
   const getStepDescription = () => {
     switch (currentStep) {
@@ -208,12 +226,16 @@ export default function WritingPage() {
         return
     }
 
-    // Determine the cluster name to send based on the checkbox state
-    const clusterNameToSend = useClusterSelection && selectedClusterName !== ALL_CLUSTERS_VALUE
-      ? selectedClusterName
-      : null;
-
-    console.log(`Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(', ')}, UseCluster=${useClusterSelection}, ClusterToSend=${clusterNameToSend}`);
+    // Determine the cluster name to send
+    // If ALL_CLUSTERS_VALUE is selected, send null, otherwise send the selected name.
+    const clusterNameToSend = selectedClusterName === ALL_CLUSTERS_VALUE
+      ? null
+      : selectedClusterName;
+      
+    // The backend API (/api/writing/steps/1-analyze) will need to know
+    // that if clusterNameToSend is provided, it should look for the persona
+    // description within that cluster in the selectedKeywordReport data.
+    console.log(`Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(', ')}, TargetCluster=${clusterNameToSend || 'All'}`);
 
     let step1Result: any = null;
     let step2Result: any = null;
@@ -229,7 +251,7 @@ export default function WritingPage() {
           mediaSiteName,
           fineTuneNames: selectedFineTunes,
           keywordReport: selectedKeywordReport,
-          selectedClusterName: clusterNameToSend
+          selectedClusterName: clusterNameToSend // Pass the potentially null cluster name
         }),
       })
       // Refactored Error Handling for Step 1
@@ -367,26 +389,6 @@ export default function WritingPage() {
               </div>
               {/* Right side controls */}
               <div className="flex items-center gap-4"> {/* Increased gap */} 
-                {/* Cluster Selection Checkbox - Conditionally render based on mount */}
-                {isMounted && (
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="use-cluster"
-                      checked={useClusterSelection}
-                      onCheckedChange={(checked) => setUseClusterSelection(checked === true)} 
-                      disabled={!hasClusters || isLoading || isDetailLoading} // Disable if no clusters or loading
-                    />
-                    <Label
-                      htmlFor="use-cluster"
-                      className={cn(
-                        "text-xs font-mono text-gray-500 dark:text-gray-400",
-                        (!hasClusters || isLoading || isDetailLoading) && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      Target Cluster
-                    </Label>
-                  </div>
-                )}
                 {/* Fine-tune Toggle Button */} 
                 <Button
                   variant="ghost"
@@ -583,15 +585,15 @@ export default function WritingPage() {
                   </div>
                 </div>
 
-                {/* --- Cluster Selection Dropdown (Now Conditionally Rendered by Checkbox) --- */} 
-                {isMounted && hasClusters && useClusterSelection && (
+                {/* --- Cluster Selection Dropdown (Render if clusters exist) --- */} 
+                {isMounted && hasClusters && (
                   <div className="space-y-2">
                     <Label htmlFor="cluster-select" className="text-base font-medium">
-                      Target Cluster
+                      Target Cluster / Persona
                     </Label>
                     <Select
                       value={selectedClusterName}
-                      onValueChange={setSelectedClusterName}
+                      onValueChange={setSelectedClusterName} // This will trigger the useEffect to find the persona
                       disabled={isLoading || isDetailLoading}
                     >
                       <SelectTrigger
@@ -604,17 +606,35 @@ export default function WritingPage() {
                         </div>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={ALL_CLUSTERS_VALUE}>All Clusters / Main Keyword</SelectItem>
-                        {selectedKeywordReport?.clusters.map((cluster: any, index: number) => (
+                        <SelectItem value={ALL_CLUSTERS_VALUE}>All Clusters (No Specific Persona)</SelectItem>
+                        {/* Use KeywordResearchClientData type for clusters */}
+                        {selectedKeywordReport?.clusters?.map((cluster: any, index: number) => ( 
                           <SelectItem key={cluster.clusterName || `cluster-${index}`} value={cluster.clusterName || `Cluster ${index + 1}`}>
                             {cluster.clusterName || `Cluster ${index + 1}`} (Vol: {cluster.totalVolume?.toLocaleString() ?? 'N/A'})
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {/* --- Display Area for Associated Persona --- */}
+                    {selectedClusterName !== ALL_CLUSTERS_VALUE && (
+                       <div className="mt-2 p-3 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-md bg-indigo-50/50 dark:bg-indigo-900/10 text-sm text-indigo-800 dark:text-indigo-200">
+                         {displayedPersona ? (
+                           <>
+                             {/* Use selectedClusterName for the title */} 
+                             <p className="font-medium mb-1">Targeting Persona: {selectedClusterName}</p> 
+                             {/* Display the description string */}
+                             <p className="text-xs opacity-80 line-clamp-3">{displayedPersona}</p> 
+                           </>
+                         ) : (
+                           <p className="text-xs opacity-70 italic">
+                             (Persona description not found or not yet generated for this cluster)
+                           </p>
+                         )}
+                       </div>
+                    )}
                   </div>
                 )}
-                {/* --- End Cluster Selection --- */}
+                {/* --- End Cluster/Persona Section --- */}
 
                 {/* Media Site Selection Area */}
                 <div className="space-y-2 pt-1">
@@ -776,7 +796,6 @@ export default function WritingPage() {
                             setMediaSiteName("")
                             setSelectedFineTunes([])
                             setSelectedKeywordReport(null) 
-                            setUseClusterSelection(false);
                             setCurrentStep(0)
                           }}
                           className={cn(

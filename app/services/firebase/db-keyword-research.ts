@@ -3,8 +3,9 @@ import {
   type KeywordResearchItem,
   type KeywordVolumeItem,
   type UpdateKeywordResearchInput,
-  type UserPersona
-} from '@/lib/schema'; // Use correct types
+  type UserPersona,
+  type ClusterItem
+} from './types'; // <-- CORRECT PATH: Import types from types.ts
 import { Timestamp } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from './db-config';
 
@@ -216,7 +217,8 @@ export async function getKeywordResearchDetail(
       createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
       updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
       keywords: data.keywords || [],
-      clusters: data.clusters || null, // <-- Return raw clusters from DB
+      clusters: data.clusters || null, // <-- Keep legacy field for now
+      clustersWithVolume: data.clustersWithVolume || null, // <-- ADD THIS LINE
       personas: data.personas || null, 
       searchEngine: data.searchEngine,
       region: data.region,
@@ -226,7 +228,7 @@ export async function getKeywordResearchDetail(
       tags: data.tags || []
     };
 
-    console.log(`Keyword Research 詳情 ${researchId} 載入完成`);
+    console.log(`Keyword Research 詳情 ${researchId} 載入完成 (Including clustersWithVolume)`); // Add log marker
     return researchDetail;
   } catch (error) {
     console.error(`獲取 Keyword Research 詳情失敗: ${researchId}`, error);
@@ -253,52 +255,89 @@ export async function deleteKeywordResearch(
 }
 
 /**
- * 更新現有 Keyword Research 的分群結果
+ * 更新特定 Keyword Research 的 clusters（原始 AI 輸出格式）
+ * @param researchId
+ * @param clusters 格式為 { [主題名稱]: 關鍵字列表 }
+ * @returns 更新是否成功
  */
 export async function updateKeywordResearchClusters(
   researchId: string,
   clusters: Record<string, string[]>
 ): Promise<boolean> {
-  if (!db) {
-    console.error('Database instance (db) is not initialized.');
-    return false;
-  }
-  if (!researchId) {
-    console.error('Error updating clusters: researchId is missing.');
-    return false;
-  }
-  if (!clusters || typeof clusters !== 'object') {
-    console.error('Error updating clusters: clusters data is invalid.');
-    return false;
-  }
+  if (!db) return false;
 
-  // --- Add Logging --- 
-  console.log(`[DB - Debug] Updating Firestore for ${researchId} with clusters:`, JSON.stringify(clusters, null, 2));
-  // --- End Logging ---
-
+  console.log(
+    `[DB] Updating LEGACY clusters for research: ${researchId}`
+  );
   try {
-    const researchRef = db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .doc(researchId);
-    await researchRef.update({
+    const updateData = {
       clusters: clusters,
       updatedAt: Timestamp.now()
-    });
-    console.log(
-      `Successfully updated clusters for research item: ${researchId}`
-    );
+    };
+    await db
+      .collection(COLLECTIONS.KEYWORD_RESEARCH)
+      .doc(researchId)
+      .update(updateData);
+    console.log(`[DB] Updated LEGACY clusters for: ${researchId}`);
     return true;
   } catch (error) {
-    console.error(
-      `Error updating clusters for research item ${researchId}:`,
-      error
-    );
+    console.error(`[DB] 更新 LEGACY Clusters 失敗 (${researchId}):`, error);
+    throw error; // Re-throw error for the action to handle
+  }
+}
+
+// --- NEW FUNCTION --- 
+/**
+ * Updates the clustersWithVolume field for a specific Keyword Research item.
+ * @param researchId 
+ * @param clustersWithVolume 
+ * @returns boolean indicating success or failure.
+ */
+export async function updateKeywordResearchClustersWithVolume(
+  researchId: string,
+  clustersWithVolume: ClusterItem[] 
+): Promise<boolean> {
+  if (!db) return false;
+
+  console.log(
+    `[DB] Updating clustersWithVolume for research: ${researchId} using set/merge` 
+  );
+  try {
+    const cleanedClustersWithVolume = clustersWithVolume.map(cluster => ({
+        ...cluster,
+        totalVolume: typeof cluster.totalVolume === 'number' ? cluster.totalVolume : 0,
+        keywords: (Array.isArray(cluster.keywords) ? cluster.keywords : []).map((kw: KeywordVolumeItem) => ({ 
+            text: kw.text || '', 
+            searchVolume: kw.searchVolume ?? null,
+            competition: kw.competition ?? null,
+            competitionIndex: kw.competitionIndex ?? null,
+            cpc: kw.cpc ?? null
+        }))
+    }));
+    
+    const updateData = {
+      clustersWithVolume: cleanedClustersWithVolume, 
+      updatedAt: Timestamp.now()
+    };
+    
+    await db
+      .collection(COLLECTIONS.KEYWORD_RESEARCH)
+      .doc(researchId)
+      .set(updateData, { merge: true }); 
+      
+    console.log(`[DB] Updated clustersWithVolume for: ${researchId}`);
+    return true;
+  } catch (error) {
+    console.error(`[DB] 更新 clustersWithVolume 失敗 (${researchId}):`, error);
     return false;
   }
 }
 
 /**
- * 更新現有 Keyword Research 的關鍵字結果
+ * 更新特定 Keyword Research 的 keywords 列表（覆蓋）
+ * @param researchId
+ * @param keywords 完整的 KeywordVolumeItem 列表
+ * @returns 更新是否成功
  */
 export async function updateKeywordResearchResults(
   researchId: string,

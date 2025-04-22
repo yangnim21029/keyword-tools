@@ -2,36 +2,15 @@ import {
   fetchKeywordResearchDetail,
   fetchKeywordResearchSummaryAction
 } from '@/app/actions';
-import type { KeywordResearchItem, UserPersona, KeywordVolumeItem } from '@/lib/schema'; // Keep types
-import { convertTimestampToDate } from '@/lib/utils'; // Correct import now
+// Import types from the centralized types file
+import type { Props } from '@/app/services/firebase/types'; 
+// Import the client data type for the loader component
+import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
+// import { convertTimestampToDate } from '@/lib/utils'; // No longer needed here
 import { notFound } from 'next/navigation';
 import React from 'react';
 import KeywordResearchDetail from '../components/keyword-research-detail';
 
-// Define the structure of a single cluster item as expected by the component
-type ClusterItem = {
-  clusterName: string;
-  keywords: KeywordVolumeItem[];
-  totalVolume?: number;
-};
-
-// Define the type for the research detail *after* processing/transformation in the action
-// This type reflects the structure actually passed to the client/loader component
-type ProcessedKeywordResearchDetail = Omit<KeywordResearchItem, 'clusters' | 'personas'> & {
-  clusters: ClusterItem[] | null; // Use the correct cluster type
-  personas?: UserPersona[]; // Match the structure after providing defaults
-  clusteringStatus?: string;
-};
-
-// Define the params type as a Promise
-type Params = Promise<{ researchId: string }>;
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
-
-// Define the props type for the page component
-type Props = {
-  params: Params;
-  searchParams?: SearchParams;
-};
 
 // Function to generate static paths at build time
 export async function generateStaticParams() {
@@ -54,8 +33,10 @@ export async function generateStaticParams() {
 export default async function KeywordResultPage({ params }: Props) {
   const { researchId } = await params;
 
+  // Fetch the *already processed* data from the server action
   const researchDetailData = await fetchKeywordResearchDetail(researchId);
 
+  // Handle not found case
   if (!researchDetailData) {
     notFound();
   }
@@ -69,61 +50,34 @@ export default async function KeywordResultPage({ params }: Props) {
     );
   };
 
-  // Convert Timestamps to Dates for client-side serialization
-  // Use a temporary variable to satisfy TypeScript's non-null assertion
-  const fetchedData = researchDetailData;
-  const serializableResearchDetail: ProcessedKeywordResearchDetail = {
-    ...fetchedData,
-    // Use the new utility function and provide a fallback (e.g., current date or epoch)
-    createdAt: convertTimestampToDate(fetchedData.createdAt) || new Date(0),
-    updatedAt: convertTimestampToDate(fetchedData.updatedAt) || new Date(),
-    // Process personas: Ensure each mapped object conforms to the full UserPersona type
-    personas: Array.isArray(fetchedData.personas)
-      ? fetchedData.personas.map((p: Partial<UserPersona>): UserPersona => ({ // Ensure return type is UserPersona
-          // Provide defaults for all required fields in UserPersonaSchema
-          name: p.name || '未命名畫像', // Default name
-          description: p.description || '無描述', // Default description
-          keywords: p.keywords || [], // Default empty array
-          characteristics: p.characteristics || [], // Default empty array
-          interests: p.interests || [], // Default empty array
-          painPoints: p.painPoints || [], // Default empty array
-          goals: p.goals || [] // Default empty array
-        }))
-      : [], // Default to empty array if not an array or null/undefined
-    // Keep other properties as is (keywords, etc.)
-    keywords: fetchedData.keywords || [], // Ensure keywords is always an array
-    // Ensure clusters from fetchedData matches ProcessedKeywordResearchDetail
-    // No explicit assignment needed if ...fetchedData includes the correct `clusters: ClusterItem[] | null`
-    clusters: fetchedData.clusters // Keep the correctly typed clusters from the action
-  };
-
   return (
     <>
+      {/* Use the query directly from the processed data */}
       <h1 className="text-2xl font-semibold mb-4 sm:mb-6 text-left">
-        {serializableResearchDetail.query}
+        {researchDetailData.query} 
       </h1>
 
       <React.Suspense fallback={<DetailLoadingFallback />}>
-        {/* Pass the processed data to the loader/client component */}
+        {/* Pass the processed data directly to the loader */}
         <KeywordResearchDetailLoader
-          researchDetail={serializableResearchDetail} // Pass the correctly typed and processed data
+          researchDetail={researchDetailData} // Pass data using the prop name expected by the loader
         />
       </React.Suspense>
     </>
   );
 }
 
-// Loader component now directly receives the processed serializable data
-async function KeywordResearchDetailLoader({
-  researchDetail
-}: {
-  researchDetail: ProcessedKeywordResearchDetail;
+// Loader component now expects KeywordResearchClientData
+async function KeywordResearchDetailLoader({ 
+  researchDetail // Keep this name as it matches the data fetched above
+}: { 
+  researchDetail: KeywordResearchClientData; // <-- Use specific type
 }) {
-  // No further conversion needed here as it's done in the parent
+  // No further conversion needed here
   return (
+    // Pass data as a single prop named 'keywordResearchObject' to the client component
     <KeywordResearchDetail
-      initialResearchDetail={researchDetail} // Pass data directly
-      researchId={researchDetail.id}
+      keywordResearchObject={researchDetail} // <-- Pass as single prop with correct name
     />
   );
 }

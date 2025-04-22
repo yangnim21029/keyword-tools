@@ -6,7 +6,7 @@ import {
   filterSimplifiedChinese
 } from '@/app/services/keyword-idea-api.service';
 import { fetchAutocomplete } from '@/app/services/suggestion.service';
-import { KeywordSuggestionResult } from '@/lib/schema';
+import type { KeywordSuggestionResult } from '@/app/services/firebase/types';
 
 /**
  * 獲取關鍵字建議 - 根據輸入的查詢詞生成相關關鍵字建議

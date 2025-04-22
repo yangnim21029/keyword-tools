@@ -1,6 +1,6 @@
 // --- Google Ads API Functions and constants ---
 
-import { KeywordVolumeItem, KeywordVolumeResult } from '@/lib/schema';
+import { KeywordVolumeItem, KeywordVolumeResult } from '@/app/services/firebase/types';
 
 // Add API_VERSION constant directly in this file
 /**

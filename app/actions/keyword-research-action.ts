@@ -14,23 +14,30 @@ import {
   type KeywordResearchSummaryItem
 } from '@/app/services/firebase/db-keyword-research';
 import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
-// Import types primarily from schemas
-import {
-  type CreateKeywordResearchInput, // Use inferred type from schema
-  type KeywordResearchFilter,
-  type KeywordResearchItem, // Use inferred type from schema
-  type KeywordVolumeItem, // Assuming this comes from keyword.schema?
-  type UpdateClustersInput, // Use inferred type from schema
-  type UpdateKeywordResearchInput,
-  type UserPersona // <-- Import UserPersona type
-} from '@/lib/schema'; // Adjusted import path
-// Import the extended list item and potentially Keyword from our specific types file
+// Import types from the centralized types file
+import type { 
+  CreateKeywordResearchInput, 
+  KeywordResearchFilter, 
+  KeywordResearchItem, 
+  KeywordVolumeItem, 
+  UpdateClustersInput, 
+  UpdateKeywordResearchInput, 
+  UserPersona,
+  ClusterItem // Still needed for internal processing
+} from '@/app/services/firebase/types'; 
+// Import the NEW client data type AND schema for validation
+import { 
+    KeywordResearchClientSchema, 
+    type KeywordResearchClientData 
+} from '@/app/services/firebase/schema-client'; 
+
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 // --- Import the Chinese type detection utility ---
 import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import { convertTimestampToDate } from '@/lib/utils'; // <-- IMPORT CONVERSION UTIL
 
 interface ProcessQueryInput {
   query: string;
@@ -57,56 +64,26 @@ export type KeywordResearchListItemWithTotalVolume = KeywordResearchItem & {
   totalVolume: number;
 };
 
-// --- Define a new type for the transformed item --- 
-// It extends the base item but overrides the clusters property
-type KeywordResearchItemWithArrayClusters = Omit<KeywordResearchItem, 'clusters'> & {
-  clusters: Array<{
-      clusterName: string;
-      keywords: KeywordVolumeItem[];
-      totalVolume?: number; 
-  }> | null; // Explicitly define the expected array structure
-};
-// --- End New Type Definition --- 
-
-// --- Exported Cache Revalidation Helper ---
-/**
- * Revalidates cache tags and paths related to keyword research.
- * Use this after mutations to ensure fresh data.
- * @param researchId Optional ID to revalidate a specific item's cache.
- */
-export async function revalidateKeywordResearchCache(researchId?: string) {
-  // Always revalidate the list tag and history page path
-  revalidateTag(KEYWORD_RESEARCH_TAG);
-  console.log(
-    `[Cache Helper][Revalidate] Revalidated tag: ${KEYWORD_RESEARCH_TAG}`
-  );
-
-  // Only revalidate the specific item tag AND path if an ID is provided
-  if (researchId) {
-    const itemPath = `/keyword-mapping/${researchId}`;
-    // Adding the specific tag for detail view cache
-    // Ensure detail cache uses a consistent tagging scheme if modified
-    const detailTag = `${KEYWORD_RESEARCH_TAG}_${researchId}`; // Define tag explicitly
-    revalidateTag(detailTag);
-    revalidatePath(itemPath); // Add path revalidation for the specific item
-    console.log(
-      `[Cache Helper][Revalidate] Also revalidated specific tag: ${detailTag} and path: ${itemPath}.`
-    );
-  }
-}
-
-// --- Cache Revalidation Action (Keep for potential other uses?) ---
+// --- Consolidated Revalidation Action --- 
 
 /**
  * Server action dedicated to revalidating keyword research cache tags and paths.
  * Can be safely called from client components after an operation completes.
  * @param researchId Optional ID for revalidating a specific item.
  */
-export async function revalidateKeywordData(
+export async function revalidateKeywordResearchAction(
   researchId?: string
 ): Promise<void> {
-  // Simply call the exported helper
-  await revalidateKeywordResearchCache(researchId);
+  revalidateTag(KEYWORD_RESEARCH_TAG);
+  if (researchId) {
+    const itemPath = `/keyword-mapping/${researchId}`;
+    const detailTag = `${KEYWORD_RESEARCH_TAG}_${researchId}`; 
+    revalidateTag(detailTag);
+    revalidatePath(itemPath); 
+    console.log(`[Revalidation Action] Revalidated: ${detailTag} and path: ${itemPath}.`);
+  } else {
+    console.log(`[Revalidation Action] Revalidated list tag: ${KEYWORD_RESEARCH_TAG}`);
+  }
 }
 
 // --- Server Actions ---
@@ -119,9 +96,7 @@ const getCachedKeywordResearchSummaryList = unstable_cache(
     limit = 50
   ): Promise<KeywordResearchSummaryItem[]> => {
     console.log(
-      `[Action Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}, filters=${JSON.stringify(
-        filters
-      )}`
+      `[Action Cache Miss] Fetching keyword research SUMMARY list: userId=${userId}, limit=${limit}`
     );
     // Directly call the DB function
     const summaryList = await getKeywordResearchSummaryList(limit, userId);
@@ -146,9 +121,6 @@ export async function fetchKeywordResearchSummaryAction(
       userId,
       filters,
       limit
-    );
-    console.log(
-      `[Server Action] Fetched ${researches.length} summary items (potentially cached).`
     );
     return { data: researches, error: null };
   } catch (error) {
@@ -187,84 +159,139 @@ const getCachedKeywordResearchDetail = unstable_cache(
   }
 );
 
-// 获取特定 Keyword Research 详情 (Uses cached function again)
-// Update the return type to use the new internal type
+// 获取特定 Keyword Research 详情
 export async function fetchKeywordResearchDetail(
   researchId: string
-): Promise<KeywordResearchItemWithArrayClusters | null> { // <-- Updated return type
+): Promise<KeywordResearchClientData | null> { 
   try {
     console.log(
       `[Server Action] Attempting to fetch detail via cache for: ${researchId}`
     );
-    // Fetch using the original type internally
-    const detail = await getCachedKeywordResearchDetail(researchId);
+    const detail = await getCachedKeywordResearchDetail(researchId); 
 
     if (!detail) {
       return null;
     }
 
-    // --- Add Transformation Logic Here --- 
-    let transformedClustersArray: KeywordResearchItemWithArrayClusters['clusters'] = null; 
-
-    if (detail.clusters) {
-      if (!Array.isArray(detail.clusters)) {
-        // If clusters is an object (old format), transform it
-        console.log(`[Action ${researchId}] Transforming clusters from object format to array format.`);
-        try {
-          transformedClustersArray = Object.entries(detail.clusters as Record<string, any>).map(([clusterName, keywordsData]) => {
-            let keywordsArray: KeywordVolumeItem[] = [];
-            if (Array.isArray(keywordsData)) {
-              keywordsArray = keywordsData.map((kw: any) => {
-                 if (typeof kw === 'string') {
-                   return { text: kw, searchVolume: null, competition: null, competitionIndex: null, cpc: null };
-                 } else if (typeof kw === 'object' && kw !== null && kw.text) {
-                   return {
-                      text: kw.text,
-                      searchVolume: kw.searchVolume ?? null,
-                      competition: kw.competition ?? null,
-                      competitionIndex: kw.competitionIndex ?? null,
-                      cpc: kw.cpc ?? null
-                   };
-                 } else {
-                   return { text: JSON.stringify(kw), searchVolume: null, competition: null, competitionIndex: null, cpc: null };
-                 }
-              });
-            }
-            const totalVolume = keywordsArray.reduce((sum, kw) => sum + (kw.searchVolume ?? 0), 0);
-            return {
-              clusterName: clusterName,
-              keywords: keywordsArray,
-              totalVolume: totalVolume
-            };
-          });
-        } catch (transformError) {
-            console.error(`[Action ${researchId}] Failed to transform clusters object:`, transformError);
-            transformedClustersArray = null; // Set to null on error
+    // --- Create Persona Map --- 
+    const personaMap = new Map<string, string>();
+    if (Array.isArray(detail.personas)) {
+      detail.personas.forEach(p => {
+        if (p.name && p.description) {
+          personaMap.set(p.name, p.description);
         }
-      } else {
-        // Clusters field exists and is already an array - ensure totalVolume exists
-        console.log(`[Action ${researchId}] Clusters field is already an array. Ensuring totalVolume exists.`);
-        transformedClustersArray = detail.clusters.map((cluster: any) => {
-           if (typeof cluster.totalVolume !== 'number' && Array.isArray(cluster.keywords)) {
-              const calculatedVolume = cluster.keywords.reduce((sum: number, kw: any) => sum + (kw?.searchVolume ?? 0), 0);
-              return { ...cluster, totalVolume: calculatedVolume };
-           } 
-           return cluster; 
+      });
+    }
+
+    let finalClusters: ClusterItem[] | null = null;
+
+    // --- Prioritize reading pre-calculated clustersWithVolume --- 
+    if (detail.clustersWithVolume && Array.isArray(detail.clustersWithVolume) && detail.clustersWithVolume.length > 0) {
+      console.log(`[Action ${researchId}] Using pre-calculated clustersWithVolume from DB.`);
+      finalClusters = detail.clustersWithVolume.map((cluster: ClusterItem): ClusterItem => ({ // Explicit return type
+        ...cluster,
+        keywords: (Array.isArray(cluster.keywords) ? cluster.keywords : []).map((kw: KeywordVolumeItem) => ({ 
+          ...kw,
+          searchVolume: typeof kw.searchVolume === 'number' ? kw.searchVolume : 0
+        })),
+        totalVolume: typeof cluster.totalVolume === 'number' ? cluster.totalVolume : 0,
+        // --- Inject personaDescription --- 
+        personaDescription: personaMap.get(cluster.clusterName) 
+      }));
+
+    } else {
+      // --- Fallback: Calculate from legacy clusters field --- 
+      console.log(`[Action ${researchId}] clustersWithVolume not found or empty. Falling back to calculating from legacy 'clusters'.`);
+      
+      const keywordVolumeMap = new Map<string, KeywordVolumeItem>();
+      if (Array.isArray(detail.keywords)) {
+        detail.keywords.forEach((kw: KeywordVolumeItem) => {
+          if (kw && kw.text) {
+            const normalizedText = kw.text.trim().toLowerCase(); 
+            const volume = typeof kw.searchVolume === 'number' ? kw.searchVolume : 0;
+            keywordVolumeMap.set(normalizedText, { ...kw, searchVolume: volume }); 
+          }
         });
       }
-    } else {
-      console.log(`[Action ${researchId}] No clusters found in detail object.`);
-      transformedClustersArray = null;
-    }
-    // --- End Transformation Logic ---
+      console.log(`[Action ${researchId} - Fallback] Created volume map with ${keywordVolumeMap.size} entries.`);
 
-    // Construct the final object conforming to the new return type
-    const result: KeywordResearchItemWithArrayClusters = {
-        ...detail, // Spread properties from original detail
-        clusters: transformedClustersArray // Assign the correctly typed transformed clusters
+      // Helper for fallback
+      const getKeywordVolumeItem = (text: string): KeywordVolumeItem => {
+        const normalizedText = text.trim().toLowerCase();
+        const foundItem = keywordVolumeMap.get(normalizedText);
+        if (foundItem) return foundItem;
+        console.warn(`[Action ${researchId} - Fallback] Keyword "${text}" not found in map. Defaulting volume.`);
+        return { text: text.trim(), searchVolume: 0 }; 
+      };
+
+      if (detail.clusters && typeof detail.clusters === 'object' && !Array.isArray(detail.clusters) && Object.keys(detail.clusters).length > 0) {
+         console.log(`[Action ${researchId} - Fallback] Transforming clusters from object format.`);
+         try {
+            finalClusters = Object.entries(detail.clusters as Record<string, string[]>).map(([clusterName, keywordTexts]): ClusterItem => { // Explicit return type
+               const clusterKeywords = (Array.isArray(keywordTexts) ? keywordTexts : []).map(getKeywordVolumeItem); 
+               const totalVolume = clusterKeywords.reduce((sum, kw) => sum + (kw.searchVolume ?? 0), 0);
+               return { 
+                  clusterName: clusterName,
+                  keywords: clusterKeywords,
+                  totalVolume: totalVolume,
+                  // --- Inject personaDescription --- 
+                  personaDescription: personaMap.get(clusterName) 
+               };
+            });
+         } catch (transformError) {
+            console.error(`[Action ${researchId} - Fallback] Failed to transform clusters object:`, transformError);
+            finalClusters = null;
+         }
+      } else if (detail.clusters && Array.isArray(detail.clusters) && detail.clusters.length > 0) {
+        console.log(`[Action ${researchId} - Fallback] Transforming legacy clusters from array format.`);
+        finalClusters = detail.clusters.map((cluster: ClusterItem | any): ClusterItem => { // Explicit return type
+           const clusterName = cluster.clusterName || 'Unnamed Cluster';
+           let clusterKeywords: KeywordVolumeItem[] = [];
+           if (Array.isArray(cluster.keywords)) {
+               clusterKeywords = cluster.keywords.map((kw: KeywordVolumeItem | string | any) => {
+                  const text = (typeof kw === 'string' ? kw : kw?.text) || '';
+                  return getKeywordVolumeItem(text);
+               });
+           }
+           const totalVolume = clusterKeywords.reduce((sum: number, kw: KeywordVolumeItem) => sum + (kw.searchVolume ?? 0), 0);
+           return { 
+              clusterName: clusterName, 
+              keywords: clusterKeywords, 
+              totalVolume: totalVolume, 
+              // --- Inject personaDescription --- 
+              personaDescription: personaMap.get(clusterName) 
+           }; 
+        });
+      } else {
+        console.log(`[Action ${researchId} - Fallback] No legacy clusters found to process.`);
+        finalClusters = null;
+      }
+    }
+
+    // --- Construct Final Result --- 
+    const { clusters, clustersWithVolume, createdAt, updatedAt, keywords, ...restOfDetail } = detail;
+    const resultObject = { // Renamed to avoid conflict with result variable name
+        ...restOfDetail, 
+        createdAt: convertTimestampToDate(createdAt) || new Date(0),
+        updatedAt: convertTimestampToDate(updatedAt) || new Date(),
+        keywords: keywords || [], 
+        clusters: finalClusters, 
+        isFavorite: detail.isFavorite ?? false,
+        tags: detail.tags ?? [],
+        clusteringStatus: (detail as any).clusteringStatus 
     };
 
-    return result; // No need to cast 'any' anymore
+    // --- Validate the final object against the client schema --- 
+    try {
+      const validatedData = KeywordResearchClientSchema.parse(resultObject);
+      console.log(`[Action ${researchId}] Final processed detail validated successfully.`);
+      return validatedData; // Return the validated data
+    } catch (validationError) {
+      console.error(`[Action ${researchId}] Client data validation failed:`, validationError);
+      // Decide how to handle validation failure - return null, throw, etc.
+      // Returning null for now, indicating data is not in the expected client shape.
+      return null; 
+    }
 
   } catch (error) {
     console.error(`獲取詳情 (${researchId}) 失敗:`, error);
@@ -283,7 +310,7 @@ export async function deleteKeywordResearch(
     // Call the DB service function
     const success = await deleteKeywordResearchEntry(researchId);
     if (success) {
-      await revalidateKeywordResearchCache(researchId); // Use exported helper
+      await revalidateKeywordResearchAction(researchId); // Use new action name
       console.log(`[Action] Successfully deleted research: ${researchId} and revalidated cache.`);
       return { success: true };
     } else {
@@ -319,7 +346,7 @@ export async function removeDuplicateKeywordResearch(): Promise<{
 
     // Revalidate the list cache if any items were removed
     if (removedCount > 0) {
-      await revalidateKeywordResearchCache(); // Revalidate list only
+      await revalidateKeywordResearchAction(); // Use new action name (no ID for list)
       console.log('[Action] Revalidated keyword research list cache.');
     }
 
@@ -375,7 +402,7 @@ export async function createKeywordResearch(
     const newResearchId = await createKeywordResearchEntry(dataToSave);
 
     console.log(`[Action] Successfully created research record with ID: ${newResearchId}`);
-    await revalidateKeywordResearchCache(); // Revalidate list cache
+    await revalidateKeywordResearchAction(); // Use new action name (no ID for list)
 
     // Return only the ID and success status
     return {
@@ -412,7 +439,7 @@ export async function updateKeywordResearch(
 
     if (success) {
       console.log(`[Action] Successfully updated research: ${researchId}`);
-      await revalidateKeywordResearchCache(researchId); // Revalidate on success
+      await revalidateKeywordResearchAction(researchId); // Use new action name
       return { success: true };
     } else {
       // This path might not be reached if DB function throws on failure
@@ -888,7 +915,7 @@ export async function processAndSaveKeywordQuery(
 
       // After saving keywords (or if none), revalidate the specific item cache
       if (savedResearchId) {
-        await revalidateKeywordResearchCache(savedResearchId);
+        await revalidateKeywordResearchAction(savedResearchId);
         console.log(
           `[Action: processAndSave] Revalidated cache for ${savedResearchId} after processing.`
         );
@@ -912,7 +939,7 @@ export async function processAndSaveKeywordQuery(
        // Attempt to revalidate cache even on failure if we have an ID
       if (savedResearchId) {
         try {
-          await revalidateKeywordResearchCache(savedResearchId);
+          await revalidateKeywordResearchAction(savedResearchId);
           console.log(
             `[Action: processAndSave] Revalidated cache for ${savedResearchId} after process error.`
           );
@@ -940,7 +967,7 @@ export async function processAndSaveKeywordQuery(
     // Attempt to revalidate cache even on failure if we have an ID
     if (savedResearchId) {
       try {
-        await revalidateKeywordResearchCache(savedResearchId);
+        await revalidateKeywordResearchAction(savedResearchId);
         console.log(
           `[Server Action] Revalidated cache for ${savedResearchId} after process error.`
         );

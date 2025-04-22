@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 // Actions
 import {
   requestClustering,
-  revalidateKeywordData,
+  revalidateKeywordResearchAction,
   updateKeywordResearch
 } from '@/app/actions';
 import { generateUserPersonaFromClusters } from '@/app/actions/generate-persona';
@@ -33,61 +33,17 @@ import KeywordVolumeVisualization, {
   type VolumeFilterType
 } from './keyword-volume-visualization';
 
-import {
-  type KeywordResearchItem,
-  type KeywordVolumeItem,
-  type UserPersona,
-} from '@/lib/schema';
-
-// Define ClusterItem locally based on expected structure from action
-type ClusterItem = {
-  clusterName: string;
-  keywords: KeywordVolumeItem[]; // Assuming keywords within cluster have volume info
-  totalVolume?: number;
-};
-
-interface KeywordResearchDetailProps {
-  initialResearchDetail: Omit<KeywordResearchItem, 'clusters'> & {
-    clusters: ClusterItem[] | null;
-    personas?: Partial<UserPersona>[];
-    clusteringStatus?: string;
-  };
-  researchId: string;
-}
-
-// Helper function to format date/time
-function formatDateTime(
-  date: Date | { seconds: number; nanoseconds: number } | string | undefined
-): string {
-  if (!date) return 'N/A';
-  let dateObj: Date;
-  if (
-    typeof date === 'object' &&
-    date !== null &&
-    'seconds' in date &&
-    'nanoseconds' in date
-  ) {
-    dateObj = new Date(date.seconds * 1000 + date.nanoseconds / 1000000);
-  } else if (date instanceof Date) {
-    dateObj = date;
-  } else {
-    try {
-      dateObj = new Date(date);
-      if (isNaN(dateObj.getTime())) {
-        return 'Invalid Date';
-      }
-    } catch (error) {
-      return 'Invalid Date Format';
-    }
-  }
-  return dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-}
+// Types from the centralized types file
+import { type KeywordVolumeItem } from '@/app/services/firebase/types';
+// Import the specific client data type 
+import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
 
 export default function KeywordResearchDetail({
-  initialResearchDetail,
-  researchId
-}: KeywordResearchDetailProps) {
+  keywordResearchObject
+}: { keywordResearchObject: KeywordResearchClientData }) {
   const router = useRouter();
+  // Extract researchId from the object
+  const researchId = keywordResearchObject.id;
 
   // --- Pagination State (Re-added) ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -106,7 +62,8 @@ export default function KeywordResearchDetail({
   // --- Data Processing Memos ---
   const sortedUniqueKeywords = useMemo(() => {
     const uniqueKeywords = new Map<string, KeywordVolumeItem>();
-    (initialResearchDetail?.keywords || []).forEach((kw: KeywordVolumeItem) => {
+    // Use keywordResearchObject
+    (keywordResearchObject?.keywords || []).forEach((kw: KeywordVolumeItem) => { 
       const text = kw.text?.trim().toLowerCase();
       if (text && !uniqueKeywords.has(text)) {
         uniqueKeywords.set(text, kw);
@@ -115,7 +72,7 @@ export default function KeywordResearchDetail({
     const keywordsArray = Array.from(uniqueKeywords.values());
     keywordsArray.sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
     return keywordsArray;
-  }, [initialResearchDetail?.keywords]);
+  }, [keywordResearchObject?.keywords]); // <-- Update dependency
 
   const filteredKeywords = useMemo(() => {
     if (volumeFilter === 'all') {
@@ -177,57 +134,29 @@ export default function KeywordResearchDetail({
 
   // --- Memos for Clustering (UPDATED) ---
   const currentClustersArray = useMemo(() => {
-    // Directly use the clusters array if it's valid
-    const clusters = initialResearchDetail?.clusters;
+    // Use keywordResearchObject
+    const clusters = keywordResearchObject?.clusters; 
     if (clusters && Array.isArray(clusters) && clusters.length > 0) {
-        // Optional: Add validation/filtering for individual cluster items if needed
         return clusters.filter(c => c && c.clusterName && Array.isArray(c.keywords));
     }
-    return null; // Return null if not a valid array or empty
-  }, [initialResearchDetail?.clusters]);
+    return null;
+  }, [keywordResearchObject?.clusters]); // <-- Update dependency
 
-  // Update hasValidClusters to check the array
   const hasValidClusters = useMemo(() => 
     !!currentClustersArray && currentClustersArray.length > 0,
     [currentClustersArray]
   );
 
-  // Note: Personas are passed down but not displayed/generated here currently
-  const currentPersonas = useMemo(() => {
-    const personasFromProp = initialResearchDetail?.personas;
-    if (Array.isArray(personasFromProp)) {
-      return personasFromProp.map((p: Partial<UserPersona>) => ({
-        name: p.name || '未命名畫像',
-        description: p.description || '無描述',
-        keywords: p.keywords || [],
-        characteristics: p.characteristics || [],
-        interests: p.interests || [],
-        painPoints: p.painPoints || [],
-        goals: p.goals || []
-      })) as UserPersona[];
-    }
-    return [] as UserPersona[];
-  }, [initialResearchDetail?.personas]);
-
-  const personasMapForClustering = useMemo(() => {
-    const map: Record<string, string> = {};
-    currentPersonas.forEach(persona => {
-      if (persona && persona.name && persona.description) {
-        map[persona.name] = persona.description;
-      }
-    });
-    return map;
-  }, [currentPersonas]);
-
   const keywordVolumeRecord: Record<string, number> = useMemo(() => {
     const map = new Map<string, number>();
-    filteredKeywords.forEach(kw => {
+    // Use keywordResearchObject
+    (keywordResearchObject?.keywords || []).forEach(kw => { 
       if (kw.text) {
         map.set(kw.text.toLowerCase(), kw.searchVolume ?? 0);
       }
     });
     return Object.fromEntries(map.entries());
-  }, [filteredKeywords]);
+  }, [keywordResearchObject?.keywords]); // <-- Update dependency
 
   // --- Filter Handler ---
   const handleVolumeFilterChange = useCallback(
@@ -247,6 +176,7 @@ export default function KeywordResearchDetail({
 
   // Action Handlers
   const handleRequestClustering = useCallback(async () => {
+    // researchId is now derived from keywordResearchObject
     if (!researchId) {
       setLocalError('Cannot start clustering: Missing research ID.');
       return;
@@ -258,7 +188,7 @@ export default function KeywordResearchDetail({
       const result = await requestClustering(researchId);
       if (result.success) {
         toast.success('分群請求已發送! 頁面將在處理後刷新。');
-        await revalidateKeywordData(researchId);
+        await revalidateKeywordResearchAction(researchId);
         router.refresh();
       } else {
         throw new Error(result.error || '請求分群失敗');
@@ -275,58 +205,52 @@ export default function KeywordResearchDetail({
 
   const handleSavePersonaForCluster = useCallback(
     async (clusterName: string, keywords: string[]) => {
+      // researchId is derived
       if (!researchId || !clusterName || !keywords || keywords.length === 0) {
         toast.error('無法生成用戶畫像：缺少必要數據。 ');
         return;
       }
+      if (!currentClustersArray) {
+        toast.error('無法保存用戶畫像：當前分群數據不可用。 ');
+        return;
+      }
+
       setIsSavingPersona(clusterName);
       setLocalError(null);
       toast.info(`正在為分群 "${clusterName}" 生成用戶畫像...`);
 
       try {
-        const result = await generateUserPersonaFromClusters({
+        // Step 1: Generate Persona Description
+        const generationResult = await generateUserPersonaFromClusters({
           clusterName,
           keywords
         });
 
-        if (!result || !result.userPersona) {
+        if (!generationResult || !generationResult.userPersona) {
           throw new Error('AI未能返回有效的用戶畫像文本。');
         }
+        const personaDescription = generationResult.userPersona;
 
-        const newPersonaData = {
-          name: clusterName,
-          description: result.userPersona,
-          keywords: keywords,
-          characteristics: [],
-          interests: [],
-          painPoints: [],
-          goals: []
-        };
+        // Step 2: Update the specific cluster in the local array
+        const updatedClustersArray = currentClustersArray.map(cluster => {
+          if (cluster.clusterName === clusterName) {
+            return {
+              ...cluster,
+              personaDescription: personaDescription // Update the description
+            };
+          }
+          return cluster;
+        });
 
-        const currentPersonasFromProp = initialResearchDetail.personas || [];
-        const existingIndex = currentPersonasFromProp.findIndex(
-          (p: Partial<UserPersona>) => p.name === clusterName
-        );
-
-        let updatedPersonas: Partial<UserPersona>[];
-        if (existingIndex !== -1) {
-          updatedPersonas = [...currentPersonasFromProp];
-          updatedPersonas[existingIndex] = {
-            ...currentPersonasFromProp[existingIndex],
-            ...newPersonaData
-          };
-        } else {
-          updatedPersonas = [...currentPersonasFromProp, newPersonaData];
-        }
-
-        // Use the dedicated action for updating
-        await updateKeywordResearch(researchId, {
-          personas: updatedPersonas as UserPersona[],
-          updatedAt: new Date() // Let action handle timestamp if possible, or set here
+        // Step 3: Save the updated clusters array back to the DB
+        // Use the general update action, targeting the 'clustersWithVolume' field
+        await updateKeywordResearch(researchId, { 
+          clustersWithVolume: updatedClustersArray, // Send the whole modified array
+          updatedAt: new Date() // Explicitly provide timestamp
         });
 
         toast.success(`用戶畫像 "${clusterName}" 已生成並保存！`);
-        await revalidateKeywordData(researchId);
+        await revalidateKeywordResearchAction(researchId);
         router.refresh();
       } catch (err) {
         const errorMsg =
@@ -337,7 +261,8 @@ export default function KeywordResearchDetail({
         setIsSavingPersona(null);
       }
     },
-    [researchId, router, initialResearchDetail]
+    // researchId derived, dependency on currentClustersArray remains
+    [researchId, router, currentClustersArray] 
   );
 
   // Render Logic
@@ -350,25 +275,24 @@ export default function KeywordResearchDetail({
       )}
       {/* Section 1: Metadata and Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        {/* Metadata */}
+        {/* Metadata - Use keywordResearchObject */}
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
           <div className="flex items-center">
             <Globe className="mr-1.5 h-4 w-4" />
-            地區: {initialResearchDetail.region || '未指定'}
+            地區: {keywordResearchObject.region || '未指定'}
           </div>
           <div className="flex items-center">
             <Languages className="mr-1.5 h-4 w-4" />
-            語言: {initialResearchDetail.language || '未指定'}
+            語言: {keywordResearchObject.language || '未指定'}
           </div>
           <div className="flex items-center">
             <Clock className="mr-1.5 h-4 w-4" />
-            最後更新: {formatDateTime(initialResearchDetail.updatedAt)}
+            最後更新: {formatDateTime(keywordResearchObject.updatedAt)}
           </div>
-          {initialResearchDetail.tags &&
-            initialResearchDetail.tags.length > 0 && (
+          {keywordResearchObject.tags && keywordResearchObject.tags.length > 0 && (
               <div className="flex items-center gap-1">
                 <Tag className="mr-1 h-4 w-4" />
-                {initialResearchDetail.tags.map((tag: string) => (
+                {keywordResearchObject.tags.map((tag: string) => ( 
                   <Badge key={tag} variant="secondary" className="text-xs">
                     {tag}
                   </Badge>
@@ -474,11 +398,10 @@ export default function KeywordResearchDetail({
               <KeywordClustering
                 clusters={currentClustersArray}
                 keywordVolumeMap={keywordVolumeRecord}
-                personasMap={personasMapForClustering}
-                researchRegion={initialResearchDetail.region || 'us'}
-                researchLanguage={initialResearchDetail.language || 'en'}
+                researchRegion={keywordResearchObject.region || 'us'}
+                researchLanguage={keywordResearchObject.language || 'en'}
                 currentKeywords={filteredKeywords.map(kw => kw.text || '')}
-                selectedResearchDetail={{ query: initialResearchDetail.query }}
+                selectedResearchDetail={{ query: keywordResearchObject.query }}
                 researchId={researchId}
                 onSavePersona={handleSavePersonaForCluster}
                 isSavingPersona={isSavingPersona}
@@ -500,4 +423,32 @@ export default function KeywordResearchDetail({
       {/* End Grid */}
     </div>
   );
+}
+
+// Helper function to format date/time
+function formatDateTime(
+  date: Date | { seconds: number; nanoseconds: number } | string | undefined
+): string {
+  if (!date) return 'N/A';
+  let dateObj: Date;
+  if (
+    typeof date === 'object' &&
+    date !== null &&
+    'seconds' in date &&
+    'nanoseconds' in date
+  ) {
+    dateObj = new Date(date.seconds * 1000 + date.nanoseconds / 1000000);
+  } else if (date instanceof Date) {
+    dateObj = date;
+  } else {
+    try {
+      dateObj = new Date(date);
+      if (isNaN(dateObj.getTime())) {
+        return 'Invalid Date';
+      }
+    } catch (error) {
+      return 'Invalid Date Format';
+    }
+  }
+  return dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 }

@@ -239,7 +239,12 @@ export default function KeywordResearchList({
                            <Button
                              variant="ghost"
                              size="icon"
-                             className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-150")}
+                             className={cn(
+                               "h-6 flex-shrink-0 text-muted-foreground hover:text-destructive",
+                               "w-0 overflow-hidden",
+                               "group-hover:w-6",
+                               "transition-all duration-200 ease-in-out"
+                              )}
                              onClick={e => handleDelete(e, research.id)}
                              disabled={deletingId === research.id}
                              aria-label={`刪除研究記錄: ${research.query}`}

@@ -16,10 +16,21 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'; // Import Table components
-import { KeywordVolumeItem, VolumeDistributionData } from '@/lib/schema';
+import type { KeywordVolumeItem, VolumeDistributionDataItem } from '@/app/services/firebase/types'; // Updated import path
 import { formatVolume } from '@/lib/utils'; // Import formatVolume from utils
 import { BarChartHorizontal, MoreHorizontal, Sigma } from 'lucide-react'; // Add MoreHorizontal icon
 import React, { useMemo } from 'react';
+
+// Define the type for the distribution data array
+type VolumeDistributionData = VolumeDistributionDataItem[];
+
+// Define the type for items in rangeCardData
+interface RangeCardDataItem {
+  label: string;
+  count: number;
+  color: string;
+  textColor: string;
+}
 
 interface KeywordDistributeProps {
   keywords: KeywordVolumeItem[]; // Use KeywordVolumeItem[]
@@ -96,7 +107,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
 
   // Prepare data for the range cards and dropdown, now using the array
   const rangeCardData = useMemo(() => {
-    const data = volumeDistribution.map(item => {
+    const data = volumeDistribution.map((item: VolumeDistributionDataItem) => {
       let color = 'bg-gray-100 dark:bg-gray-800/50';
       let textColor = 'text-gray-600 dark:text-gray-400';
       if (item.range === RANGES.R1.label) {
@@ -183,7 +194,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
 
   // Find the data for the currently selected range
   const selectedRangeData = useMemo(() => {
-    return rangeCardData.find(r => r.label === selectedRangeLabel);
+    return rangeCardData.find((r: RangeCardDataItem) => r.label === selectedRangeLabel);
   }, [selectedRangeLabel, rangeCardData]);
 
   return (
@@ -225,7 +236,7 @@ const KeywordDistribute: React.FC<KeywordDistributeProps> = ({ keywords }) => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {rangeCardData.map(range => (
+                {rangeCardData.map((range: RangeCardDataItem) => (
                   <DropdownMenuItem
                     key={range.label}
                     onSelect={() => setSelectedRangeLabel(range.label)}

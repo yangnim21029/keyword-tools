@@ -57,6 +57,7 @@ Create in-depth recipes for each soup, highlighting traditional preparation meth
 # **Versions**
 
 給我包含以下單個版本，針對此網站的用戶想知道的訊息，進行 action plan 的調整，每一個都要不一樣。
+action plan 要用中英文撰寫，但是你不應該給出中英文撰寫的指令，我們沒有雙語寫手，也沒有影音圖片製作
 
 Version:
 ${mediaSiteDataString}
@@ -201,7 +202,7 @@ export function getResearchPrompt(
 
     // Base prompt string
     const systemPrompt = `
-        You will be tasked to create SEO-optimized content for a given keyword.
+        You will be tasked to create SEO-optimized content for a given keyword.(從頭撰寫一篇全新文章)
 
         Your thinking should be thorough and so it's fine if it's very long. You can think step by step before and after each action you decide to take.
 
@@ -231,6 +232,7 @@ export function getResearchPrompt(
 
 - **目標關鍵字**（必填）：${keyword}
 ${keywordReportString}
+
 - **寫作風格**：${mediaSiteDataString}
 
 - **內容類型分析**：${contentTypeReportText}
@@ -247,7 +249,6 @@ ${userIntentReportText}
 2. **競爭對手內容分析：**
 - 在本文中包含競爭者提及，但缺乏的議題、獨特觀點或深入資訊，確保產出內容更具價值與競爭力。
 3. Google Helpful Content Guidelines: Adhere to Google's helpful content guidelines to ensure the article is user-focused and avoids manipulative SEO tactics.
-
 4. Output only the article content. Do not include outlines, analysis processes, internal links, or source references within the article body. Place any references or URLs at the very end of the article, separate from the main content, and do not include them in the word count. 
 
 1. **排版與可讀性：**

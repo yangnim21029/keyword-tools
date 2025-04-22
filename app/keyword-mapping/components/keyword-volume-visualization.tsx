@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
-import { type KeywordVolumeItem } from '@/lib/schema';
+import { type KeywordVolumeItem } from '@/app/services/firebase/types';
 import { cn } from '@/lib/utils';
 import { BarChart3, X } from 'lucide-react';
 import React from 'react';
