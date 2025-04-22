@@ -169,7 +169,7 @@ export const KeywordResearchUserPersonaSchema = z.object({
 });
 
 // --- Keyword Form/Suggestion/Volume Section ---
-import { LANGUAGES, REGIONS } from '@/app/config/constants';
+import { LANGUAGES, REGIONS } from '@/app/global-config';
 
 /**
  * 通用常量和基礎 Schema

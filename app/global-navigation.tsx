@@ -7,10 +7,9 @@ import { BarChart, Box, HelpCircle, List, Pen, Search, Settings, type LucideProp
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
-import { type ForwardRefExoticComponent, type RefAttributes, useState } from "react";
+import { type ForwardRefExoticComponent, type RefAttributes, useState, useMemo } from "react";
 import { toast } from "sonner";
-
-type IconName = "search" | "help" | "pen" | "bar-chart" | "list" | "settings" | "box";
+import { NAV_ITEMS, SETTINGS_NAV_ITEM, type IconName, type NavItem, type SettingsItem } from "./global-config";
 
 const iconMap: {
   [key in IconName]: ForwardRefExoticComponent<
@@ -26,28 +25,16 @@ const iconMap: {
   box: Box,
 };
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: IconName;
-};
-
-type SettingsItem = {
-  label: string;
-  icon: IconName;
-};
-
 interface NavigationProps {
-  items: NavItem[];
-  settingsItem: SettingsItem;
   className?: string;
 }
 
-export function Navigation({ items, settingsItem, className }: NavigationProps) {
+export function Navigation({ className }: NavigationProps) {
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const allItems = [...items];
+  const navItems = useMemo(() => NAV_ITEMS, []);
+  const settingsItem = useMemo(() => SETTINGS_NAV_ITEM, []);
 
   return (
     <aside
@@ -69,7 +56,7 @@ export function Navigation({ items, settingsItem, className }: NavigationProps) 
       </div>
       <nav className="flex flex-grow flex-col gap-1 px-2 py-4">
         <TooltipProvider delayDuration={0}>
-          {allItems.map((item) => {
+          {navItems.map((item) => {
             const Icon = iconMap[item.icon];
             const isActive = pathname === item.href;
             return (

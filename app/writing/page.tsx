@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, AlertTriangle, Copy, CheckCircle2, ChevronRight, Search, TerminalSquare, Settings2, Check, ChevronsUpDown, Layers } from "lucide-react"
-import { MEDIASITE_DATA } from "@/app/config/constants"
+import { MEDIASITE_DATA } from "@/app/global-config"
 import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from "@/app/prompt/fine-tune"
 import { toast } from "sonner"
 import { Progress } from "@/components/ui/progress"

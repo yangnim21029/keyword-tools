@@ -1,6 +1,6 @@
 'use client';
 
-import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Import existing constants
+import { LANGUAGES, REGIONS } from '@/app/global-config'; // Import existing constants
 // Import the Server Action instead
 import {
   deleteSerpAnalysisAction,

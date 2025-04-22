@@ -1,6 +1,6 @@
 'use server';
 
-import { ALPHABET, SYMBOLS } from '@/app/config/constants';
+import { ALPHABET, SYMBOLS } from '@/app/global-config';
 import {
   estimateProcessingTime,
   filterSimplifiedChinese

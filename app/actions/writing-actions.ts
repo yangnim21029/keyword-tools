@@ -1,14 +1,12 @@
 import { openai } from '@ai-sdk/openai';
 import { fetchSerpByKeyword } from '../services/serp.service';
 import { getContentTypeAnalysisPrompt, getUserIntentAnalysisPrompt } from '../prompt/serp-prompt-design';
-import { generateText } from 'ai';
-import { z } from 'zod';
-import { MEDIASITE_DATA } from '../config/constants';
+import { generateText, generateObject } from 'ai';
+import { MEDIASITE_DATA } from '../global-config';
 // Import fine-tune data
 import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from '../prompt/fine-tune';
+import { z } from 'zod';
 
-  
-const contentAngleReference = ''; // Corresponds to I4
 
 
 // Define the prompt template as a constant string with proper formatting
@@ -479,4 +477,393 @@ export async function generateReaseachPrompt(
 
     // Should not reach here
     throw new Error(`[Research Action] Invalid step number provided: ${step}. Valid steps are 1, 2, or 3.`);
+}
+
+// Define the Zod schema for the final JSON output
+const HeadingSchema = z.object({
+  h2: z.string().describe("The H2 heading text"),
+  h3: z.array(z.string()).optional().describe("An array of H3 subheading texts, if any exist under this H2"),
+});
+
+const OutlineSchema = z.object({
+  headings: z.array(HeadingSchema).describe("An array of heading objects, each containing an H2 and optionally its H3s")
+});
+
+/**
+ * Processes a keyword through multiple AI steps to generate structured content
+ * with alt text references, suitable for specific websites, and returns it as a JSON object.
+ * Translates the logic from the provided Python script.
+ * @param keyword The keyword and potentially related context/URL to process.
+ * @param language The language code (e.g., 'zh-TW', 'en') for localization.
+ * @param region The region code (e.g., 'hk', 'tw') for localization.
+ * @param targetWebsites Optional array of target website names or URLs to consider.
+ * @returns A promise resolving to a JSON object conforming to OutlineSchema.
+ */
+export async function generateStructuredContentWithAltText(
+  keyword: string,
+  language: string, 
+  region: string,
+  targetWebsites?: string[] // Added optional parameter
+): Promise<z.infer<typeof OutlineSchema>> {
+    console.log('[generateStructuredContentWithAltText] Starting processing for keyword snippet:', keyword.substring(0, 100) + "...");
+    console.log(`[generateStructuredContentWithAltText] Localization Context: Language=${language}, Region=${region}`);
+    console.log(`[generateStructuredContentWithAltText] Target Websites: ${targetWebsites ? targetWebsites.join(', ') : 'None provided (use general SERP)'}`);
+
+    const localizationContext = `用戶從從 ${region} 建立的 ${language} 語言的 session 進入網站`;
+
+    // --- Step 1: Generate Categorized Headings --- 
+    const step1Output = await generateH2HeadingsList(keyword, language, region, targetWebsites);
+    console.log('[generateStructuredContentWithAltText] Step 1 completed.');
+    // console.log("Step 1 output:", step1Output); // Optional: log intermediate output
+
+    // Step 2: Use gpt-4.1-nano to create structured article
+    // NOTE: The prompt below needs adjustment to handle the structured JSON input (step1Output) from Step 1.
+    const step2Prompt = `
+**Reminder:** Your task is to follow the instructions precisely and continue iterating until the goal is achieved. Focus solely on the current step's objective using the provided reference material.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Create a structured article of approximately 1500 words based on the provided list of H2 headings.
+- Write short paragraphs (1-2 sentences each).
+- Ensure smooth, logical transitions between paragraphs to build trust and engagement.
+- Use the provided headings as the main sections (H2s) of the article.
+- Ensure the article content flows logically and covers the topics suggested by the headings.
+
+**Not To Do:**
+- Do not include the raw H2 headings list in the final article content (integrate them as actual H2s).
+- Do not write overly long paragraphs.
+- Do not add commentary about the process.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference H2 Headings List:**
+${step1Output}
+
+**Output:**
+[Article Content]
+`;
+    console.log('[generateStructuredContentWithAltText] Step 2: Structuring article...');
+    const step2Result = await generateText({
+        model: openai('gpt-4.1-nano'),
+        prompt: step2Prompt,
+    });
+    const step2Output = step2Result.text;
+    console.log('[generateStructuredContentWithAltText] Step 2 completed.');
+    // console.log("Step 2 output:", step2Output);
+
+    // Step 3: Use gpt-4.1-nano to identify replaceable content with alt text
+    const step3Prompt = `
+**Reminder:** Your task is to follow the instructions precisely and continue iterating until the goal is achieved. Focus solely on the current step's objective using the provided reference material.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Analyze the provided article.
+- Identify sentences or phrases that could be replaced by alternative media formats (e.g., images, diagrams, structured text).
+- Replace these identified parts directly within the article text using bracketed alt text placeholders like '[Description of media content]'. Use the example as a guide for the description style.
+- Ensure you identify and create **at least 5** such alt text placeholders.
+
+**Not To Do:**
+- Do not output explanations or comments.
+- Do not modify the article content other than inserting the alt text placeholders.
+- Do not list the alt text separately.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference Article:**
+${step2Output}
+
+**Example Placeholder:**
+[布偶貓頭部特徵圖示：圓潤頭部、藍色眼睛、微彎鼻子及中等大小耳朵]
+
+**Output:**
+[Article content with integrated alt text placeholders]
+`;
+    console.log('[generateStructuredContentWithAltText] Step 3: Identifying replaceable content...');
+    const step3Result = await generateText({
+        model: openai('gpt-4.1-nano'),
+        prompt: step3Prompt,
+    });
+    const step3Output = step3Result.text;
+    console.log('[generateStructuredContentWithAltText] Step 3 completed.');
+    // console.log("Step 3 output:", step3Output);
+
+    // Step 4: Use gpt-4.1-nano to extract alt text as list
+    const step4Prompt = `
+**Reminder:** Your task is to follow the instructions precisely and continue iterating until the goal is achieved. Focus solely on the current step's objective using the provided reference material.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Extract *only* the bracketed alt text placeholders (e.g., '[...]') from the provided article.
+- Present these extracted alt texts as a simple list, placed at the very top of the output.
+
+**Not To Do:**
+- Do not include any part of the original article body.
+- Do not include introductory phrases, explanations, or labels for the list.
+- Do not include the square brackets in the final list items.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference Article with Alt Text:**
+${step3Output}
+
+**Output Format:**
+Alt text 1
+Alt text 2
+Alt text 3
+...
+`;
+    console.log('[generateStructuredContentWithAltText] Step 4: Extracting alt text list...');
+    const step4Result = await generateText({
+        model: openai('gpt-4.1-nano'),
+        prompt: step4Prompt,
+    });
+    const step4Output = step4Result.text;
+    console.log('[generateStructuredContentWithAltText] Step 4 completed.');
+
+    const step7Prompt = `
+**Reminder:** Your task is to follow the instructions precisely and continue iterating until the goal is achieved. Focus solely on the current step's objective using the provided reference material.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Take each item from the input list (extracted alt texts).
+- Reformat each item into a simple descriptive sentence following the "Problem Statement + Clear Promise" headline style.
+- Present each reformatted item as an H2 heading.
+- Maintain a similar length to the original alt text.
+
+**Not To Do:**
+- Do not include introductions, explanations, or any text other than the H2 list.
+- Do not invent information not present in the alt text.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference Alt Text List:**
+${step4Output} 
+
+**Output Format:**
+H2 [Reformatted Alt Text 1]
+H2 [Reformatted Alt Text 2]
+H2 [Reformatted Alt Text 3]
+...
+`;
+    console.log('[generateStructuredContentWithAltText] Step 7: Reformatting alt text list to H2...');
+    const step7Result = await generateText({
+        model: openai('gpt-4.1-nano'),
+        prompt: step7Prompt,
+    });
+    const step7Output = step7Result.text;
+    console.log('[generateStructuredContentWithAltText] Step 7 completed.');
+    // console.log("Step 7 output:", step7Output);
+
+    const step8Prompt = `
+**Reminder:** Your task is to follow the instructions precisely and continue iterating until the goal is achieved. Focus solely on the current step's objective using the provided reference material.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Consider the provided H2 list as main headings.
+- Refer to the "Article Content for Context" (from Step 2).
+- For each H2, generate a few relevant H3 subheadings.
+- H3s should be concise summaries or key insights derived *directly* from the article context, related to the corresponding H2.
+
+**Not To Do:**
+- Do not invent information or H3s not supported by the article context.
+- Do not repeat H2 headings without adding H3s.
+- Do not add introductions or explanations.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference Article Content for Context:**
+${step2Output}
+
+**Reference H2 List:**
+${step7Output}
+
+**Output Format:**
+H2 [Heading 1]
+H3 [Subheading 1.1 based on context]
+H3 [Subheading 1.2 based on context]
+H2 [Heading 2]
+H3 [Subheading 2.1 based on context]
+...
+`;
+    console.log('[generateStructuredContentWithAltText] Step 8: Generating H3 subheadings using article context...');
+    const step8Result = await generateText({
+        model: openai('gpt-4.1-nano'),
+        prompt: step8Prompt,
+    });
+    const step8Output = step8Result.text;
+    console.log('[generateStructuredContentWithAltText] Step 8 completed.');
+    // console.log("Step 8 output:", step8Output);
+
+    // Step 9: Convert the H2/H3 string output to JSON using generateObject
+    const step9Prompt = `
+**Reminder:** Your task is to accurately convert the provided text structure into the specified JSON format.
+
+**General Instruction:** 前面放重點，後面發散 (Put key points first, then diverge).
+
+**To Do:**
+- Parse the input text which contains H2 and H3 headings.
+- Create a JSON object matching the provided schema.
+- The JSON object should have a root key 'headings' which is an array.
+- Each element in the array should represent an H2 section.
+- Each H2 object must have an 'h2' key with the heading text.
+- If an H2 has H3 subheadings immediately following it, include an 'h3' key in the object with an array of those H3 texts.
+- Ensure the order of headings in the JSON matches the input text.
+
+**Not To Do:**
+- Do not include introductions, explanations, or any text outside the JSON structure.
+- Do not invent headings or subheadings not present in the input.
+- Do not include the "H2 " or "H3 " prefixes in the JSON values.
+
+**Localization Context:**
+${localizationContext}
+
+**Reference H2/H3 Text Structure:**
+${step8Output}
+
+**Output:**
+Strictly adhere to the JSON schema provided.
+`;
+
+    console.log('[generateStructuredContentWithAltText] Step 9: Converting H2/H3 structure to JSON...');
+    const { object: finalJsonObject } = await generateObject({
+        model: openai('gpt-4.1-nano'), // Or another suitable model
+        schema: OutlineSchema,
+        prompt: step9Prompt,
+    });
+
+    console.log('[generateStructuredContentWithAltText] Step 9 completed. JSON object generated.');
+    
+    // Remove the last heading item before returning
+    if (finalJsonObject.headings && finalJsonObject.headings.length > 0) {
+      finalJsonObject.headings = finalJsonObject.headings.slice(0, -1);
+      console.log('[generateStructuredContentWithAltText] Removed last heading item from final JSON.');
+    }
+
+    return finalJsonObject;
+}
+
+// --- Categorized H2 Generation ---
+
+/**
+ * Generates a plain text list of potential H2 headings based on keyword, localization, and optional target websites.
+ * @param keyword The keyword to analyze.
+ * @param language The language code (e.g., 'zh-TW', 'en').
+ * @param region The region code (e.g., 'hk', 'tw').
+ * @param targetWebsites Optional array of target website names or URLs.
+ * @returns A promise resolving to a string containing a list of potential H2 headings.
+ */
+export async function generateH2HeadingsList(
+    keyword: string,
+    language: string, 
+    region: string,
+    targetWebsites?: string[] 
+): Promise<string> {
+    console.log(`[generateH2HeadingsList] Context: Lang=${language}, Region=${region}, Targets=${targetWebsites ? targetWebsites.join('|') : 'N/A'}`);
+
+    const localizationContext = `用戶從從 ${region} 建立的 ${language} 語言的 session 進入網站`;
+    let step1ReferenceContext = `- Keyword: ${keyword}`; 
+    let step1ToDoInstruction = `- Analyze the keyword in the context of the provided localization.`; 
+
+    if (targetWebsites && targetWebsites.length > 0) {
+        step1ReferenceContext += `\n- Target Websites: ${targetWebsites.join(', ')}`;
+        step1ToDoInstruction += `\n- Prioritize headings relevant to these target websites: ${targetWebsites.join(', ')}.`;
+    } else {
+        step1ToDoInstruction += `\n- Since no specific target websites are provided, identify general user interests based on typical Google SERP results for this keyword and localization.`;
+    }
+
+    // --- Pre-processing Step: Generate Content Marketing Suggestions ---
+    const preProcessingPrompt = `
+**Task:** Provide 5 concise pieces of strategic advice for structuring content about "${keyword}" to maximize marketing effectiveness for users in ${region} (${language}).
+
+**Context:**
+*   Keyword: ${keyword}
+*   Localization: ${localizationContext}
+*   ${targetWebsites && targetWebsites.length > 0 ? `Target Websites Context: ${targetWebsites.join(', ')}` : 'Context: General Web / SERP'}
+
+**Instructions:**
+1.  Based on user intent for "${keyword}" (use your web search knowledge), generate exactly 5 actionable pieces of strategic advice.
+2.  Focus on *how* to structure the narrative or present information effectively for marketing goals (engagement, trust, conversion). Examples:
+    *   Advice on balancing informational content vs. sales intent (e.g., "Suppress the desire to sell initially; build trust first.").
+    *   Suggestions for structuring comparisons (e.g., "Explain context/methodology before presenting comparison data.").
+    *   Recommendations on addressing potential user concerns or pain points proactively.
+    *   Guidance on sequencing information logically for the target audience.
+3.  Output *only* the 5 pieces of advice as a numbered list. DO NOT include explanations.
+
+**Output Format:**
+1. [Strategic Advice 1]
+2. [Strategic Advice 2]
+3. [Strategic Advice 3]
+4. [Strategic Advice 4]
+5. [Strategic Advice 5]
+`;
+
+    console.log('[generateH2HeadingsList] Pre-processing: Generating enhancement suggestions...');
+    const { text: enhancementSuggestions } = await generateText({
+        model: openai('gpt-4.1-nano'), // Use a capable model for this analysis
+        prompt: preProcessingPrompt,
+    });
+    console.log('[generateH2HeadingsList] Pre-processing: Suggestions generated.');
+    // --- End Pre-processing Step ---
+
+    const step1Prompt = `
+ **Your Core Mandate:**
+ You MUST use your web search capabilities to find content relevant to "${keyword}", focusing on the likely user intent and different content types.
+     
+     **To Do:**
+    ${step1ToDoInstruction}
+   - Consider the following enhancement suggestions when selecting and grouping H2s 順序:
+     ${enhancementSuggestions}
+    - Analyze the potential user intent behind "${keyword}".
+    - Based on the intent, perform web searches for relevant content across these types:
+       - **問題摘要 (Problem/Question Summary):** Content summarizing the core issue or question.
+       - **漲知識 (Knowledge Points/Facts):** Interesting facts, explanations, background information.
+       - **會遇到的危機 (Potential Crises/Problems):** Challenges, risks, or pitfalls related to the topic.
+       - (Also consider other relevant types like How-to, Comparison, Benefits, User Interest based on the keyword).
+   - Extract representative H2 headings directly from the content found in your web search for these types.
+   - Identify which extracted headings are unique vs. common across the web search results you analyzed.
+   - **Sequence the extracted H2 headings** to create a logical flow suitable for a comprehensive article or sales page. Start with hooks or interesting facts, move to core information/benefits, address concerns/risks, and potentially conclude with application/how-to.
+   - Prioritize unique headings found during your analysis when building the sequence.
+   - Present the final *sequenced* list of **at least 10** extracted H2 headings.
+       
+       **Not To Do:**
+      - Do not *generate* new headings; only extract and list existing ones found in your web search results.
+      - Do not add introductions, explanations, source URLs, or any text other than the list of extracted H2 headings.
+      - Do not use H1, H3, or markdown ## formatting in the output list; just plain text H2s.
+      - Do not number or bullet the list.
+      - Do not group the output by content type; the output should be a single, sequenced list.
+       
+     **Localization Context:**
+    ${localizationContext}
+  
+  **Reference Keyword & Context:**
+  ${step1ReferenceContext}
+  
+  **Output Format:** (A single list of H2s, one per line, sequenced logically)
+  [Extracted H2 - Hook/Intrigue 1]
+  [Extracted H2 - Hook/Intrigue 2]
+  [Extracted H2 - Core Info/Benefit 1]
+  [Extracted H2 - Core Info/Benefit 2]
+  [Extracted H2 - Addressing Concern 1]
+  [Extracted H2 - Addressing Concern 2]
+  [Extracted H2 - Application/How-to 1]
+  ...
+  `; // Close the template literal correctly
+ 
+     console.log('[generateH2HeadingsList] Generating H2 list...');
+     const { text: headingsList } = await generateText({
+         model: openai('gpt-4o-search-preview'), // Reverted to original model for this step
+         prompt: step1Prompt,
+     });
+     console.log('[generateH2HeadingsList] Completed generation.');
+     return enhancementSuggestions + "\n" + headingsList; // Ensure the return statement exists
 }

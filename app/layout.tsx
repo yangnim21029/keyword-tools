@@ -38,23 +38,6 @@ export const viewport: Viewport = {
   themeColor: 'white'
 };
 
-// Define navigation items with icons
-const navigationItems = [
-  { href: '/keyword-mapping', label: '關鍵字工具', icon: 'search' as const },
-  { href: '/help', label: '說明', icon: 'help' as const },
-  { href: '/writing', label: 'Writing', icon: 'pen' as const },
-  { href: '/dev', label: '各站成效', icon: 'bar-chart' as const },
-  { href: '/serp', label: 'SERP 分析', icon: 'list' as const },
-  { href: '/demo-product-function', label: 'Demo 功能', icon: 'box' as const },
-];
-
-// Define settings item separately
-const settingsItem = {
-  // No href needed if it just opens a dialog
-  label: '設定',
-  icon: 'settings' as const
-};
-
 export default function RootLayout({
   children
 }: {
@@ -66,7 +49,7 @@ export default function RootLayout({
         className={`${inter.variable} ${roboto.variable} font-sans bg-background text-foreground antialiased min-h-screen overflow-x-hidden`}
       >
         <ThemeProvider defaultTheme="light" enableSystem={false}>
-          <Navigation items={navigationItems} settingsItem={settingsItem} />
+          <Navigation />
           <main className="w-full overflow-auto p-4 pt-4 pl-20 min-h-screen">
             {children}
           </main>

@@ -1,21 +1,6 @@
 import { generateReaseachPrompt } from "../../actions/writing-actions";
-import { MEDIASITE_DATA } from "../../config/constants";
+import { MEDIASITE_DATA } from "../../global-config";
 import { NextResponse } from 'next/server'; // Import NextResponse for standard responses
-
-// GET method returns the curl command for guiding the user on API usage
-export async function GET(req: Request) {
-    // Use the request URL to determine the base URL (origin)
-    const url = new URL(req.url);
-    const baseUrl = url.origin; // e.g., http://localhost:3000 or https://yourdomain.com
-    console.log(`[API Route GET] Using derived base URL: ${baseUrl}`);
-
-    // Construct the API path directly
-    const apiUrl = `${baseUrl}/api/writing`; // Corrected API path if this is the intended endpoint
-    const curlCommand = `curl -X POST -H "Content-Type: application/json" -d '{"keyword": "credit card", "mediaSiteName": "BF"}' ${apiUrl}`; // Example using a valid name and English keyword
-    
-    // Return as plain text
-    return new Response(curlCommand, { headers: { 'Content-Type': 'text/plain' } });
-}
 
 // POST method - Performs all 3 steps sequentially
 export async function POST(req: Request) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { processAndSaveKeywordQuery } from '@/app/actions';
-import { LANGUAGES, REGIONS } from '@/app/config/constants'; // Import constants
+import { LANGUAGES, REGIONS } from '@/app/global-config'; // Import constants
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import {

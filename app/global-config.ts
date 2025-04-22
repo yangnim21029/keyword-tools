@@ -179,3 +179,36 @@ export const MEDIASITE_DATA = [
     "name": "PC"
   }
 ];
+
+// --- Global Navigation Configuration ---
+
+// Define the types based on app/global-navigation.tsx structure
+export type IconName = "search" | "help" | "pen" | "bar-chart" | "list" | "settings" | "box";
+
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: IconName;
+};
+
+export type SettingsItem = {
+  label: string;
+  icon: IconName;
+};
+
+// Define the main navigation items
+export const NAV_ITEMS: NavItem[] = [
+  { href: '/keyword-mapping', label: '關鍵字工具', icon: 'search' },
+  { href: '/help', label: '說明', icon: 'help' },
+  { href: '/writing', label: 'Writing', icon: 'pen' },
+  { href: '/dev', label: '各站成效', icon: 'bar-chart' },
+  { href: '/serp', label: 'SERP 分析', icon: 'list' },
+  { href: '/demo-product-function', label: 'Demo 功能', icon: 'box' },
+  { href: "/api", label: "API Docs", icon: "box" },
+];
+
+// Define the settings navigation item
+export const SETTINGS_NAV_ITEM: SettingsItem = {
+  label: "Settings",
+  icon: "settings",
+};
