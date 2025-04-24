@@ -26,7 +26,7 @@ import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 // --- Re-add Import for the persona generation action --- 
-import { generateUserPersonaFromClusters } from './generate-persona';
+import { generateUserPersonaFromClusters } from './persona-for-writing';
 
 
 interface ProcessQueryInput {
@@ -202,7 +202,6 @@ export async function requestNewKeywordResearch(
         tags: [],
         keywords: [],
         clusters: {},
-        personas: [],
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
@@ -340,7 +339,6 @@ export async function requestNewKeywordResearch(
         tags: [],
         keywords: [],
         clusters: {},
-        personas: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -434,91 +432,6 @@ export async function requestNewKeywordResearch(
     }
 
     return { success: false, researchId: savedResearchId, error: message };
-  }
-}
-
-// --- NEW: Action to Generate and Save Persona for a Specific Cluster ---
-/**
- * Generates a user persona for a specific cluster and updates the 
- * keyword research entry in the database.
- * @param researchId The ID of the keyword research document.
- * @param clusterName The name of the cluster to generate the persona for.
- * @returns Object indicating success or failure.
- */
-export async function generateAndSavePersonaForCluster(
-  researchId: string,
-  clusterName: string
-): Promise<{ success: boolean; error?: string }> {
-  console.log(`[Action] Generating and saving persona for cluster "${clusterName}" in research ${researchId}`);
-  if (!researchId || !clusterName) {
-    return { success: false, error: 'Research ID and Cluster Name are required' };
-  }
-
-  try {
-    // 1. Fetch the current research detail (uses cache implicitly)
-    const currentDetail = await getKeywordResearchDetail(researchId);
-    if (!currentDetail || !currentDetail.clustersWithVolume) {
-      throw new Error('Could not fetch current research details or clusters are missing.');
-    }
-
-    // 2. Find the target cluster and its keywords
-    const targetCluster = currentDetail.clustersWithVolume.find(
-      c => c.clusterName === clusterName
-    );
-    if (!targetCluster) {
-      throw new Error(`Cluster "${clusterName}" not found in the research data.`);
-    }
-    const clusterKeywords = targetCluster.keywords.map(kw => kw.text).filter(Boolean) as string[];
-    if (clusterKeywords.length === 0) {
-      throw new Error(`No keywords found for cluster "${clusterName}".`);
-    }
-
-    // 3. Generate Persona Description (using the existing action)
-    // Assuming generateUserPersonaFromClusters is an action in '@/app/actions/generate-persona'
-    // that needs clusterName and keywords.
-    const personaResult = await generateUserPersonaFromClusters({
-      clusterName: targetCluster.clusterName,
-      keywords: clusterKeywords,
-    });
-
-    // Check for error from the generation action
-    if (personaResult.error || !personaResult.userPersona) {
-      throw new Error(personaResult.error || 'AI failed to return a valid persona description.');
-    }
-    // Extract the text if successful
-    const newPersonaDescription = personaResult.userPersona;
-
-    // 4. Create the updated clustersWithVolume array
-    const updatedClustersArray = currentDetail.clustersWithVolume.map(cluster => {
-      if (cluster.clusterName === clusterName) {
-        // Use the extracted string
-        return { ...cluster, personaDescription: newPersonaDescription };
-      }
-      return cluster;
-    });
-
-    // 5. Save the updated data using the existing update action
-    const updateResult = await updateKeywordResearchEntry(researchId, {
-      clustersWithVolume: updatedClustersArray,
-      updatedAt: new Date() // Add the required updatedAt field
-    });
-
-    if (!updateResult) {
-      throw new Error('Failed to save updated clusters to the database.');
-    }
-
-    // 6. Revalidate cache (already handled within updateKeywordResearch, but call explicitly if needed)
-    // await revalidateKeywordResearch(researchId); 
-
-    console.log(`[Action] Successfully generated and saved persona for cluster "${clusterName}" in research ${researchId}`);
-    return { success: true };
-
-  } catch (error) {
-    console.error(`[Action] Error generating/saving persona for cluster "${clusterName}" (research ${researchId}):`, error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    };
   }
 }
 

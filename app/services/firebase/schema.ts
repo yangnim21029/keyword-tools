@@ -62,7 +62,6 @@ export const KeywordResearchBaseSchema = z.object({
   clusters: ClusterSchema.optional().describe('(Legacy) Raw AI Cluster Output'), 
   // NEW field storing clusters pre-calculated with volumes
   clustersWithVolume: z.array(ClusterItemSchema).optional().describe('Clusters with pre-calculated volumes'),
-  personas: z.array(UserPersonaSchema).optional().describe('詳細用戶畫像列表'),
   searchEngine: z.string().optional().describe('使用的搜尋引擎 (例如 google)'),
   region: z.string().optional().describe('地區代碼 (例如 TW)'),
   language: z.string().optional().describe('語言代碼 (例如 zh-TW)'),
@@ -100,7 +99,6 @@ export const UpdateKeywordResearchSchema = KeywordResearchBaseSchema.pick({
   keywords: true,
   clusters: true, // Keep for potential updates
   clustersWithVolume: true, // Allow updating the new field
-  personas: true,
   searchEngine: true,
   region: true,
   language: true,
@@ -456,8 +454,6 @@ export const ProcessedKeywordResearchSchema = z.object({
   keywords: z.array(keywordVolumeItemSchema), // Use the imported schema
   clustersWithVolume: z.array(ClusterItemSchema).nullable(), // Use the imported schema, allow null
   // Optional fields expected by client components
-  personas: z.array(UserPersonaSchema).nullable().default(null),
-  // Change nullish to optional for string/enum fields to match downstream expectation (string | undefined)
   searchEngine: z.string().optional(), 
   region: z.string().optional(),
   language: z.string().optional(),

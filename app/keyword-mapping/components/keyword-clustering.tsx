@@ -36,16 +36,16 @@ interface ProcessedCluster {
 
 // Updated Props for the display component
 interface KeywordClusteringProps {
-  keywordVolumeMap: Record<string, number>; // Keep this for quick lookups
+  // keywordVolumeMap: Record<string, number>; // Keep this for quick lookups <-- Remove
   clusters: ClusterItem[] | null; // ClusterItem now includes personaDescription?
-  researchRegion: string;
-  researchLanguage: string;
-  currentKeywords: string[];
+  // researchRegion: string; <-- Remove
+  // researchLanguage: string; <-- Remove
+  // currentKeywords: string[]; <-- Remove
   selectedResearchDetail: {
     query: string;
   } | null;
   researchId: string;
-  onSavePersona: (clusterName: string, keywords: string[]) => Promise<void>;
+  onSavePersona: (clusterName: string) => Promise<void>;
   isSavingPersona: string | null;
 }
 
@@ -59,10 +59,6 @@ export default function KeywordClustering({
   const router = useRouter();
 
   // Local UI state
-  const [uiState, setUiState] = useState({
-    copiedClusterIndex: null as number | null
-  });
-  const { copiedClusterIndex } = uiState;
   const [expandedSupportingMap, setExpandedSupportingMap] = useState<
     Record<number, boolean>
   >({});
@@ -118,26 +114,18 @@ export default function KeywordClustering({
 
 
   // Modified: Use the passed callback for starting persona generation/saving
-  const onStartPersonaChat = useCallback(
-    (clusterName: string, keywords: KeywordVolumeItem[]) => { // <-- Accept KeywordVolumeItem[]
-      if (!clusterName || !keywords || keywords.length === 0) {
-        toast.error('無法生成用戶畫像：缺少必要數據');
+  const onStartPersonaChat = (clusterName: string) => { 
+      if (!clusterName) { // Check only clusterName
+        toast.error('無法生成用戶畫像：缺少分群名稱');
         return;
       }
       if (!researchId) {
         toast.error('無法生成用戶畫像：未找到研究項目ID');
         return;
       }
-      // Extract just the text for the action
-      const keywordTexts = keywords.map(kw => kw.text || '').filter(Boolean);
-      if (keywordTexts.length === 0) {
-         toast.error('無法生成用戶畫像：關鍵字文本無效。 ');
-         return;
-      }
-      onSavePersona(clusterName, keywordTexts);
-    },
-    [researchId, onSavePersona]
-  ); 
+      // Call onSavePersona with only clusterName
+      onSavePersona(clusterName);
+    };
 
   // Toggle function
   const toggleSupportingKeywords = (index: number) => {
@@ -162,16 +150,13 @@ export default function KeywordClustering({
   };
 
   // Handler for starting new research - Simplified to use URL params
-  const handleNewResearch = useCallback(
-    (keyword: KeywordVolumeItem | string | null) => {
+  const handleNewResearch = (keyword: KeywordVolumeItem | string | null) => {
       const text = typeof keyword === 'string' ? keyword : keyword?.text;
       if (!text) return;
       toast.info(`開始新研究: "${text}"`);
       const targetUrl = `/keyword-mapping?q=${encodeURIComponent(text)}`;
       router.push(targetUrl);
-    },
-    [router]
-  ); // Remove setQuery from dependencies
+    };
 
   // --- Render Logic ---
 
@@ -405,10 +390,8 @@ export default function KeywordClustering({
                       size="sm"
                       className="w-full text-xs"
                       onClick={() =>
-                        onStartPersonaChat(
-                          cluster.clusterName,
-                          cluster.keywordList
-                        )
+                        // Pass only clusterName to onStartPersonaChat
+                        onStartPersonaChat(cluster.clusterName)
                       }
                       disabled={isGeneratingThisPersona || !!isSavingPersona}
                     >

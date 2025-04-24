@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import {
   requestClustering,
   revalidateKeywordResearch,
-  generateAndSavePersonaForCluster
+  requestGenPersonaForKeywordCluster
 } from '@/app/actions';
 
 // UI Components
@@ -134,17 +134,6 @@ export default function KeywordResearchDetail({
     [currentClustersArray]
   );
 
-  const keywordVolumeRecord: Record<string, number> = useMemo(() => {
-    const map = new Map<string, number>();
-    // Use keywordResearchObject
-    (keywordResearchObject?.keywords || []).forEach((kw: KeywordVolumeItem) => { 
-      if (kw.text) {
-        map.set(kw.text.toLowerCase(), kw.searchVolume ?? 0);
-      }
-    });
-    return Object.fromEntries(map.entries());
-  }, [keywordResearchObject?.keywords]); // <-- Update dependency
-
   // --- Filter Handler ---
   const handleVolumeFilterChange = useCallback(
     (newFilter: VolumeFilterType) => {
@@ -190,7 +179,7 @@ export default function KeywordResearchDetail({
     }
   }, [researchId, router]);
 
-  const handleSavePersonaForCluster = useCallback(
+  const handleSavePersonaForCluster =
     async (clusterName: string) => {
       // researchId is derived from props
       if (!researchId || !clusterName) {
@@ -204,11 +193,12 @@ export default function KeywordResearchDetail({
 
       try {
         // Call the NEW server action
-        const result = await generateAndSavePersonaForCluster(researchId, clusterName);
+        const result = await requestGenPersonaForKeywordCluster(researchId, clusterName);
 
         if (result.success) {
           toast.success(`用戶畫像 "${clusterName}" 已生成並保存！頁面將自動刷新。`);
           // Revalidation is handled by the action, just refresh the client
+          // Revalidation happens in the server action, so router.refresh() should be enough
           router.refresh(); 
         } else {
           // Throw error to be caught below
@@ -223,10 +213,7 @@ export default function KeywordResearchDetail({
       } finally {
         setIsSavingPersona(null); // Clear loading state
       }
-    },
-    // Only depends on researchId and router now
-    [researchId, router]
-  );
+    };
 
   // Render Logic
   return (
@@ -333,10 +320,6 @@ export default function KeywordResearchDetail({
               </div>
               <KeywordClustering
                 clusters={currentClustersArray}
-                keywordVolumeMap={keywordVolumeRecord}
-                researchRegion={keywordResearchObject.region || 'us'}
-                researchLanguage={keywordResearchObject.language || 'en'}
-                currentKeywords={filteredKeywords.map(kw => kw.text || '')}
                 selectedResearchDetail={{ query: keywordResearchObject.query }}
                 researchId={researchId}
                 onSavePersona={handleSavePersonaForCluster}

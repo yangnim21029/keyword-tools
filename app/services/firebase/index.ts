@@ -7,7 +7,6 @@ export {
   getKeywordResearchDetail,
   getKeywordResearchSummaryList,
   saveKeywordResearch,
-  updateKeywordResearchPersonas,
   updateKeywordResearchResults
 } from './db-keyword-research';
 
@@ -22,3 +21,6 @@ export {
 
 // 導出 SERP 分析數據類型
 export type { FirebaseSerpAnalysisDoc, SerpAnalysisData } from './db-serp';
+
+// Export clustering related DB functions if needed
+// export { updateKeywordResearchClusters } from './db-keyword-research';

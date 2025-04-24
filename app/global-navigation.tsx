@@ -65,19 +65,26 @@ export function Navigation({ className }: NavigationProps) {
                   <Link
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
-                      isActive && "bg-muted text-foreground",
+                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-foreground",
+                      isActive
+                        ? "bg-muted text-foreground"
+                        : item.isPrimary
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/60"
                     )}
                     aria-current={isActive ? "page" : undefined}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     <span
                       className={cn(
-                        "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
+                        "flex items-center gap-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
                         isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
                       )}
                     >
                       {item.label}
+                      {isExpanded && item.isPrimary && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" aria-hidden="true" />
+                      )}
                     </span>
                   </Link>
                 </TooltipTrigger>

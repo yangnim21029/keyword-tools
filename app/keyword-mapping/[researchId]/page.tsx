@@ -15,7 +15,15 @@ import { getKeywordResearchDetail, getKeywordResearchSummaryList } from '@/app/s
 import { unstable_cache } from 'next/cache';
 import { SiteFavicon } from '@/components/ui/site-favicon';
 
-const getKeywordResearchSummaryListCached = unstable_cache(async (researchId: string) => getKeywordResearchDetail(researchId), ['keyword-research-summary-list'], { revalidate: 3600 });
+// Update cache key to be specific and rename the function
+const getKeywordResearchDetailCached = unstable_cache(
+  async (researchId: string) => getKeywordResearchDetail(researchId),
+  ['keyword-research-detail'], // Base cache key
+  {
+    tags: ['keyword-research-detail'], // Tag used for revalidation
+    revalidate: 3600
+  }
+);
 
 // Function to generate static paths at build time
 export async function generateStaticParams() {
@@ -34,8 +42,8 @@ export async function generateStaticParams() {
 export default async function KeywordResultPage({ params }: Props) {
   const { researchId } = await params;
 
-  // Fetch the *already processed* data from the server action
-  const researchDetailData = await getKeywordResearchSummaryListCached(researchId);
+  // Fetch the *already processed* data using the correctly named cached function
+  const researchDetailData = await getKeywordResearchDetailCached(researchId);
 
   // Handle not found case
   if (!researchDetailData) {

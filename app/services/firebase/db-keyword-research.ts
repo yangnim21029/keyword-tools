@@ -180,7 +180,6 @@ export async function getKeywordResearchDetail(
       // Ensure clustersWithVolume is null if undefined/null from DB
       clustersWithVolume: data.clustersWithVolume || null, 
       // Ensure other optional fields match ProcessedKeywordResearchSchema (nullish or default)
-      personas: data.personas || null, 
       searchEngine: data.searchEngine || null,
       region: data.region || null,
       language: data.language || null,
@@ -305,47 +304,6 @@ export async function updateKeywordResearchResults(
   }
 }
 
-/**
- * 更新現有 Keyword Research 的用戶畫像
- */
-export async function updateKeywordResearchPersonas(
-  researchId: string,
-  personas: UserPersona[]
-): Promise<boolean> {
-  if (!db) {
-    console.error('[DB] Database instance (db) is not initialized.');
-    return false;
-  }
-  if (!researchId) {
-    console.error('Error updating user personas: researchId is missing.');
-    return false;
-  }
-  if (!personas || !Array.isArray(personas) || personas.length === 0) {
-    console.error('Error updating user personas: personas data is invalid.');
-    return false;
-  }
-
-  try {
-    const researchRef = db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .doc(researchId);
-    await researchRef.update({
-      personas: personas,
-      updatedAt: Timestamp.now()
-    });
-    console.log(
-      `[DB] Updating personas for research item: ${researchId}`
-    );
-    return true;
-  } catch (error) {
-    console.error(
-      `Error updating personas for research item ${researchId}:`,
-      error
-    );
-    return false;
-  }
-}
-
 // --- NEW: Create Keyword Research Entry ---
 /**
  * Creates a new keyword research document in Firestore.
@@ -369,7 +327,6 @@ export async function createKeywordResearchEntry(
         // Ensure potentially undefined array/object fields have defaults if needed by Firestore
         keywords: dataToSave.keywords || [],
         clusters: dataToSave.clusters || {},
-        personas: dataToSave.personas || [],
         tags: dataToSave.tags || [],
     };
     const docRef = await db
