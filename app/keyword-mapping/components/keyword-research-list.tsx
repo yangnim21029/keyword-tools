@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import type React from 'react';
 import { useMemo, useCallback, useState } from 'react';
 
-import { deleteKeywordResearch } from '@/app/actions';
+import { SiteFavicon } from '@/components/ui/site-favicon';
+import { requestDeleteKeywordResearch } from '@/app/actions';
 import { MEDIASITE_DATA } from '@/app/global-config'; // Import media site data
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
 import { Badge } from '@/components/ui/badge';
@@ -131,10 +132,10 @@ export default function KeywordResearchList({
     setDeletingId(researchId);
     try {
       console.log(
-        `${COMPONENT_LOG_PREFIX} Calling deleteKeywordResearch Server Action for ID:`,
+        `${COMPONENT_LOG_PREFIX} Calling requestDeleteKeywordResearch Server Action for ID:`,
         researchId
       );
-      const result = await deleteKeywordResearch(researchId);
+      const result = await requestDeleteKeywordResearch(researchId);
 
       if (result.success) {
         console.log(`${COMPONENT_LOG_PREFIX} Server Action successful`);
@@ -145,7 +146,7 @@ export default function KeywordResearchList({
       }
     } catch (err) {
       console.error(
-        `${COMPONENT_LOG_PREFIX} Error calling deleteKeywordResearch Server Action:`,
+        `${COMPONENT_LOG_PREFIX} Error calling requestDeleteKeywordResearch Server Action:`,
         err
       );
       toast.error(err instanceof Error ? err.message : UI_STRINGS.deleteError);
@@ -257,15 +258,7 @@ export default function KeywordResearchList({
                             return (
                               <>
                                 {matchingSites.map(site => (
-                                  <img
-                                    key={site.name}
-                                    src={`https://www.google.com/s2/favicons?sz=16&domain_url=${site.url}`}
-                                    alt={`${site.name} icon`}
-                                    title={site.title} // Show full title on hover
-                                    width={16}
-                                    height={16}
-                                    className="rounded-sm"
-                                  />
+                                  <SiteFavicon key={site.name} siteName={site.name} siteUrl={site.url} />
                                 ))}
                                 {/* Show message if no sites match */} 
                                 {matchingSites.length === 0 && (

@@ -133,13 +133,13 @@ export const keywordResearchItemSchema = KeywordResearchSchema;
  */
 export const keywordResearchFilterSchema = z
   .object({
-    query: z.string().optional(),
-    region: z.string().optional(),
-    language: z.string().optional(),
-    isFavorite: z.boolean().optional(),
-    tags: z.array(z.string()).optional(),
-    createdAtFrom: firestoreTimestampSchema.optional(),
-    createdAtTo: firestoreTimestampSchema.optional()
+    region: z.string().optional(), // Keep only region
+    // language: z.string().optional(), // Remove language
+    // query: z.string().optional(), // Remove query
+    // isFavorite: z.boolean().optional(), // Remove isFavorite
+    // tags: z.array(z.string()).optional(), // Remove tags
+    // createdAtFrom: z.union([z.date(), z.instanceof(Timestamp)]).optional(), // Remove createdAtFrom
+    // createdAtTo: z.union([z.date(), z.instanceof(Timestamp)]).optional(), // Remove createdAtTo
   })
   .partial();
 
@@ -301,3 +301,208 @@ export const volumeDistributionDataItemSchema = z.object({
 export const volumeDistributionDataSchema = z.array(
   volumeDistributionDataItemSchema
 );
+
+// --- Raw SERP Data Schemas ---
+
+// Schema for a single organic result (adapt based on fetchSerpByKeyword output)
+export const SerpOrganicResultSchema = z.object({
+  position: z.number().int().positive(),
+  url: z.string().url(),
+  title: z.string(),
+  description: z.string().optional().nullable(),
+  displayedUrl: z.string().optional().nullable(),
+  // Add other potentially relevant fields if needed
+  // e.g., date, type, sitelinks, emphasizedKeywords etc.
+});
+export type SerpOrganicResult = z.infer<typeof SerpOrganicResultSchema>;
+
+// Schema for related queries
+export const SerpRelatedQuerySchema = z.object({
+    query: z.string(),
+    url: z.string().url().optional().nullable(),
+});
+export type SerpRelatedQuery = z.infer<typeof SerpRelatedQuerySchema>;
+
+// Schema for People Also Ask
+export const SerpPeopleAlsoAskSchema = z.object({
+    question: z.string(),
+    answer: z.string().optional().nullable(),
+    url: z.string().url().optional().nullable(),
+    title: z.string().optional().nullable(),
+});
+export type SerpPeopleAlsoAsk = z.infer<typeof SerpPeopleAlsoAskSchema>;
+
+// --- Schemas for Analysis JSON Structures (Now part of SerpDataDoc) ---
+
+const pageReferenceSchema = z.object({
+  position: z.number().int().positive(),
+  url: z.string().url()
+});
+
+// Schema for Content Type JSON structure
+export const ContentTypeAnalysisJsonSchema = z.object({
+  analysisTitle: z.string().optional().nullable(), // Made optional/nullable for flexibility
+  reportDescription: z.string().optional().nullable(),
+  usageHint: z.string().optional().nullable(),
+  contentTypes: z.array(
+    z.object({
+      type: z.string(),
+      count: z.number().int().nonnegative(),
+      pages: z.array(pageReferenceSchema)
+    })
+  ).optional().nullable(), // Made optional/nullable
+});
+export type ContentTypeAnalysisJson = z.infer<typeof ContentTypeAnalysisJsonSchema>;
+
+// Schema for User Intent JSON structure
+export const UserIntentAnalysisJsonSchema = z.object({
+  analysisTitle: z.string().optional().nullable(),
+  reportDescription: z.string().optional().nullable(),
+  usageHint: z.string().optional().nullable(),
+  intents: z.array(
+    z.object({
+      category: z.enum([
+        'Navigational',
+        'Informational',
+        'Commercial',
+        'Transactional',
+        'Unknown' // Added Unknown for robustness
+      ]),
+      specificIntent: z.string(),
+      count: z.number().int().nonnegative(),
+      pages: z.array(pageReferenceSchema)
+    })
+  ).optional().nullable(),
+  relatedKeywords: z
+    .array(
+      z.object({
+        keyword: z.string(),
+        searchVolume: z.number().nullable()
+      })
+    )
+    .optional().nullable(),
+});
+export type UserIntentAnalysisJson = z.infer<typeof UserIntentAnalysisJsonSchema>;
+
+// Schema for Title Analysis JSON structure
+export const TitleAnalysisJsonSchema = z.object({
+  title: z.string().optional().nullable(),
+  analysis: z.string().optional().nullable(),
+  recommendations: z.array(z.string()).optional().nullable(),
+});
+export type TitleAnalysisJson = z.infer<typeof TitleAnalysisJsonSchema>;
+
+// --- NEW: Schema for Better Have Analysis JSON Structure ---
+export const BetterHaveItemSchema = z.object({
+    point: z.string().describe('The specific topic, question, or concept recommended'),
+    justification: z.string().describe('Explanation why this point is important based on SERP data'),
+    source: z.enum(['PAA', 'Organic Results', 'Related Queries', 'AI Overview', 'Multiple']).optional().describe('Primary source driving the recommendation') // Optional: attempt to categorize source
+});
+export type BetterHaveItem = z.infer<typeof BetterHaveItemSchema>;
+
+export const BetterHaveJsonSchema = z.object({
+    analysisTitle: z.string().optional().nullable().default("Better Have In Article Analysis"),
+    recommendations: z.array(BetterHaveItemSchema).optional().nullable().describe('List of recommended points to include'),
+});
+export type BetterHaveAnalysisJson = z.infer<typeof BetterHaveJsonSchema>;
+
+// Schema for the COMBINED SERP document stored in Firestore
+// Renamed from FirebaseSerpRawDocSchema
+export const FirebaseSerpDataDocSchema = z.object({
+  query: z.string().describe('The original search query keyword'),
+  region: z.string().describe('Search region code (e.g., hk, tw)'),
+  language: z.string().describe('Search language code (e.g., zh-TW, en)'),
+  createdAt: firestoreTimestampSchema.describe('Timestamp when the document was created'),
+  updatedAt: firestoreTimestampSchema.describe('Timestamp when the document was last updated'),
+
+  // Fields directly from the SERP fetch service (e.g., Apify)
+  searchQuery: z.string().optional().nullable().describe('The query structure used by the service'),
+  resultsTotal: z.number().int().nonnegative().optional().nullable().describe('Total number of results reported'),
+  relatedQueries: z.array(SerpRelatedQuerySchema).optional().nullable().describe('Related search queries'),
+  aiOverview: z.string().optional().nullable().describe('AI-generated overview if present'), // Assuming string, adjust if object
+  paidResults: z.array(z.any()).optional().nullable().describe('Paid search results (structure varies)'), // Use z.any() or define specific schema if needed
+  paidProducts: z.array(z.any()).optional().nullable().describe('Paid product results (structure varies)'), // Use z.any() or define specific schema if needed
+  peopleAlsoAsk: z.array(SerpPeopleAlsoAskSchema).optional().nullable().describe('People Also Ask questions'),
+  organicResults: z.array(SerpOrganicResultSchema).optional().nullable().describe('Organic search results'),
+
+  // Scraped outlines field
+  urlOutline: z.string().nullable().optional().describe('Scraped H2/H3 headings from top organic URLs'),
+
+  // --- Analysis Fields (Now included here) ---
+  contentTypeAnalysisText: z.string().nullable().optional().describe('Raw text output of content type analysis'),
+  userIntentAnalysisText: z.string().nullable().optional().describe('Raw text output of user intent analysis'),
+  contentTypeAnalysis: ContentTypeAnalysisJsonSchema.nullable().optional().describe('Structured JSON output of content type analysis'),
+  userIntentAnalysis: UserIntentAnalysisJsonSchema.nullable().optional().describe('Structured JSON output of user intent analysis'),
+  titleAnalysis: TitleAnalysisJsonSchema.nullable().optional().describe('Structured JSON output of title analysis'),
+  betterHaveAnalysisText: z.string().nullable().optional().describe('Raw Markdown text analysis identifying key topics/questions'), // Renamed from betterHaveInArticle
+  betterHaveAnalysisJson: BetterHaveJsonSchema.nullable().optional().describe('Structured JSON output of Better Have analysis'), // New JSON field
+});
+
+// Export the inferred type for server-side use
+// Renamed from FirebaseSerpRawDoc
+export type FirebaseSerpDataDoc = z.infer<typeof FirebaseSerpDataDocSchema>;
+
+// --- Schemas for Processed Data (Client-Ready) ---
+
+/**
+ * Schema for the processed keyword research data structure, ready for client components.
+ * Mirrors the old KeywordResearchClientSchema.
+ */
+export const ProcessedKeywordResearchSchema = z.object({
+  id: z.string(),
+  query: z.string(),
+  createdAt: z.date(), // Expect Date object
+  updatedAt: z.date(), // Expect Date object
+  keywords: z.array(keywordVolumeItemSchema), // Use the imported schema
+  clustersWithVolume: z.array(ClusterItemSchema).nullable(), // Use the imported schema, allow null
+  // Optional fields expected by client components
+  personas: z.array(UserPersonaSchema).nullable().default(null),
+  // Change nullish to optional for string/enum fields to match downstream expectation (string | undefined)
+  searchEngine: z.string().optional(), 
+  region: z.string().optional(),
+  language: z.string().optional(),
+  device: z.enum(['desktop', 'mobile']).optional(),
+  isFavorite: z.boolean().default(false), // Use default
+  tags: z.array(z.string()).default([]), // Use default
+  // Add clusteringStatus if it was part of the client schema and needed
+  // clusteringStatus: z.string().optional() 
+});
+
+export type ProcessedKeywordResearchData = z.infer<typeof ProcessedKeywordResearchSchema>;
+
+
+/**
+ * Schema for the processed COMBINED SERP data structure, ready for client components.
+ * Converts Firestore Timestamps to Date objects.
+ * Mirrors the old SerpDataClientSchema.
+ */
+export const ProcessedSerpDataSchema = z.object({
+  id: z.string(), // Document ID will be added when fetching
+  query: z.string(),
+  region: z.string(),
+  language: z.string(),
+  createdAt: z.date(), // Expect Date object
+  updatedAt: z.date(), // Expect Date object
+
+  // Fields from the SERP fetch service (make nullable if they can be missing)
+  searchQuery: z.string().optional().nullable(),
+  resultsTotal: z.number().int().nonnegative().optional().nullable(),
+  relatedQueries: z.array(SerpRelatedQuerySchema).optional().nullable(),
+  aiOverview: z.string().optional().nullable(),
+  paidResults: z.array(z.any()).optional().nullable(),
+  paidProducts: z.array(z.any()).optional().nullable(),
+  peopleAlsoAsk: z.array(SerpPeopleAlsoAskSchema).optional().nullable(),
+  organicResults: z.array(SerpOrganicResultSchema).optional().nullable(),
+
+  // Scraped outlines field
+  urlOutline: z.string().nullable().optional(),
+
+  // --- Analysis Fields (Now included here) ---
+  contentTypeAnalysisText: z.string().nullable().optional(),
+  userIntentAnalysisText: z.string().nullable().optional(),
+  contentTypeAnalysis: ContentTypeAnalysisJsonSchema.nullable().optional(), 
+  userIntentAnalysis: UserIntentAnalysisJsonSchema.nullable().optional(),
+  titleAnalysis: TitleAnalysisJsonSchema.nullable().optional(),
+});
+
+export type ProcessedSerpData = z.infer<typeof ProcessedSerpDataSchema>;

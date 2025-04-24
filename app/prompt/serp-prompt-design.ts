@@ -67,3 +67,191 @@ export const getUserIntentConversionPrompt = (
   keyword: string // Include keyword for context
 ) =>
   `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text and the keyword for context.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.\n    *   Handle keyword search volume '?' as null in the JSON.\n    *   Ensure all extracted data (URLs, positions, categories) is valid according to the schema.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown text, which represents a User Intent Analysis report, into a structured JSON object.\n\nThe Markdown text contains:\n1. A table listing user intent categories, specific intents (including page counts), and associated page links (position as anchor text).\n2. Potentially following the first table, markdown tables for related keywords grouped by intent category.\n\nInput Markdown Text:\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. Extract the intent category, specific intent description, page count, and page details from the first table. Extract related keywords and their search volumes (handle '?' as null) from the subsequent keyword tables.\n\n{\n  "analysisTitle": "User Intent Analysis for [${keyword}]", // Generate title\n  "reportDescription": "The User Intent Analysis report looks at the top webpages ranking in Google on the first page and tries to figure out the user intent that each satisfies. It then presents this data categorized.", // Standard description\n  "usageHint": "The User Intent Analysis report should be used when you want to double check what the intent of the user is for the search query. Before you start creating content for this search query, you need to decide which user intent(s) you want your content to satisfy.", // Standard hint\n  "intents": [\n    {\n      "category": "string (Navigational | Informational | Commercial | Transactional)", // Extracted from the first column\n      "specificIntent": "string (e.g., Find official website, Learn about X)", // Extracted from the second column (description part)\n      "count": number, // Extracted from the second column (count part)\n      "pages": [\n        { "position": number, "url": "string" }, // Extracted from links in the third column\n        ...\n      ]\n    },\n    ...\n  ],\n  "relatedKeywords": [\n      { "keyword": "string", "searchVolume": number | null }, // Extracted from keyword tables. '?' volume becomes null.\n      ...\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting. Ensure categories match the four types, positions are positive integers, URLs are valid, and searchVolume is number or null.\n`;
+
+// --- NEW: Prompts for Generating Recommendation Text from Markdown ---
+
+export const getContentTypeRecommendationPrompt = (
+  markdownAnalysisText: string
+) =>
+  `You are an expert SEO analyst reviewing a Content Type Analysis report (in Markdown format). Based *only* on the provided report, generate a concise, actionable recommendation for the user on which content type(s) to focus on.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown report.
+2.  **Task:** Identify the dominant content type(s) suggested by the analysis.
+3.  **Output Format:** Respond *only* with a single sentence recommendation starting with "建議撰寫" (Suggest writing), followed by the most prominent content type, and a brief "因為" (because) justification based *directly* on the report's findings (e.g., highest frequency).
+    *   Example: 建議撰寫 How to guides content type 因為：這是 SERP 中最常見的類型。
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the single recommendation sentence.`;
+
+export const getUserIntentRecommendationPrompt = (
+  markdownAnalysisText: string,
+  keyword: string
+) =>
+  `You are an expert SEO analyst reviewing a User Intent Analysis report (in Markdown format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable recommendation for the user regarding matching user intent.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown report for the keyword "[${keyword}]".
+2.  **Task:** Identify the primary user intent category and the specific sub-intents mentioned.
+3.  **Output Format:** Respond *only* with a single sentence following this exact template: "建議要匹配用戶意圖，因為關鍵字 ${keyword} 的用戶意圖主要是 \${primary_intent_category}，推測可能包含幾種不同的子意圖包括 \${sub_intent_1}, \${sub_intent_2}, ..."
+    *   Replace \`\${keyword}\` with the actual keyword.
+    *   Replace \`\${primary_intent_category}\` with the most dominant category (Informational, Transactional, etc.) found in the report.
+    *   Replace \`\${sub_intent_1}, \${sub_intent_2}, ...\` with the specific "Actual Intent" descriptions listed for that primary category in the report. List at least one, and up to three if available.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the single recommendation sentence matching the template.`;
+
+// --- NEW: Prompt for Title Recommendation ---
+
+export const getTitleRecommendationPrompt = (
+  suggestedTitle: string,
+  analysisText: string // The 'analysis' field from the TitleAnalysisJson
+) =>
+  `You are an expert SEO analyst reviewing a generated title and its analysis. Based *only* on the provided title and analysis, generate a concise, actionable recommendation for the user.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** The suggested title and the analysis explaining why it was suggested.
+2.  **Task:** Formulate a recommendation using the provided title and analysis.
+3.  **Output Format:** Respond *only* with a single sentence following this exact template: "建議使用的標題：${suggestedTitle} 因為：\${analysisSummary}"
+    *   Replace \`\${suggestedTitle}\` with the provided suggested title.
+    *   Replace \`\${analysisSummary}\` with a brief summary or the core reason derived *directly* from the provided analysis text. Keep it concise.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input title and analysis text.
+
+**Suggested Title:**
+${suggestedTitle}
+
+**Analysis Text:**
+${analysisText}
+
+Respond ONLY with the single recommendation sentence matching the template.`;
+
+// --- NEW: Prompt for "Better Have In Article" Analysis ---
+
+export const getBetterHaveInArticlePrompt = (
+  keyword: string,
+  serpString: string, // Formatted organic results (titles/descriptions)
+  paaString: string, // Formatted People Also Ask
+  relatedQueriesString: string, // Formatted Related Queries
+  aiOverviewString: string // Formatted AI Overview
+) =>
+  `You are an expert SEO Content Strategist analyzing SERP data for the keyword "[${keyword}]" to identify crucial elements for a high-quality, trustworthy article.
+
+**TASK:**
+Analyze the provided SERP data (Organic Results, People Also Ask, Related Queries, AI Overview) to identify 5-10 specific topics, questions, concepts, or phrases (beyond just the core keyword phrase itself) that are essential to include in an article about "[${keyword}]". The goal is to create content that comprehensively satisfies user intent, addresses related concerns apparent in the SERP, builds reader trust, and stands out from competitors.
+
+**INPUT DATA:**
+
+*   **Keyword:** ${keyword}
+*   **Organic Results (Top 15 Titles/Descriptions):**
+    ${serpString}
+*   **People Also Ask:**
+    ${paaString}
+*   **Related Queries:**
+    ${relatedQueriesString}
+*   **AI Overview (if available):**
+    ${aiOverviewString}
+
+**OUTPUT FORMAT:**
+Generate a Markdown bulleted list. Each bullet point should represent a distinct recommendation. For each recommendation, briefly explain *why* it's important based *only* on the provided SERP data (e.g., "Addresses a common PAA question", "Featured in multiple top-ranking descriptions", "Covers a related search query", "Key point from AI overview").
+
+Example:
+*   **Include a section comparing X and Y:** Justification: This comparison appears in several top descriptions and addresses a related query.
+*   **Answer the question "How to do Z?":** Justification: This is a direct question from People Also Ask.
+*   **Mention the importance of [Specific Concept]:** Justification: This concept was highlighted in the AI Overview and appears in titles.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Focus:** Identify elements that enhance comprehensiveness, user trust, and address related user needs shown in the SERP.
+2.  **Specificity:** Provide concrete topics, questions, or phrases. Avoid generic advice like "write high-quality content".
+3.  **Justification:** Link every recommendation back to specific evidence within the provided SERP data sections.
+4.  **Data Source:** Base your analysis *strictly* on the provided input data. Do not use external knowledge.
+5.  **Format:** Respond *only* with the Markdown bulleted list as described. Do not add introductions, summaries, or other text.
+
+Respond ONLY with the markdown bulleted list.`;
+
+// --- NEW: Prompt for Better Have JSON Conversion ---
+
+export const getBetterHaveConversionPrompt = (
+  markdownText: string,
+  keyword: string // Include keyword for context if needed in JSON
+) =>
+  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown bullet list text into the *exact* JSON format specified, using *only* the information present in the input Markdown.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Role:** Act as a data conversion bot.
+2.  **Input Data:** Use *only* the provided Markdown text.
+3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.
+4.  **Behavior:**
+    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.
+    *   Do NOT interpret or analyze the data beyond extracting it. Extract the main recommended point/topic/question and its justification for each bullet point.
+    *   Attempt to infer the primary 'source' driving each recommendation (PAA, Organic Results, Related Queries, AI Overview, Multiple) based on the justification text, but it's okay if it's sometimes missing or inaccurate.
+
+--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n
+Please ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown bulleted list, representing a "Better Have In Article" analysis report for keyword "[${keyword}]", into a structured JSON object.
+
+Input Markdown Text (Bulleted List):
+\`\`\`markdown
+${markdownText}
+\`\`\`
+
+Convert this Markdown text into a JSON object with the following structure. For each bullet point in the list, extract the core recommendation (the bolded part or main topic) into the 'point' field and the subsequent explanation into the 'justification' field. Attempt to categorize the 'source' based on keywords in the justification.
+
+{
+  "analysisTitle": "Better Have In Article Analysis for [${keyword}]",
+  "recommendations": [
+    {
+      "point": "string (e.g., Include a section comparing X and Y)", // Extracted main recommendation from bullet
+      "justification": "string (e.g., This comparison appears in several top descriptions and addresses a related query.)", // Extracted justification text
+      "source": "string (PAA | Organic Results | Related Queries | AI Overview | Multiple) | null" // Inferred source based on justification, null if unclear
+    },
+    // ... more items for each bullet point
+  ]
+}
+
+Respond ONLY with the valid JSON object. Do not include explanations or markdown formatting.
+`;
+
+
+// --- NEW: Prompt for Better Have Recommendation Text ---
+
+export const getBetterHaveRecommendationPrompt = (
+  markdownAnalysisText: string,
+  keyword: string
+) =>
+  `You are an expert SEO analyst reviewing a "Better Have In Article" analysis report (in Markdown bullet list format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable 1-2 sentence summary recommendation for the user.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown bullet list report.
+2.  **Task:** Summarize the most important themes or types of recommendations emerging from the list (e.g., addressing PAA, competitor features, related topics).
+3.  **Output Format:** Respond *only* with a 1-2 sentence recommendation focusing on the key takeaways.
+    *   Example: 建議文章中應重點處理 People Also Ask 的問題，並涵蓋 SERP 中常見的比較性內容，以建立信任感。 (Suggest the article should focus on addressing People Also Ask questions and cover comparative content common in the SERP to build trust.)
+4.  **Behavior:**
+    *   Do NOT simply repeat the bullet points. Synthesize the main ideas.
+    *   Do NOT add introductory text, concluding remarks, or explanations beyond the 1-2 sentences.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the 1-2 sentence recommendation summary.`;

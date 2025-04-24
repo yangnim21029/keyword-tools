@@ -7,9 +7,7 @@ import { z } from 'zod';
 // Import necessary actions and types from keyword-research
 // Note: Ensure these are exported from keyword-research.ts
 import {
-  fetchKeywordResearchDetail,
-  revalidateKeywordResearchAction,
-  updateKeywordResearchClusters
+  revalidateKeywordResearch,
 } from '@/app/actions/keyword-research-action'; // Adjust path if needed
 import { 
   // Import the NEW DB service function
@@ -346,7 +344,7 @@ async function _calculateAndSaveClustersWithVolume(
 
     if (updateResult) {
       console.log(`[Clustering Save] Successfully saved clusters with volume for ${researchId}.`);
-      await revalidateKeywordResearchAction(researchId); 
+      await revalidateKeywordResearch(researchId); 
       console.log(`[Clustering Save] Revalidated cache for ${researchId}.`);
       return { success: true };
     } else {
@@ -381,7 +379,7 @@ async function _attemptRevalidationOnError(
     console.warn(
       `[Clustering Action] Attempting cache revalidation for ${researchId} after ${context}.`
     );
-    await revalidateKeywordResearchAction(researchId);
+    await revalidateKeywordResearch(researchId);
   } catch (revalError) {
     // Log critical failure but don't let it stop the main error flow
     console.error(

@@ -1,6 +1,6 @@
 'use client';
 
-import { processAndSaveKeywordQuery } from '@/app/actions';
+import { requestNewKeywordResearch } from '@/app/actions';
 import { LANGUAGES, REGIONS } from '@/app/global-config'; // Import constants
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/LoadingButton';
@@ -62,7 +62,7 @@ export default function KeywordSearchForm() {
     setError(null);
 
     try {
-      const result = await processAndSaveKeywordQuery({
+      const result = await requestNewKeywordResearch({
         query: queryInput,
         region: selectedRegion,
         language: selectedLanguage,

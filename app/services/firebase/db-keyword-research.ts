@@ -1,5 +1,6 @@
+import 'server-only'
+
 import {
-  type CreateKeywordResearchInput,
   type KeywordResearchItem,
   type KeywordVolumeItem,
   type UpdateKeywordResearchInput,
@@ -8,6 +9,8 @@ import {
 } from './types'; // <-- CORRECT PATH: Import types from types.ts
 import { Timestamp } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from './db-config';
+// --- NEW: Import the processed schema type ---
+import type { ProcessedKeywordResearchData } from './schema'; 
 
 // --- NEW: Define the type for the summary list item ---
 export type KeywordResearchSummaryItem = {
@@ -18,49 +21,6 @@ export type KeywordResearchSummaryItem = {
   region: string | undefined;
   language: string | undefined;
 };
-// --- End NEW Type ---
-
-// --- Helper to convert Timestamps (moved here for DB layer use) ---
-/**
- * Converts Firestore Timestamps to Dates within a DB object.
- * Returns the object with Date types for createdAt/updatedAt.
- */
-function convertDbTimestamps<
-  T extends {
-    id?: string;
-    createdAt?: Timestamp | Date | string | number | unknown;
-    updatedAt?: Timestamp | Date | string | number | unknown;
-  } & Record<string, unknown>
->(
-  data: T
-): Omit<T, 'createdAt' | 'updatedAt'> & { createdAt?: Date; updatedAt?: Date } {
-  const result = { ...data } as any;
-
-  if (data.createdAt instanceof Timestamp) {
-    result.createdAt = data.createdAt.toDate();
-  } else if (data.createdAt && !(data.createdAt instanceof Date)) {
-    try {
-      result.createdAt = new Date(data.createdAt as any);
-      if (isNaN(result.createdAt.getTime())) delete result.createdAt;
-    } catch { delete result.createdAt; }
-  } else if (!(data.createdAt instanceof Date)) {
-     delete result.createdAt;
-  }
-
-
-  if (data.updatedAt instanceof Timestamp) {
-    result.updatedAt = data.updatedAt.toDate();
-  } else if (data.updatedAt && !(data.updatedAt instanceof Date)) {
-     try {
-      result.updatedAt = new Date(data.updatedAt as any);
-      if (isNaN(result.updatedAt.getTime())) delete result.updatedAt;
-    } catch { delete result.updatedAt; }
-  } else if (!(data.updatedAt instanceof Date)) {
-     delete result.updatedAt;
-  }
-
-  return result;
-}
 
 /**
  * 保存 Keyword Research 到 Firebase
@@ -117,38 +77,26 @@ export async function saveKeywordResearch(
 /**
  * 獲取包含總搜尋量的 Keyword Research 摘要列表，按創建時間倒序排列
  * @param limit 最大返回數量
- * @param userId 可選的用戶 ID 過濾
+ * @param region 可選的地區過濾
  * @returns 返回包含 id, query, totalVolume, createdAt, region, language 的列表
  */
 export async function getKeywordResearchSummaryList(
   limit: number = 50,
-  userId?: string,
-  language?: string,
   region?: string
 ): Promise<KeywordResearchSummaryItem[]> {
   if (!db) return [];
 
   console.log(
-    `[DB] Fetching keyword research summary list (limit: ${limit}, userId: ${
-      userId || 'N/A'
-    }, lang: ${language || 'N/A'}, region: ${region || 'N/A'})`
+    `[DB] Fetching keyword research summary list (limit: ${limit}, region: ${
+      region || 'N/A'
+    })`
   );
 
   try {
     let queryBuilder = db
       .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .orderBy('createdAt', 'desc') // Order by creation date
+      .orderBy('createdAt', 'desc')
       .limit(limit);
-
-    // Optional: Filter by userId if provided
-    if (userId) {
-      queryBuilder = queryBuilder.where('userId', '==', userId);
-    }
-
-    // Optional: Filter by language if provided
-    if (language) {
-      queryBuilder = queryBuilder.where('language', '==', language);
-    }
 
     // Optional: Filter by region if provided
     if (region) {
@@ -183,7 +131,7 @@ export async function getKeywordResearchSummaryList(
           id: doc.id,
           query: data.query || '',
           totalVolume: totalVolume,
-          createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(), // Convert Timestamp to Date
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
           region: data.region,
           language: data.language
         };
@@ -205,7 +153,7 @@ export async function getKeywordResearchSummaryList(
  */
 export async function getKeywordResearchDetail(
   researchId: string
-): Promise<KeywordResearchItem | null> {
+): Promise<ProcessedKeywordResearchData | null> {
   if (!db) return null;
 
   try {
@@ -222,25 +170,27 @@ export async function getKeywordResearchDetail(
     const data = docSnap.data();
     if (!data) return null;
 
-    // Map Firestore doc to KeywordResearchItem structure
-    const researchDetail: KeywordResearchItem = {
+    // Map Firestore doc to ProcessedKeywordResearchData structure
+    const researchDetail: ProcessedKeywordResearchData = {
       id: researchId,
       query: data.query || '',
-      createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
-      updatedAt: (data.updatedAt as Timestamp)?.toDate() || new Date(),
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
       keywords: data.keywords || [],
-      clusters: data.clusters || null, // <-- Keep legacy field for now
-      clustersWithVolume: data.clustersWithVolume || null, // <-- ADD THIS LINE
+      // Ensure clustersWithVolume is null if undefined/null from DB
+      clustersWithVolume: data.clustersWithVolume || null, 
+      // Ensure other optional fields match ProcessedKeywordResearchSchema (nullish or default)
       personas: data.personas || null, 
-      searchEngine: data.searchEngine,
-      region: data.region,
-      language: data.language,
-      device: data.device,
+      searchEngine: data.searchEngine || null,
+      region: data.region || null,
+      language: data.language || null,
+      device: data.device || null,
       isFavorite: data.isFavorite || false,
       tags: data.tags || []
+      // Add clusteringStatus if needed: data.clusteringStatus || null,
     };
 
-    console.log(`Keyword Research 詳情 ${researchId} 載入完成 (Including clustersWithVolume)`); // Add log marker
+    console.log(`Keyword Research 詳情 ${researchId} 載入完成 (Processed for client)`); 
     return researchDetail;
   } catch (error) {
     console.error(`獲取 Keyword Research 詳情失敗: ${researchId}`, error);
@@ -266,37 +216,6 @@ export async function deleteKeywordResearch(
   }
 }
 
-/**
- * 更新特定 Keyword Research 的 clusters（原始 AI 輸出格式）
- * @param researchId
- * @param clusters 格式為 { [主題名稱]: 關鍵字列表 }
- * @returns 更新是否成功
- */
-export async function updateKeywordResearchClusters(
-  researchId: string,
-  clusters: Record<string, string[]>
-): Promise<boolean> {
-  if (!db) return false;
-
-  console.log(
-    `[DB] Updating LEGACY clusters for research: ${researchId}`
-  );
-  try {
-    const updateData = {
-      clusters: clusters,
-      updatedAt: Timestamp.now()
-    };
-    await db
-      .collection(COLLECTIONS.KEYWORD_RESEARCH)
-      .doc(researchId)
-      .update(updateData);
-    console.log(`[DB] Updated LEGACY clusters for: ${researchId}`);
-    return true;
-  } catch (error) {
-    console.error(`[DB] 更新 LEGACY Clusters 失敗 (${researchId}):`, error);
-    throw error; // Re-throw error for the action to handle
-  }
-}
 
 // --- NEW FUNCTION --- 
 /**

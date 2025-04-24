@@ -7,13 +7,11 @@ import { toast } from 'sonner';
 // Actions
 import {
   requestClustering,
-  revalidateKeywordResearchAction,
-  updateKeywordResearch
+  revalidateKeywordResearch,
+  generateAndSavePersonaForCluster
 } from '@/app/actions';
-import { generateUserPersonaFromClusters } from '@/app/actions/generate-persona';
 
 // UI Components
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import {
@@ -35,12 +33,13 @@ import KeywordVolumeVisualization, {
 
 // Types from the centralized types file
 import { type KeywordVolumeItem } from '@/app/services/firebase/types';
-// Import the specific client data type 
-import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
+// Import the specific client data type from schema.ts now
+import type { ProcessedKeywordResearchData } from '@/app/services/firebase/schema';
+import type { ClusterItem } from '@/app/services/firebase/types';
 
 export default function KeywordResearchDetail({
   keywordResearchObject
-}: { keywordResearchObject: KeywordResearchClientData }) {
+}: { keywordResearchObject: ProcessedKeywordResearchData }) {
   const router = useRouter();
   // Extract researchId from the object
   const researchId = keywordResearchObject.id;
@@ -121,15 +120,16 @@ export default function KeywordResearchDetail({
 
   // --- Memos for Clustering (UPDATED) ---
   const currentClustersArray = useMemo(() => {
-    // Use keywordResearchObject
-    const clusters = keywordResearchObject?.clusters; 
+    // Use keywordResearchObject.clustersWithVolume
+    const clusters = keywordResearchObject?.clustersWithVolume;
     if (clusters && Array.isArray(clusters) && clusters.length > 0) {
-        return clusters.filter(c => c && c.clusterName && Array.isArray(c.keywords));
+        // Ensure ClusterItem structure is expected
+        return clusters.filter(c => c && c.clusterName && Array.isArray(c.keywords)) as ClusterItem[];
     }
     return null;
-  }, [keywordResearchObject?.clusters]); // <-- Update dependency
+  }, [keywordResearchObject?.clustersWithVolume]); // <-- Depend on clustersWithVolume
 
-  const hasValidClusters = useMemo(() => 
+  const hasValidClusters = useMemo(() =>
     !!currentClustersArray && currentClustersArray.length > 0,
     [currentClustersArray]
   );
@@ -137,7 +137,7 @@ export default function KeywordResearchDetail({
   const keywordVolumeRecord: Record<string, number> = useMemo(() => {
     const map = new Map<string, number>();
     // Use keywordResearchObject
-    (keywordResearchObject?.keywords || []).forEach(kw => { 
+    (keywordResearchObject?.keywords || []).forEach((kw: KeywordVolumeItem) => { 
       if (kw.text) {
         map.set(kw.text.toLowerCase(), kw.searchVolume ?? 0);
       }
@@ -175,7 +175,7 @@ export default function KeywordResearchDetail({
       const result = await requestClustering(researchId);
       if (result.success) {
         toast.success('分群請求已發送! 頁面將在處理後刷新。');
-        await revalidateKeywordResearchAction(researchId);
+        await revalidateKeywordResearch(researchId);
         router.refresh();
       } else {
         throw new Error(result.error || '請求分群失敗');
@@ -191,65 +191,41 @@ export default function KeywordResearchDetail({
   }, [researchId, router]);
 
   const handleSavePersonaForCluster = useCallback(
-    async (clusterName: string, keywords: string[]) => {
-      // researchId is derived
-      if (!researchId || !clusterName || !keywords || keywords.length === 0) {
-        toast.error('無法生成用戶畫像：缺少必要數據。 ');
-        return;
-      }
-      if (!currentClustersArray) {
-        toast.error('無法保存用戶畫像：當前分群數據不可用。 ');
+    async (clusterName: string) => {
+      // researchId is derived from props
+      if (!researchId || !clusterName) {
+        toast.error('無法生成用戶畫像：缺少必要數據 (ID or Cluster Name)。');
         return;
       }
 
-      setIsSavingPersona(clusterName);
+      setIsSavingPersona(clusterName); // Set loading state
       setLocalError(null);
-      toast.info(`正在為分群 "${clusterName}" 生成用戶畫像...`);
+      toast.info(`正在為分群 "${clusterName}" 生成並保存用戶畫像...`);
 
       try {
-        // Step 1: Generate Persona Description
-        const generationResult = await generateUserPersonaFromClusters({
-          clusterName,
-          keywords
-        });
+        // Call the NEW server action
+        const result = await generateAndSavePersonaForCluster(researchId, clusterName);
 
-        if (!generationResult || !generationResult.userPersona) {
-          throw new Error('AI未能返回有效的用戶畫像文本。');
+        if (result.success) {
+          toast.success(`用戶畫像 "${clusterName}" 已生成並保存！頁面將自動刷新。`);
+          // Revalidation is handled by the action, just refresh the client
+          router.refresh(); 
+        } else {
+          // Throw error to be caught below
+          throw new Error(result.error || '生成或保存用戶畫像時發生未知服務器錯誤');
         }
-        const personaDescription = generationResult.userPersona;
 
-        // Step 2: Update the specific cluster in the local array
-        const updatedClustersArray = currentClustersArray.map(cluster => {
-          if (cluster.clusterName === clusterName) {
-            return {
-              ...cluster,
-              personaDescription: personaDescription // Update the description
-            };
-          }
-          return cluster;
-        });
-
-        // Step 3: Save the updated clusters array back to the DB
-        // Use the general update action, targeting the 'clustersWithVolume' field
-        await updateKeywordResearch(researchId, { 
-          clustersWithVolume: updatedClustersArray, // Send the whole modified array
-          updatedAt: new Date() // Explicitly provide timestamp
-        });
-
-        toast.success(`用戶畫像 "${clusterName}" 已生成並保存！`);
-        await revalidateKeywordResearchAction(researchId);
-        router.refresh();
       } catch (err) {
         const errorMsg =
-          err instanceof Error ? err.message : '生成或保存用戶畫像時發生錯誤';
-        toast.error(errorMsg);
+          err instanceof Error ? err.message : '處理用戶畫像時發生客戶端錯誤';
+        toast.error(`處理 "${clusterName}" 時出錯: ${errorMsg}`);
         setLocalError(`處理 "${clusterName}" 時出錯: ${errorMsg}`);
       } finally {
-        setIsSavingPersona(null);
+        setIsSavingPersona(null); // Clear loading state
       }
     },
-    // researchId derived, dependency on currentClustersArray remains
-    [researchId, router, currentClustersArray] 
+    // Only depends on researchId and router now
+    [researchId, router]
   );
 
   // Render Logic

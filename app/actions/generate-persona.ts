@@ -13,12 +13,6 @@ const personaInputSchema = z.object({
     .default('gpt-4.1-mini')
     .optional()
 });
-
-// Define output schema for a SINGLE persona string
-const personaOutputSchema = z.object({
-  userPersona: z.string().describe('AI 基於單一關鍵字分群生成的使用者畫像描述')
-});
-
 /**
  * Generates the prompt for the initial persona text generation.
  */
@@ -55,40 +49,18 @@ Provide a concise user persona description (around 100-150 words) covering the f
 Respond ONLY with the persona description text.`;
 
 /**
- * Generates the prompt for converting the persona text description to JSON.
+ * REMOVED: Unused function for JSON conversion.
  */
-const getPersonaConversionPrompt = (
-  personaText: string
-) => `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided plain text user persona description into the *exact* JSON format specified, using *only* the information present in the input text.
-
-**CRITICAL INSTRUCTIONS:**
-1.  **Role:** Act as a data conversion bot.
-2.  **Input Data:** Use *only* the provided persona description text.
-3.  **Output Format:** Generate *only* a valid JSON object matching the structure: { "userPersona": "string" }.
-4.  **Behavior:**
-    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.
-    *   Place the entire input text into the "userPersona" field of the JSON object.
-
---- START OF TASK-SPECIFIC INSTRUCTIONS ---
-
-Input Persona Description Text:
-${personaText}
-
-Convert this text into the following JSON structure:
-{
-  "userPersona": "<The entire input persona description text>"
-}
-
-Respond ONLY with the valid JSON object.`;
+// const getPersonaConversionPrompt = (personaText: string) => { ... };
 
 /**
- * Uses a two-step AI process: generate text (persona description), then convert text to JSON.
+ * Uses AI to generate a text persona description for a cluster.
  * @param input Contains clusterName, keywords, and optional model.
- * @returns The validated JSON persona object.
+ * @returns An object containing the persona string or an error.
  */
 export async function generateUserPersonaFromClusters(
   input: z.infer<typeof personaInputSchema>
-): Promise<z.infer<typeof personaOutputSchema>> {
+): Promise<{ userPersona: string | null; error: string | null }> {
   try {
     const validatedInput = personaInputSchema.parse(input);
     const { clusterName, keywords, model } = validatedInput;
@@ -118,23 +90,9 @@ export async function generateUserPersonaFromClusters(
       throw new Error('AI failed to generate a valid persona description.');
     }
 
-    // --- Step 2: Convert Text to JSON ---
-    console.log(
-      `[Server Action] Persona Gen Step 2: Requesting JSON Conversion. Cluster='${clusterName}', Model=${openaiModel}`
-    );
-    const conversionPrompt = getPersonaConversionPrompt(trimmedPersonaText);
-    console.log('[AI Call] Calling AI for Persona JSON Conversion...');
-    const { object: jsonResult } = await generateObject({
-      model: openai(openaiModel),
-      schema: personaOutputSchema,
-      prompt: conversionPrompt
-    });
+    // Return the success object with the persona text
+    return { userPersona: trimmedPersonaText, error: null };
 
-    console.log(
-      `[Server Action] Persona Gen Step 2: Received and validated JSON for cluster '${clusterName}'.`
-    );
-
-    return jsonResult;
   } catch (error) {
     // Enhanced error logging
     const clusterName = (input as any)?.clusterName || 'unknown';
@@ -144,14 +102,12 @@ export async function generateUserPersonaFromClusters(
     );
     if (error instanceof z.ZodError) {
       console.error('Zod validation error details:', error.flatten());
-      throw new Error(
-        `Persona data validation failed: ${error.errors[0]?.message}`
-      );
+      // Construct error message for return
+      const errorMessage = `Persona data validation failed: ${error.errors[0]?.message}`;
+      return { userPersona: null, error: errorMessage };
     }
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('Unknown error during user persona generation process.');
-    }
+    // Construct error message for return
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error during persona generation.';
+    return { userPersona: null, error: errorMessage };
   }
 }

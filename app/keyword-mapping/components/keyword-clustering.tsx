@@ -106,7 +106,7 @@ export default function KeywordClustering({
           totalVolume, // Use the direct totalVolume
           longTailKeywords, 
           highestVolumeKeyword: sortedKeywords[0] || null,
-          personaDescription: clusterItem.personaDescription // Pass it through if needed
+          personaDescription: clusterItem.personaDescription // Pass it through
         };
       }
     );
@@ -227,11 +227,6 @@ export default function KeywordClustering({
             const remainingCount = allSupportingKeywords.length - topSupportingKeywords.length;
             const isExpanded = !!expandedSupportingMap[index];
 
-            // Find original ClusterItem to get personaDescription if not passed through ProcessedCluster
-            // OR assume ProcessedCluster now includes it
-            const originalClusterItem = clusters?.find(c => c.clusterName === cluster.clusterName);
-            const currentPersona = originalClusterItem?.personaDescription; // <-- Get description directly
-
             // Calculate unique remainders based on KeywordVolumeItem.text
             let clusterUniqueRemaindersString = '-';
             if (mainQuery) {
@@ -258,6 +253,11 @@ export default function KeywordClustering({
               index % 2 === 0 ? 'md:bg-card' : 'md:bg-muted/40';
 
             const isGeneratingThisPersona = isSavingPersona === cluster.clusterName;
+
+            // --- SIMPLIFY PERSONA ACCESS ---
+            // const originalClusterItem = clusters?.find(c => c.clusterName === cluster.clusterName); // No longer needed
+            // const currentPersona = originalClusterItem?.personaDescription; // Use directly from processed cluster
+            const currentPersona = cluster.personaDescription; // <-- Use persona from ProcessedCluster
 
             return (
               // Mobile: card layout. Desktop: row layout.
@@ -387,7 +387,7 @@ export default function KeywordClustering({
                   <div className="font-medium text-xs text-muted-foreground md:hidden mb-1">
                     用戶畫像
                   </div>
-                  {currentPersona ? ( // <-- Check currentPersona directly
+                  {currentPersona ? ( // <-- Check the simplified currentPersona
                     // Display existing persona
                     <div>
                       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center">
@@ -395,7 +395,7 @@ export default function KeywordClustering({
                         用戶畫像
                       </div>
                       <div className="whitespace-pre-wrap break-words text-sm">
-                        {currentPersona} {/* <-- Display description */} 
+                        {currentPersona} {/* <-- Display description */}
                       </div>
                     </div>
                   ) : (
@@ -407,10 +407,10 @@ export default function KeywordClustering({
                       onClick={() =>
                         onStartPersonaChat(
                           cluster.clusterName,
-                          cluster.keywordList 
+                          cluster.keywordList
                         )
                       }
-                      disabled={isGeneratingThisPersona || !!isSavingPersona} 
+                      disabled={isGeneratingThisPersona || !!isSavingPersona}
                     >
                       {isGeneratingThisPersona ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />

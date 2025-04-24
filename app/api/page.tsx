@@ -35,7 +35,7 @@ export default function ApiDocsPage() {
   "keywordReport": { \"query\": \"...\" },
   "selectedClusterName": "Cluster Name Example"
 }'`; // Note: keywordReport structure can be complex
-  const analyzeDefaultBody = { keyword: "益生菌 推薦", mediaSiteName: "GirlStyle" };
+  const analyzeDefaultBody = { keyword: "益生菌 推薦", mediaSiteName: "GSHK" };
 
   // --- /api/writing/steps/2-plan ---
   const planApiUrl = '/api/writing/steps/2-plan';
@@ -51,6 +51,7 @@ export default function ApiDocsPage() {
     serpString: "Example SERP Title 1 - Example SERP Description 1\nExample SERP Title 2 - ...", // Example SERP string
     contentTypeReportText: "Example Content Type Report text...", // Example report text
     userIntentReportText: "Example User Intent Report text...", // Example report text
+    generatedOutline: "益生菌是什麼\n如何挑選益生菌\n推薦的益生菌品牌\n益生菌的副作用", // Added example outline
     fineTuneNames: [] as string[], // Ensure correct type
     keywordReport: null as any, // Explicitly null
     selectedClusterName: null as string | null // Explicitly null
@@ -101,7 +102,21 @@ export default function ApiDocsPage() {
       apiUrl: writingApiUrl,
       description: writingDescription,
       curlCommand: writingCurlCommand,
-      defaultPostBody: writingDefaultBody,
+      defaultPostBody: { keyword: "養生茶 推薦", mediaSiteName: "BF" },
+      method: 'POST' as const,
+    },
+    {
+      apiUrl: writingApiUrl, 
+      description: "(Example 2) /api/writing with GirlStyle Hong Kong.",
+      curlCommand: `curl -X POST ${writingApiUrl} -H "Content-Type: application/json" -d '{\"keyword\": \"面膜 推薦\", \"mediaSiteName\": \"GSHK\"}'`,
+      defaultPostBody: { keyword: "面膜 推薦", mediaSiteName: "GSHK" },
+      method: 'POST' as const,
+    },
+    {
+      apiUrl: writingApiUrl, 
+      description: "(Example 3) /api/writing for MamiDaily.",
+      curlCommand: `curl -X POST ${writingApiUrl} -H "Content-Type: application/json" -d '{\"keyword\": \"親子餐廳 台北\", \"mediaSiteName\": \"MD\"}'`,
+      defaultPostBody: { keyword: "親子餐廳 台北", mediaSiteName: "MD" },
       method: 'POST' as const,
     },
     {

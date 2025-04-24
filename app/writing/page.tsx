@@ -14,11 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, AlertTriangle, Copy, CheckCircle2, ChevronRight, Search, TerminalSquare, Settings2, Check, ChevronsUpDown, Layers } from "lucide-react"
+import { Loader2, AlertTriangle, Copy, CheckCircle2, ChevronRight, Search, TerminalSquare, Settings2, Check, ChevronsUpDown, Layers, XCircle, Circle } from "lucide-react"
 import { MEDIASITE_DATA } from "@/app/global-config"
 import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from "@/app/prompt/fine-tune"
 import { toast } from "sonner"
-import { Progress } from "@/components/ui/progress"
 import Image from 'next/image'
 import { cn } from "@/lib/utils"
 import { useClientStorage } from "@/components/hooks/use-client-storage"
@@ -35,14 +34,34 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { fetchKeywordResearchSummaryAction, fetchKeywordResearchDetail } from "@/app/actions/keyword-research-action";
+import { fetchKeywordResearchSummaryList, fetchKeywordResearchDetail } from "@/app/actions/keyword-research-action";
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
-import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
+import type { ProcessedKeywordResearchData, TitleAnalysisJson, BetterHaveAnalysisJson } from '@/app/services/firebase/schema';
+import type { ClientSafeSerpDataDoc } from '@/app/actions/serp-action';
+import { ProgressChecklistDisplay } from "./components/progress-checklist-display";
+import { ErrorDisplay } from "./components/error-display";
+import { ResultDisplay } from "./components/result-display";
 
-// Define API endpoints
-const STEP1_URL = "/api/writing/steps/1-analyze"
-const STEP2_URL = "/api/writing/steps/2-plan"
-const STEP3_URL = "/api/writing/steps/3-finalize"
+// --- Define New API Endpoints ---
+const API_BASE_URL = "/api/writing";
+const API_OUTLINE_URL = `${API_BASE_URL}/outline`; // Keep outline separate for now
+const API_STEP1_FETCH_SERP_URL = `${API_BASE_URL}/1-fetch-serp`;
+const API_STEP2_ANALYZE_CONTENT_TYPE_URL = `${API_BASE_URL}/2-analyze-content-type`;
+const API_STEP3_ANALYZE_USER_INTENT_URL = `${API_BASE_URL}/3-analyze-user-intent`;
+const API_STEP4_ANALYZE_TITLE_URL = `${API_BASE_URL}/4-analyze-title`;
+const API_STEP5_ANALYZE_BETTER_HAVE_URL = `${API_BASE_URL}/5-analyze-better-have`;
+const API_STEP6_GENERATE_ACTION_PLAN_URL = `${API_BASE_URL}/6-generate-action-plan`;
+const API_STEP7_GENERATE_FINAL_PROMPT_URL = `${API_BASE_URL}/7-generate-final-prompt`;
+
+// --- Define New Step IDs ---
+const STEP_ID_OUTLINE = 'outline';
+const STEP_ID_FETCH_SERP = 'fetch-serp';
+const STEP_ID_ANALYZE_CONTENT_TYPE = 'analyze-content-type';
+const STEP_ID_ANALYZE_USER_INTENT = 'analyze-user-intent';
+const STEP_ID_ANALYZE_TITLE = 'analyze-title';
+const STEP_ID_ANALYZE_BETTER_HAVE = 'analyze-better-have';
+const STEP_ID_GENERATE_ACTION_PLAN = 'generate-action-plan';
+const STEP_ID_GENERATE_FINAL_PROMPT = 'generate-final-prompt';
 
 // Combine all fine-tune data names
 const allFineTuneNames = [
@@ -51,35 +70,26 @@ const allFineTuneNames = [
     ...LANGUAGE_FINE_TUNE_DATA.map(item => item.name)
 ];
 
-// Refined Step Indicator with progress bar
-const StepIndicator = ({ current, total, message }: { current: number; total: number; message: string }) => (
-  <div className="space-y-3">
-    <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        <span className="font-medium">{message}</span>
-      </div>
-      <span className="font-semibold">
-        {current}/{total}
-      </span>
-    </div>
-    <Progress value={(current / total) * 100} className="h-2" />
-  </div>
-)
+// --- UPDATED: Step Checklist Component ---
+interface Step {
+    id: string;
+    name: string;
+    status: 'pending' | 'loading' | 'completed' | 'error';
+    durationMs?: number; // Add optional duration
+}
 
-// Define a constant for the "All Clusters" value
-const ALL_CLUSTERS_VALUE = "__ALL_CLUSTERS__";
+// TODO: Share this Step interface definition
 
 export default function WritingPage() {
   // Use useClientStorage for persistent state
   const [keyword, setKeyword] = useClientStorage("writing:keyword", "")
   const [mediaSiteName, setMediaSiteName] = useClientStorage("writing:mediaSiteName", "")
-  const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>("writing:researchPrompt", null)
+  const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>("writing:researchPrompt", null);
   const [selectedFineTunes, setSelectedFineTunes] = useClientStorage<string[]>("writing:selectedFineTunes", [])
-  const [selectedKeywordReport, setSelectedKeywordReport] = useClientStorage<KeywordResearchClientData | null>("writing:selectedKeywordReport", null)
+  const [selectedKeywordReport, setSelectedKeywordReport] = useClientStorage<ProcessedKeywordResearchData | null>("writing:selectedKeywordReport", null)
 
   // --- Cluster Selection State --- 
-  const [selectedClusterName, setSelectedClusterName] = useState<string>(ALL_CLUSTERS_VALUE);
+  const [selectedClusterName, setSelectedClusterName] = useState<string>("__ALL_CLUSTERS__");
   
   // --- UPDATED: State for the displayed Persona description --- 
   const [displayedPersona, setDisplayedPersona] = useState<string | null>(null);
@@ -95,23 +105,30 @@ export default function WritingPage() {
   // --- State for hydration fix ---
   const [isMounted, setIsMounted] = useState(false);
   
+  // --- State to track if generation was attempted ---
+  const [generationAttempted, setGenerationAttempted] = useClientStorage("writing:generationAttempted", false);
+  
   // Keep local state for UI elements like loading, error, copied status, and visibility toggle
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentStep, setCurrentStep] = useState(0) // Initial step is 0
   const [copied, setCopied] = useState(false)
   const [showMediaSiteOptions, setShowMediaSiteOptions] = useState(false)
   const [showFineTuneOptions, setShowFineTuneOptions] = useState(false)
   const [comboboxOpen, setComboboxOpen] = useState(false) // State for Combobox popover
+  const [generatedOutlineText, setGeneratedOutlineText] = useClientStorage<string | null>("writing:generatedOutlineText", null);
 
-  // Effect to set the initial step based on persisted researchPrompt
-  useEffect(() => {
-    if (researchPrompt) {
-      setCurrentStep(4)
-    } else {
-      setCurrentStep(0)
-    }
-  }, [researchPrompt])
+  // --- UPDATED: New state for 7-step tracking --- (plus Outline)
+  const initialSteps: Step[] = [
+    { id: STEP_ID_FETCH_SERP, name: 'Step 1: Fetch SERP', status: 'pending' },
+    { id: STEP_ID_ANALYZE_CONTENT_TYPE, name: 'Step 2: Analyze Content Type', status: 'pending' },
+    { id: STEP_ID_ANALYZE_USER_INTENT, name: 'Step 3: Analyze User Intent', status: 'pending' },
+    { id: STEP_ID_ANALYZE_TITLE, name: 'Step 4: Analyze Title', status: 'pending' },
+    { id: STEP_ID_ANALYZE_BETTER_HAVE, name: 'Step 5: Analyze Better Have', status: 'pending' },
+    { id: STEP_ID_GENERATE_ACTION_PLAN, name: 'Step 6: Generate Action Plan', status: 'pending' },
+    { id: STEP_ID_GENERATE_FINAL_PROMPT, name: 'Step 7: Generate Final Prompt', status: 'pending' }
+  ];
+  // Use regular useState for steps to test incremental updates
+  const [steps, setSteps] = useState<Step[]>(initialSteps);
 
   // --- Effect for hydration fix ---
   useEffect(() => {
@@ -125,61 +142,75 @@ export default function WritingPage() {
       setIsListLoading(true);
       setListFetchError(null);
       try {
-        const result = await fetchKeywordResearchSummaryAction(); // Fetch summary list
-        if (result.error) {
-          throw new Error(result.error);
+        const summaries = await fetchKeywordResearchSummaryList(50);
+        if (!Array.isArray(summaries)) {
+          console.error("Unexpected format from fetchKeywordResearchSummaryAction");
+          throw new Error("Failed to fetch keywords: Invalid response format.");
         }
-        setRealKeywordList(result.data || []);
-      } catch (error) {
+        setRealKeywordList(summaries);
+      } catch (error: any) {
         console.error("Failed to fetch keyword research list:", error);
-        setListFetchError(error instanceof Error ? error.message : "Unknown error");
+        setListFetchError(error.message || "Unknown error");
       } finally {
         setIsListLoading(false);
       }
     };
-
     loadKeywords();
   }, []); // Run only on mount
   // --- End Fetch Effect --- 
 
   // --- Effect to reset cluster selection when keyword report changes --- 
   useEffect(() => {
-    setSelectedClusterName(ALL_CLUSTERS_VALUE);
+    setSelectedClusterName("__ALL_CLUSTERS__");
   }, [selectedKeywordReport]);
   // --- End Cluster Reset Effect --- 
 
   // --- UPDATED: Effect to find and set the displayed Persona description --- 
   useEffect(() => {
-    if (selectedClusterName === ALL_CLUSTERS_VALUE || !selectedKeywordReport?.clusters) {
+    if (selectedClusterName === "__ALL_CLUSTERS__" || !selectedKeywordReport?.clustersWithVolume) {
       setDisplayedPersona(null);
       return;
     }
     // Find the cluster with the matching name
-    const foundCluster = selectedKeywordReport.clusters.find(
-      (c) => c.clusterName === selectedClusterName
+    const foundCluster = selectedKeywordReport.clustersWithVolume.find(
+      (c: any) => c.clusterName === selectedClusterName
     );
     // Set the persona description from the found cluster, or null if not found/no description
     setDisplayedPersona(foundCluster?.personaDescription || null); 
     
-    if(selectedClusterName !== ALL_CLUSTERS_VALUE && !foundCluster?.personaDescription) {
+    if(selectedClusterName !== "__ALL_CLUSTERS__" && !foundCluster?.personaDescription) {
         console.warn(`[UI Persona Sync] Persona description not found for selected cluster: ${selectedClusterName}`);
     }
 
   }, [selectedClusterName, selectedKeywordReport]);
   // --- End Persona Sync Effect --- 
 
-  const getStepDescription = () => {
-    switch (currentStep) {
-      case 1:
-        return "Analyzing SERP and existing content..."
-      case 2:
-        return "Developing content strategy and outline..."
-      case 3:
-        return "Generating final research prompt..."
-      default:
-        return ""
+  // --- Moved useEffect for cluster/hasClusters logging BEFORE conditional return ---
+  const hasClusters = selectedKeywordReport?.clustersWithVolume && Array.isArray(selectedKeywordReport.clustersWithVolume) && selectedKeywordReport.clustersWithVolume.length > 0;
+  useEffect(() => {
+    console.log("[UI Debug] selectedKeywordReport updated:", selectedKeywordReport);
+    console.log("[UI Debug] hasClusters calculated:", hasClusters);
+  }, [selectedKeywordReport, hasClusters]);
+  // --- End moved useEffect ---
+
+  // --- Effect to reset steps if keyword changes (or on initial load without a keyword in storage)
+  useEffect(() => {
+    // Only reset if the keyword has actually changed and a generation hasn't been attempted yet
+    // Or if the component mounts and steps are not the initial ones (meaning they were loaded from a previous keyword)
+    const key = `writing:stepsState:${keyword || 'default'}`;
+    const storedSteps = localStorage.getItem(key);
+    if (!generationAttempted || !storedSteps) {
+        setSteps(initialSteps);
     }
+    // This effect depends on the keyword to trigger reset when it changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword]);
+
+  // --- !! HYDRATION FIX: Ensure component only renders on client after mount !! ---
+  if (!isMounted) {
+    return null; // Render nothing until mounted
   }
+  // --- End Hydration Fix ---
 
   const handleCopyToClipboard = async () => {
     if (researchPrompt) {
@@ -206,169 +237,365 @@ export default function WritingPage() {
     });
   };
 
+  // Helper to update step status
+  const updateStepStatus = (
+      stepId: string,
+      status: Step['status'],
+      durationMs?: number
+  ) => {
+      setSteps(prevSteps =>
+          prevSteps.map(step =>
+              step.id === stepId ? { ...step, status, durationMs } : step
+          )
+      );
+  };
+
+  // --- API Call Helper Function Structure ---
+  const callApi = async <T,>(stepId: string, url: string, payload: any): Promise<T> => {
+      updateStepStatus(stepId, 'loading');
+      const startTime = performance.now();
+      let durationMs = 0;
+      try {
+          const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+          });
+
+          durationMs = performance.now() - startTime;
+
+          if (!response.ok) {
+              let errorDetails = `API Error (${stepId}): ${response.statusText}`;
+              let errorBody = null;
+              try { errorBody = await response.json(); } catch { }
+              if (errorBody && (errorBody.details || errorBody.error)) {
+                  errorDetails = typeof errorBody.details === 'string' ? errorBody.details : (typeof errorBody.error === 'string' ? errorBody.error : JSON.stringify(errorBody));
+              } else {
+                  try {
+                      const textError = await response.text();
+                      if (textError) errorDetails += ` - ${textError}`;
+                  } catch { }
+              }
+              console.error(`[API Call Error - ${stepId}] Status: ${response.status}, Details: ${errorDetails}`);
+              throw new Error(errorDetails);
+          }
+
+          const result = await response.json();
+          updateStepStatus(stepId, 'completed', durationMs);
+          console.log(`[API Call Success - ${stepId}] (${(durationMs / 1000).toFixed(1)}s).`);
+          return result as T;
+      } catch (error) {
+          updateStepStatus(stepId, 'error');
+          console.error(`[API Call Error - ${stepId}] Catch block:`, error);
+          // Re-throw the error to be caught by handleSubmit
+          throw error;
+      }
+  };
+
+  // Helper for Outline API call (remains similar, uses generic helper)
+  const callOutlineApi = async (
+      keyword: string,
+      language: string,
+      region: string
+  ): Promise<{ outlineText: string }> => { // Adjust return type if API returns object
+      const result = await callApi<{ outlineText: string }>(
+          STEP_ID_OUTLINE,
+          API_OUTLINE_URL,
+          { keyword, language, region }
+      );
+      setGeneratedOutlineText(result.outlineText);
+      return result;
+  };
+
+  // --- NEW API Call Helpers for Steps 1-7 ---
+
+  // 1. Fetch SERP
+  const callFetchSerpApi = async (
+      keyword: string,
+      mediaSiteName: string
+  ): Promise<ClientSafeSerpDataDoc> => {
+      return await callApi<ClientSafeSerpDataDoc>(
+          STEP_ID_FETCH_SERP,
+          API_STEP1_FETCH_SERP_URL,
+          { keyword, mediaSiteName }
+      );
+  };
+
+  // 2. Analyze Content Type
+  const callAnalyzeContentTypeApi = async (
+      serpDocId: string,
+      keyword: string,
+      organicResults: any[] | null
+  ): Promise<{ recommendationText: string }> => {
+      return await callApi<{ recommendationText: string }>(
+          STEP_ID_ANALYZE_CONTENT_TYPE,
+          API_STEP2_ANALYZE_CONTENT_TYPE_URL,
+          { serpDocId, keyword, organicResults }
+      );
+  };
+
+  // 3. Analyze User Intent
+  const callAnalyzeUserIntentApi = async (
+      serpDocId: string,
+      keyword: string,
+      organicResults: any[] | null,
+      relatedQueries: any[] | null
+  ): Promise<{ recommendationText: string }> => {
+      return await callApi<{ recommendationText: string }>(
+          STEP_ID_ANALYZE_USER_INTENT,
+          API_STEP3_ANALYZE_USER_INTENT_URL,
+          { serpDocId, keyword, organicResults, relatedQueries }
+      );
+  };
+
+  // 4. Analyze Title
+  type AnalyzeTitleResult = { analysisJson: TitleAnalysisJson, recommendationText: string };
+  const callAnalyzeTitleApi = async (
+      serpDocId: string,
+      keyword: string,
+      organicResults: any[] | null
+  ): Promise<AnalyzeTitleResult> => {
+      return await callApi<AnalyzeTitleResult>(
+          STEP_ID_ANALYZE_TITLE,
+          API_STEP4_ANALYZE_TITLE_URL,
+          { serpDocId, keyword, organicResults }
+      );
+  };
+
+  // 5. Analyze Better Have
+  type AnalyzeBetterHaveResult = { analysisJson: BetterHaveAnalysisJson, recommendationText: string };
+  const callAnalyzeBetterHaveApi = async (
+      serpDocId: string,
+      keyword: string,
+      organicResults: any[] | null,
+      peopleAlsoAsk: any[] | null,
+      relatedQueries: any[] | null,
+      aiOverview: string | null | undefined
+  ): Promise<AnalyzeBetterHaveResult> => {
+      return await callApi<AnalyzeBetterHaveResult>(
+          STEP_ID_ANALYZE_BETTER_HAVE,
+          API_STEP5_ANALYZE_BETTER_HAVE_URL,
+          { serpDocId, keyword, organicResults, peopleAlsoAsk, relatedQueries, aiOverview }
+      );
+  };
+
+  // 6. Generate Action Plan
+  const callGenerateActionPlanApi = async (
+      keyword: string,
+      mediaSiteName: string,
+      contentTypeReportText: string,
+      userIntentReportText: string,
+      titleRecommendationText: string,
+      betterHaveRecommendationText: string,
+      keywordReport: ProcessedKeywordResearchData | any | null,
+      selectedClusterName: string | null
+  ): Promise<{ actionPlanText: string }> => {
+      return await callApi<{ actionPlanText: string }>(
+          STEP_ID_GENERATE_ACTION_PLAN,
+          API_STEP6_GENERATE_ACTION_PLAN_URL,
+          { keyword, mediaSiteName, contentTypeReportText, userIntentReportText, titleRecommendationText, betterHaveRecommendationText, keywordReport, selectedClusterName }
+      );
+  };
+
+  // 7. Generate Final Prompt
+  const callGenerateFinalPromptApi = async (
+      keyword: string,
+      actionPlan: string,
+      mediaSiteName: string,
+      contentTypeReportText: string,
+      userIntentReportText: string,
+      betterHaveRecommendationText: string | null,
+      keywordReport: ProcessedKeywordResearchData | any | null,
+      selectedClusterName: string | null,
+      articleTemplate: string,
+      contentMarketingSuggestion: string | null, // Assuming it might be null
+      fineTuneNames: string[],
+      betterHaveAnalysisJson: BetterHaveAnalysisJson | null
+  ): Promise<{ finalPrompt: string }> => {
+      return await callApi<{ finalPrompt: string }>(
+          STEP_ID_GENERATE_FINAL_PROMPT,
+          API_STEP7_GENERATE_FINAL_PROMPT_URL,
+          {
+              keyword,
+              actionPlan,
+              mediaSiteName,
+              contentTypeReportText,
+              userIntentReportText,
+              betterHaveRecommendationText,
+              keywordReport,
+              selectedClusterName,
+              articleTemplate,
+              contentMarketingSuggestion: contentMarketingSuggestion || '', // Ensure default empty string if null
+              fineTuneNames,
+              betterHaveAnalysisJson
+          }
+      );
+  };
+
+  // --- Refactored handleSubmit --- 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setIsLoading(true)
-    setError(null)
-    setResearchPrompt(null)
-    setCurrentStep(0)
+      event.preventDefault();
+      setIsLoading(true);
+      setGenerationAttempted(true); // Mark that a generation has been attempted
+      setError(null);
+      setResearchPrompt(null);
+      setGeneratedOutlineText(null);
+      setSteps(initialSteps); // Reset steps state
 
-    if (!keyword || !mediaSiteName) {
-      setError("Please provide both a keyword and select a media site.")
-      setIsLoading(false)
-      return
-    }
+      if (!keyword || !mediaSiteName) {
+          setError("Please provide both a keyword and select a media site.");
+          setIsLoading(false);
+          return;
+      }
 
-    const firstKeyword = keyword.split(",")[0].trim()
-    if (!firstKeyword) {
-        setError("Please provide a valid keyword.")
-        setIsLoading(false)
-        return
-    }
-
-    // Determine the cluster name to send
-    // If ALL_CLUSTERS_VALUE is selected, send null, otherwise send the selected name.
-    const clusterNameToSend = selectedClusterName === ALL_CLUSTERS_VALUE
-      ? null
-      : selectedClusterName;
+      const firstKeyword = keyword.split(",")[0].trim();
+      if (!firstKeyword) {
+          setError("Please provide a valid keyword.");
+          setIsLoading(false);
+          return;
+      }
       
-    // The backend API (/api/writing/steps/1-analyze) will need to know
-    // that if clusterNameToSend is provided, it should look for the persona
-    // description within that cluster in the selectedKeywordReport data.
-    console.log(`Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(', ')}, TargetCluster=${clusterNameToSend || 'All'}`);
-
-    let step1Result: any = null;
-    let step2Result: any = null;
-
-    try {
-      // --- Step 1 --- 
-      setCurrentStep(1)
-      const step1Response = await fetch(STEP1_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          keyword: firstKeyword,
-          mediaSiteName,
-          fineTuneNames: selectedFineTunes,
-          keywordReport: selectedKeywordReport,
-          selectedClusterName: clusterNameToSend // Pass the potentially null cluster name
-        }),
-      })
-      // Refactored Error Handling for Step 1
-      if (!step1Response.ok) {
-        let errorDetails = `Step 1 Failed: ${step1Response.statusText}`;
-        try {
-          const errorBody = await step1Response.json();
-          if (errorBody && errorBody.details) {
-            errorDetails = errorBody.details;
-          } else if (errorBody && errorBody.error) { // Check for .error property as well
-            errorDetails = errorBody.error;
-          }
-        } catch (jsonError) {
-          console.warn("[Step 1] Could not parse error response body as JSON.", jsonError);
-          const textError = await step1Response.text().catch(() => null);
-          if (textError) errorDetails += ` - ${textError}`;
-        }
-        throw new Error(errorDetails);
+      const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+      if (!mediaSite) {
+          setError(`Media site configuration not found for name: ${mediaSiteName}`);
+          setIsLoading(false);
+          return;
       }
-      step1Result = await step1Response.json();
-      console.log("[Step 1] Success.")
+      const { region, language } = mediaSite;
 
-      // --- Step 2 --- 
-      setCurrentStep(2)
-      const step2Response = await fetch(STEP2_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(step1Result), // Pass result from Step 1
-      })
-      // Refactored Error Handling for Step 2
-      if (!step2Response.ok) {
-        let errorDetails = `Step 2 Failed: ${step2Response.statusText}`;
-        try {
-          const errorBody = await step2Response.json();
-          if (errorBody && errorBody.details) {
-            errorDetails = errorBody.details;
-          } else if (errorBody && errorBody.error) {
-            errorDetails = errorBody.error;
-          }
-        } catch (jsonError) {
-          console.warn("[Step 2] Could not parse error response body as JSON.", jsonError);
-          const textError = await step2Response.text().catch(() => null);
-          if (textError) errorDetails += ` - ${textError}`;
-        }
-        throw new Error(errorDetails);
-      }
-      step2Result = await step2Response.json();
-      console.log("[Step 2] Success.")
+      // Get outline template (ensure it defaults if null)
+      const outlineTemplate = generatedOutlineText || "<!-- Default Outline/Template -->";
 
-      // --- Step 3 --- 
-      setCurrentStep(3)
-      const step3Response = await fetch(STEP3_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(step2Result), // Pass result from Step 2
-      })
-      // Refactored Error Handling for Step 3 (expects text response)
-      if (!step3Response.ok) {
-        let errorDetails = `Step 3 Failed: ${step3Response.statusText}`;
-        let errorBody = null; // Initialize errorBody
-        try {
-          // Try parsing as JSON first, as Vercel might return JSON errors
-          errorBody = await step3Response.json(); 
-          if (errorBody && errorBody.details) {
-            errorDetails = errorBody.details;
-          } else if (errorBody && errorBody.error) {
-            errorDetails = errorBody.error;
+      console.log(`Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(', ')}, TargetCluster=${selectedClusterName === "__ALL_CLUSTERS__" ? 'All' : selectedClusterName}`);
+
+      try {
+          // --- Execute Steps Sequentially --- 
+
+          let reportForStep6: any | null = selectedKeywordReport;
+          let reportForStep7: any | null = selectedKeywordReport;
+
+          // --- Filter Report Data if Cluster is Selected ---
+          const currentSelectedCluster = selectedClusterName; // Read latest state here
+          if (currentSelectedCluster !== "__ALL_CLUSTERS__" && selectedKeywordReport) {
+              const clusterData = selectedKeywordReport.clustersWithVolume?.find(
+                  (c: any) => c.clusterName === currentSelectedCluster
+              );
+              if (clusterData) {
+                  // Create a minimal report for Step 6 containing only the selected cluster
+                  reportForStep6 = {
+                      query: selectedKeywordReport.query,
+                      language: selectedKeywordReport.language,
+                      region: selectedKeywordReport.region,
+                      clustersWithVolume: [clusterData], // Array with only the selected cluster
+                      // Include other top-level fields if needed by formatKeywordReportForPrompt
+                  };
+                  // Set report for Step 7 to null as info is now in action plan
+                  reportForStep7 = null;
+              } else {
+                  console.warn(`[handleSubmit] Selected cluster '${currentSelectedCluster}' not found in report. Using full report.`);
+                  // Fallback to full report if cluster not found somehow
+                  reportForStep6 = selectedKeywordReport;
+                  reportForStep7 = selectedKeywordReport;
+              }
           } else {
-             // If JSON parsed but no specific error field, stringify it
-             errorDetails += ` - ${JSON.stringify(errorBody)}`; 
+              // If no cluster selected, use full report for both steps
+              reportForStep6 = selectedKeywordReport;
+              reportForStep7 = selectedKeywordReport;
           }
-        } catch (jsonError) {
-          // If JSON parsing fails, try getting text
-          console.warn("[Step 3] Could not parse error response body as JSON, trying text().", jsonError);
-          try {
-            const textError = await step3Response.text(); // Await here
-            if (textError) errorDetails += ` - ${textError}`; // Append raw text if available
-          } catch (textErrorErr) {
-              console.warn("[Step 3] Could not parse error response body as text either.", textErrorErr);
+
+          // Step 1: Fetch SERP Data
+          const serpData = await callFetchSerpApi(firstKeyword, mediaSiteName);
+
+          // Step 2: Analyze Content Type
+          const contentTypeResult = await callAnalyzeContentTypeApi(
+              serpData.id,
+              serpData.query,
+              serpData.organicResults ?? null // Provide null if undefined
+          );
+
+          // Step 3: Analyze User Intent
+          const userIntentResult = await callAnalyzeUserIntentApi(
+              serpData.id,
+              serpData.query,
+              serpData.organicResults ?? null, // Provide null if undefined
+              serpData.relatedQueries ?? null // Provide null if undefined
+          );
+
+          // Step 4: Analyze Title
+          const titleResult = await callAnalyzeTitleApi(
+              serpData.id,
+              serpData.query,
+              serpData.organicResults ?? null // Provide null if undefined
+          );
+
+          // Step 5: Analyze Better Have
+          const betterHaveResult = await callAnalyzeBetterHaveApi(
+              serpData.id,
+              serpData.query,
+              serpData.organicResults ?? null, // Provide null if undefined
+              serpData.peopleAlsoAsk ?? null, // Provide null if undefined
+              serpData.relatedQueries ?? null, // Provide null if undefined
+              serpData.aiOverview ?? null // Provide null if undefined
+          );
+
+          // Step 6: Generate Action Plan
+          const actionPlanResult = await callGenerateActionPlanApi(
+              serpData.query, // Use query from SERP data
+              mediaSiteName,
+              contentTypeResult.recommendationText,
+              userIntentResult.recommendationText,
+              titleResult.recommendationText,
+              betterHaveResult.recommendationText,
+              reportForStep6,
+              currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster // Pass potentially null cluster name
+          );
+
+          // Step 7: Generate Final Prompt
+          const finalPromptResult = await callGenerateFinalPromptApi(
+              serpData.query,
+              actionPlanResult.actionPlanText,
+              mediaSiteName,
+              contentTypeResult.recommendationText,
+              userIntentResult.recommendationText,
+              betterHaveResult.recommendationText ?? null, // Provide null if undefined
+              reportForStep7,
+              currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster, // Pass potentially null cluster name
+              generatedOutlineText || "<!-- Default Outline -->", // Use state or default
+              null, // contentMarketingSuggestion - add if needed
+              selectedFineTunes,
+              betterHaveResult.analysisJson ?? null // Provide null if undefined
+          );
+
+          // --- Process Complete --- 
+          setResearchPrompt(finalPromptResult.finalPrompt);
+          console.log("[UI] Process Complete. Final Research Prompt Generated.");
+
+      } catch (err) {
+          console.error("[UI Debug] Error caught in handleSubmit:", err);
+          if (!error) { // Avoid overwriting specific API errors
+              setError(err instanceof Error ? err.message : "An unexpected error occurred during generation.");
           }
-        }
-        throw new Error(errorDetails);
+      } finally {
+          console.log("[UI Debug] handleSubmit finally block reached. Setting isLoading=false.");
+          setIsLoading(false);
       }
-      const finalPromptText = await step3Response.text(); // Expecting text on success
-      // --- Add Logging Before Final State Update --- 
-      console.log("[UI Debug] Final Prompt Text Received from Step 3:", finalPromptText ? `"${finalPromptText.substring(0, 100)}..."` : '<<(EMPTY or NULL)>>');
-      console.log("[UI Debug] Setting researchPrompt and currentStep=4");
-      // --- End Logging --- 
-      setResearchPrompt(finalPromptText);
-      setCurrentStep(4);
-      console.log("[Step 3] Success. Final Research Prompt Generated.");
+  };
 
-    } catch (err) {
-      // --- Add Logging Inside Catch Block --- 
-      console.error("[UI Debug] Error caught in handleSubmit:", err);
-      // --- End Logging ---
-      console.error("Multi-step form submission error:", err);
-      setError(err instanceof Error ? err.message : "An unexpected error occurred during generation.");
-      setCurrentStep(0);
-    } finally {
-      // --- Add Logging Inside Finally Block --- 
-      console.log("[UI Debug] handleSubmit finally block reached. Setting isLoading=false.");
-      // --- End Logging ---
-      setIsLoading(false);
-    }
-  }
-
-  // Check if the report has clusters
-  const hasClusters = selectedKeywordReport?.clusters && Array.isArray(selectedKeywordReport.clusters) && selectedKeywordReport.clusters.length > 0;
-  // Add logging for debugging cluster issues
-  useEffect(() => {
-    console.log("[UI Debug] selectedKeywordReport updated:", selectedKeywordReport);
-    console.log("[UI Debug] hasClusters calculated:", hasClusters);
-  }, [selectedKeywordReport, hasClusters]);
+  // Add handler for starting over to pass to ResultDisplay
+  const handleStartOver = () => {
+    setResearchPrompt(null)
+    setMediaSiteName("")
+    setSelectedFineTunes([])
+    setSelectedKeywordReport(null)
+    setSteps(initialSteps)
+    setGenerationAttempted(false)
+    // Optionally reset keyword and outline
+    // setKeyword("");
+    // setGeneratedOutlineText(null);
+  };
 
   // Add logging for final state before render
-  console.log(`[UI Render State] isLoading=${isLoading}, hasResearchPrompt=${!!researchPrompt}, currentStep=${currentStep}`);
+  console.log(`[UI Render State] isLoading=${isLoading}, hasResearchPrompt=${!!researchPrompt}, currentStep=${steps.find(step => step.status === 'loading')?.name}`);
 
   return (
     <div className="min-h-screen dark:from-neutral-950 dark:to-black">
@@ -467,42 +694,39 @@ export default function WritingPage() {
                                   <CommandItem
                                     key={item.id}
                                     value={item.query} // Use query for value
-                                    onSelect={async (currentValue: string) => { 
+                                    onSelect={async (currentValue: string) => {
                                       const selectedItem = realKeywordList.find(i => i.query.toLowerCase() === currentValue.toLowerCase());
-                                      if (!selectedItem) return; 
+                                      if (!selectedItem) return;
 
                                       const selectedQuery = selectedItem.query;
-                                      setKeyword(selectedQuery); 
+                                      setKeyword(selectedQuery);
                                       setComboboxOpen(false);
                                       setSelectedKeywordReport(null); // Clear previous report immediately
-                                      setIsDetailLoading(true); 
+                                      setIsDetailLoading(true);
 
+                                      // --- Fetch and set the detailed keyword report --- 
                                       try {
-                                        console.log(`[UI] Fetching details for: ${selectedItem.id}`);
-                                        const detailResult = await fetchKeywordResearchDetail(selectedItem.id);
-                                        // --- Add Detailed Logging --- 
-                                        console.log("[UI Debug] Detail Result Received from Action:", detailResult);
-                                        if (detailResult) {
-                                            console.log("[UI Debug] Clusters in Detail Result:", detailResult.clusters);
-                                            console.log("[UI Debug] Is detailResult.clusters an Array?:", Array.isArray(detailResult.clusters));
-                                        }
-                                        // --- End Detailed Logging ---
-
+                                        console.log(`[UI] Fetching details for Keyword ID: ${selectedItem.id}`);
+                                        // Call the server action to get details
+                                        const detailResult = await fetchKeywordResearchDetail(selectedItem.id); 
+                                        
                                         if (!detailResult) {
-                                          toast.error(`Details not found for "${selectedQuery}".`);
-                                          setSelectedKeywordReport(null); 
+                                            console.warn(`[UI] No details returned for ID: ${selectedItem.id}`);
+                                            setSelectedKeywordReport(null); // Ensure it's null if fetch fails/returns null
+                                            toast.error("Could not fetch keyword details.");
                                         } else {
-                                          console.log(`[UI] Details fetched for "${selectedQuery}", storing report.`);
-                                          setSelectedKeywordReport(detailResult); // This triggers the useEffect log above
-                                          toast.success(`Loaded details for "${selectedQuery}"`);
+                                            setSelectedKeywordReport(detailResult as ProcessedKeywordResearchData); 
+                                            console.log(`[UI] Details fetched successfully for ID: ${selectedItem.id}`);
                                         }
                                       } catch (error) {
-                                        console.error(`[UI] Error fetching details for ${selectedItem.id}:`, error);
-                                        toast.error(`Failed to load details for "${selectedQuery}".`);
-                                        setSelectedKeywordReport(null); 
+                                        console.error(`[UI] Error fetching keyword details for ID ${selectedItem.id}:`, error);
+                                        setSelectedKeywordReport(null); // Clear report on error
+                                        toast.error(error instanceof Error ? `Error fetching details: ${error.message}` : "An unknown error occurred while fetching details.");
                                       } finally {
-                                        setIsDetailLoading(false); 
+                                        setIsDetailLoading(false); // Stop loading indicator
+                                        console.log("[UI] Detail fetching attempt complete.");
                                       }
+                                      // ----- End Fetch ---
                                     }}
                                     className="cursor-pointer"
                                   >
@@ -585,7 +809,7 @@ export default function WritingPage() {
                   </div>
                 </div>
 
-                {/* --- Cluster Selection Dropdown (Render if clusters exist) --- */} 
+                {/* --- Cluster Selection Dropdown (Render if clusters exist) --- */}
                 {isMounted && hasClusters && (
                   <div className="space-y-2">
                     <Label htmlFor="cluster-select" className="text-base font-medium">
@@ -606,9 +830,9 @@ export default function WritingPage() {
                         </div>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={ALL_CLUSTERS_VALUE}>All Clusters (No Specific Persona)</SelectItem>
-                        {/* Use KeywordResearchClientData type for clusters */}
-                        {selectedKeywordReport?.clusters?.map((cluster: any, index: number) => ( 
+                        <SelectItem value="__ALL_CLUSTERS__">All Clusters (No Specific Persona)</SelectItem>
+                        {/* Map over clustersWithVolume */}
+                        {selectedKeywordReport?.clustersWithVolume?.map((cluster: any, index: number) => ( 
                           <SelectItem key={cluster.clusterName || `cluster-${index}`} value={cluster.clusterName || `Cluster ${index + 1}`}>
                             {cluster.clusterName || `Cluster ${index + 1}`} (Vol: {cluster.totalVolume?.toLocaleString() ?? 'N/A'})
                           </SelectItem>
@@ -616,14 +840,12 @@ export default function WritingPage() {
                       </SelectContent>
                     </Select>
                     {/* --- Display Area for Associated Persona --- */}
-                    {selectedClusterName !== ALL_CLUSTERS_VALUE && (
+                    {selectedClusterName !== "__ALL_CLUSTERS__" && (
                        <div className="mt-2 p-3 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-md bg-indigo-50/50 dark:bg-indigo-900/10 text-sm text-indigo-800 dark:text-indigo-200">
                          {displayedPersona ? (
                            <>
-                             {/* Use selectedClusterName for the title */} 
-                             <p className="font-medium mb-1">Targeting Persona: {selectedClusterName}</p> 
-                             {/* Display the description string */}
-                             <p className="text-xs opacity-80 line-clamp-3">{displayedPersona}</p> 
+                             <p className="font-medium mb-1">Targeting Persona: {selectedClusterName}</p>
+                             <p className="text-xs opacity-80 line-clamp-3">{displayedPersona}</p>
                            </>
                          ) : (
                            <p className="text-xs opacity-70 italic">
@@ -670,7 +892,7 @@ export default function WritingPage() {
                   )}
                 </div>
 
-                 {/* Fine-Tune Selection Area */} 
+                 {/* Fine-Tune Selection Area */}
                  {showFineTuneOptions && (
                   <div className="space-y-2 pt-1">
                     <div className="border border-gray-300 dark:border-neutral-700 p-3 space-y-3 bg-white dark:bg-neutral-900">
@@ -701,122 +923,23 @@ export default function WritingPage() {
                 )}
 
 
-                {/* Progress Indicator */} 
-                {isLoading && currentStep > 0 && currentStep < 4 && (
-                  <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden">
-                     {/* Header */}
-                    <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"> {/* Window controls */}
-                          <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
-                        </div>
-                        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">GENERATING_PROMPT</span>
-                      </div>
-                    </div>
-                    <div className="p-6">
-                      <StepIndicator current={currentStep} total={3} message={getStepDescription()} />
-                    </div>
-                  </div>
+                {/* Progress Checklist - Show if generation was attempted */}
+                {generationAttempted && (
+                  <ProgressChecklistDisplay steps={steps} />
                 )}
 
-                {/* Error Display */} 
-                {error && !isLoading && (
-                  <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden border-l-4 border-l-red-500">
-                    {/* Header */}
-                     <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"> {/* Window controls */}
-                          <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
-                        </div>
-                        <span className="text-xs font-mono text-red-600 dark:text-red-400 uppercase">ERROR_OCCURRED</span>
-                      </div>
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                    </div>
-                    <div className="p-6">
-                      <div className="bg-red-50 dark:bg-red-900/10 p-4 text-red-800 dark:text-red-300 text-sm mb-4">
-                        {error}
-                      </div>
-                      <Button
-                        onClick={() => setError(null)}
-                        className={cn(
-                            "px-3 py-1.5 text-xs font-mono transition-colors border",
-                            "bg-gray-50 text-gray-700 border-gray-300 hover:border-red-400 hover:bg-red-50/50 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:border-red-600 dark:hover:bg-red-900/20"
-                        )}
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                {/* Error Display - Show if error exists and not loading */}
+                {!isLoading && <ErrorDisplay error={error} onDismiss={() => setError(null)} />}
 
-                {/* Result Display */} 
-                {!isLoading && researchPrompt && currentStep === 4 && (
-                  <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden border-l-4 border-l-green-500">
-                    {/* Header */}
-                    <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"> {/* Window controls */}
-                          <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
-                          <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
-                        </div>
-                        <span className="text-xs font-mono text-green-600 dark:text-green-400 uppercase">PROMPT_GENERATED</span>
-                      </div>
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    </div>
-                    <div className="p-6">
-                      <div className="relative mb-4">
-                        <Textarea
-                          readOnly
-                          value={researchPrompt}
-                          className={cn(
-                            "min-h-[300px] font-mono text-sm leading-relaxed p-5 resize-none border",
-                            "bg-gray-50 dark:bg-neutral-950 border-gray-300 dark:border-neutral-800"
-                          )}
-                        />
-                        <Button
-                          onClick={handleCopyToClipboard}
-                          type="button"
-                          className={cn(
-                            "absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono transition-colors border",
-                            "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900"
-                          )}
-                        >
-                          {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-500" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}
-                        </Button>
-                      </div>
-                      <div className="flex justify-between">
-                        <Button
-                          onClick={() => {
-                            setResearchPrompt(null)
-                            setMediaSiteName("")
-                            setSelectedFineTunes([])
-                            setSelectedKeywordReport(null) 
-                            setCurrentStep(0)
-                          }}
-                          className={cn(
-                              "px-3 py-1.5 text-xs font-mono transition-colors border",
-                              "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900"
-                          )}
-                        >
-                          Start Over
-                        </Button>
-                        <Button
-                          onClick={handleCopyToClipboard}
-                          className={cn(
-                            "flex items-center gap-1 px-3 py-1.5 text-xs font-mono transition-colors border",
-                            "bg-gray-700 text-white border-gray-700 hover:bg-gray-600 dark:bg-primary dark:text-primary-foreground dark:border-primary dark:hover:bg-primary/90"
-                          )}
-                        >
-                          Use This Prompt <ChevronRight className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                {/* Result Display - Show if not loading and prompt exists */}
+                {!isLoading && researchPrompt && (
+                  <ResultDisplay
+                    researchPrompt={researchPrompt}
+                    generatedOutlineText={generatedOutlineText}
+                    onCopyToClipboard={handleCopyToClipboard}
+                    onStartOver={handleStartOver} // Pass the new handler
+                    copied={copied}
+                  />
                 )}
               </form>
             </div>

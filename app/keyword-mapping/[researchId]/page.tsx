@@ -1,12 +1,8 @@
-import {
-  fetchKeywordResearchDetail,
-  fetchKeywordResearchSummaryAction
-} from '@/app/actions';
 import { MEDIASITE_DATA } from '@/app/global-config'; // Import site data
 // Import types from the centralized types file
 import type { Props } from '@/app/services/firebase/types'; 
-// Import the client data type for the loader component
-import type { KeywordResearchClientData } from '@/app/services/firebase/schema-client';
+// Import the type from the main schema file now
+import type { ProcessedKeywordResearchData } from '@/app/services/firebase/schema';
 import { formatVolume } from '@/lib/utils'; // Import volume formatter
 // Import icons needed for metadata
 import { Sigma, Globe, Languages, Clock, Tag } from 'lucide-react'; 
@@ -15,23 +11,23 @@ import { Badge } from "@/components/ui/badge"; // Import Badge for tags
 import { notFound } from 'next/navigation';
 import React from 'react';
 import KeywordResearchDetail from '../components/keyword-research-detail';
+import { getKeywordResearchDetail, getKeywordResearchSummaryList } from '@/app/services/firebase';
+import { unstable_cache } from 'next/cache';
+import { SiteFavicon } from '@/components/ui/site-favicon';
 
+const getKeywordResearchSummaryListCached = unstable_cache(async (researchId: string) => getKeywordResearchDetail(researchId), ['keyword-research-summary-list'], { revalidate: 3600 });
 
 // Function to generate static paths at build time
 export async function generateStaticParams() {
-  const { data: researches, error } = await fetchKeywordResearchSummaryAction(
-    undefined,
-    undefined,
-    1000
-  );
+  const data = await getKeywordResearchSummaryList(50);
 
-  if (error || !researches) {
-    console.error('Failed to fetch researches for static params:', error);
+  if (!data) {
+    console.error('Failed to fetch researches for static params');
     return [];
   }
 
-  return researches.map(research => ({
-    researchId: research.id
+  return data.map(d => ({
+    researchId: d.id
   }));
 }
 
@@ -39,7 +35,7 @@ export default async function KeywordResultPage({ params }: Props) {
   const { researchId } = await params;
 
   // Fetch the *already processed* data from the server action
-  const researchDetailData = await fetchKeywordResearchDetail(researchId);
+  const researchDetailData = await getKeywordResearchSummaryListCached(researchId);
 
   // Handle not found case
   if (!researchDetailData) {
@@ -58,19 +54,6 @@ export default async function KeywordResultPage({ params }: Props) {
         site => site.region?.toLowerCase() === researchDetailData.region?.toLowerCase()
       )
     : [];
-
-  // --- Helper to format date/time (moved from detail component) ---
-  const formatDateTime = (date: any): string => {
-    if (!date) return 'N/A';
-    try {
-      // Handle Firestore Timestamp object or Date object
-      const dateObj = date instanceof Date ? date : date.toDate(); 
-      if (isNaN(dateObj.getTime())) return 'Invalid Date';
-      return dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    } catch (error) {
-      return 'Invalid Date Format';
-    }
-  };
 
   // Define a simple loading fallback component
   const DetailLoadingFallback = () => {
@@ -98,15 +81,7 @@ export default async function KeywordResultPage({ params }: Props) {
           {matchingSites.length > 0 && (
             <div className="flex items-center gap-1.5 p-1 rounded-md bg-muted/60">
               {matchingSites.map(site => (
-                <img
-                  key={site.name}
-                  src={`https://www.google.com/s2/favicons?sz=16&domain_url=${site.url}`}
-                  alt={`${site.name} icon`}
-                  title={site.title} // Show full title on hover
-                  width={16}
-                  height={16}
-                  className="rounded-sm"
-                />
+                <SiteFavicon key={site.name} siteName={site.name} siteUrl={site.url} />
               ))}
             </div>
           )}
@@ -125,7 +100,10 @@ export default async function KeywordResultPage({ params }: Props) {
         </div>
         <div className="flex items-center">
           <Clock className="mr-1.5 h-4 w-4 flex-shrink-0" />
-          最後更新: {formatDateTime(researchDetailData.updatedAt)}
+          {/* Format Date directly */}
+          最後更新: {researchDetailData.updatedAt 
+            ? researchDetailData.updatedAt.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) 
+            : 'N/A'}
         </div>
         {researchDetailData.tags && researchDetailData.tags.length > 0 && (
           <div className="flex items-center gap-1">
@@ -140,20 +118,20 @@ export default async function KeywordResultPage({ params }: Props) {
       </div>
 
       <React.Suspense fallback={<DetailLoadingFallback />}>
-        {/* Pass the processed data directly to the loader */}
+        {/* Pass the fetched data (now with correct types) directly to the loader */}
         <KeywordResearchDetailLoader
-          researchDetail={researchDetailData} // Pass data using the prop name expected by the loader
+          researchDetail={researchDetailData as ProcessedKeywordResearchData} // Use new processed type
         />
       </React.Suspense>
     </>
   );
 }
 
-// Loader component now expects KeywordResearchClientData
+// Loader component now expects ProcessedKeywordResearchData
 async function KeywordResearchDetailLoader({ 
   researchDetail // Keep this name as it matches the data fetched above
 }: { 
-  researchDetail: KeywordResearchClientData; // <-- Use specific type
+  researchDetail: ProcessedKeywordResearchData; // <-- Use new processed type
 }) {
   // No further conversion needed here
   return (

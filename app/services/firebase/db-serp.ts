@@ -294,7 +294,8 @@ const getSerpCollection = () => {
   if (!db) throw new Error('Firestore is not initialized.');
   // Use converter directly
   return db
-    .collection(COLLECTIONS.SERP_ANALYSIS)
+    // Use the correct collection name
+    .collection(COLLECTIONS.SERP_DATA) 
     .withConverter(serpAnalysisConverter);
 };
 
