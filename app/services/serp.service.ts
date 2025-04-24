@@ -119,25 +119,29 @@ const apifyPayloadSchema = z.object({
     .describe('Apify search language (e.g., zh-TW)')
 });
 
+// Define input type for fetchSerpByKeyword
+interface FetchSerpByKeywordParams {
+  query: string | string[];
+  region?: string | null;
+  language?: string | null;
+}
+
 /**
  * Fetches the full SERP data structure from Google via Apify API
- * @param query The search query string or array of queries
- * @param region Optional Apify country code (e.g., 'tw', 'us')
- * @param language Optional Apify search language code (e.g., 'zh-TW', 'en')
+ * @param params Object containing query, region, and language
  * @returns An object containing the full SERP data structure or throws an error
  */
 export async function fetchSerpByKeyword(
-  query: string | string[],
-  region?: string | null,
-  language?: string | null
+  params: FetchSerpByKeywordParams // Use object input
 ): Promise<FullSerpApiResponse> {
-  // Update return type
+  const { query, region, language } = params; // Destructure params
+
   const apiUrl =
     'https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3';
 
   // Use provided region/language or defaults
-  const countryCode = (region || 'tw').toLowerCase(); // Ensure lowercase
-  const searchLanguage = language || 'zh-TW';
+  const countryCode = (region || 'tw').toLowerCase(); // Keep region lowercase as Apify likely expects this
+  const searchLanguage = language || 'zh-TW'; // REMOVE .toLowerCase() - Use original case
 
   console.log(
     `[fetchSerpByKeyword] Calling Apify with: query=${JSON.stringify(
@@ -166,17 +170,17 @@ export async function fetchSerpByKeyword(
   }
 
   const payload = {
-    countryCode: countryCode, // Already lowercase
+    countryCode: countryCode,
     forceExactMatch: false,
     includeIcons: false,
     includeUnfilteredResults: false,
     maxPagesPerQuery: 1,
     mobileResults: false,
-    queries: queriesString, // Use the processed single string
+    queries: queriesString,
     resultsPerPage: 100,
     saveHtml: false,
     saveHtmlToKeyValueStore: true,
-    searchLanguage: searchLanguage
+    searchLanguage: searchLanguage // Use the potentially mixed-case language code
   };
 
   // --- Validate the payload before sending ---

@@ -417,7 +417,7 @@ export async function getOrFetchSerpDataAction({
 
     // 2. Not found, fetch from service (e.g., Apify)
     console.log(`[Action] Existing data not found. Fetching from SERP service...`);
-    const fetchedData = await fetchSerpByKeyword(query, region, language);
+    const fetchedData = await fetchSerpByKeyword({ query, region, language });
     console.log(`[Action] Fetched data from SERP service.`);
 
     // 3. Map fetched data to our schema and save
@@ -614,7 +614,6 @@ export async function performBetterHaveInArticleAnalysis({
     console.log(`[Action] Raw Markdown generation successful for Doc ID: ${docId}.`);
 
     // --- Save Raw Text Immediately ---
-    // We save this separately now. Handle potential failure gracefully if needed.
     try {
          console.log(`[Action] Saving ${textAnalysisKey} to Firestore...`);
          await updateSerpDataField(docId, textAnalysisKey, markdownAnalysisResultText);
@@ -629,8 +628,8 @@ export async function performBetterHaveInArticleAnalysis({
     const conversionPrompt = getBetterHaveConversionPrompt(markdownAnalysisResultText, keyword);
     console.log('[AI Call 2/3] Converting Better Have Markdown to JSON...');
     const { object: analysisResultJson } = await generateObject({
-      model: openai(model), // Can use the same model or a different one (e.g., cheaper/faster)
-      schema: BetterHaveJsonSchema, // Use the specific schema
+      model: openai(model),
+      schema: BetterHaveJsonSchema,
       prompt: conversionPrompt
     });
     console.log(`[Action] JSON conversion successful for Doc ID: ${docId}.`);
@@ -642,7 +641,6 @@ export async function performBetterHaveInArticleAnalysis({
          console.log(`[Action] Successfully updated ${jsonAnalysisKey} for Doc ID: ${docId}`);
     } catch(saveError) {
         console.error(`[Action] Failed to save ${jsonAnalysisKey} for Doc ID: ${docId}:`, saveError);
-         // Decide if this error is critical or if we can proceed
     }
 
 
@@ -650,16 +648,16 @@ export async function performBetterHaveInArticleAnalysis({
     const recommendationPrompt = getBetterHaveRecommendationPrompt(markdownAnalysisResultText, keyword);
     console.log('[AI Call 3/3] Generating Better Have Recommendation Text...');
     const { text: recommendationResultText } = await generateText({
-        model: openai(model), // Can use the same model
+        model: openai(model),
         prompt: recommendationPrompt
     });
      console.log(`[Action] Recommendation text generation successful for Doc ID: ${docId}.`);
 
 
-    // --- 4. Return JSON and Recommendation Text ---
+    // --- 4. Return JSON and Recommendation Text ONLY ---
     return {
         analysisJson: analysisResultJson,
-        recommendationText: recommendationResultText
+        recommendationText: recommendationResultText,
     };
 
   } catch (error) {

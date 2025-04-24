@@ -520,3 +520,24 @@ export async function deleteSerpAnalysisById(docId: string): Promise<void> {
     );
   }
 }
+
+// --- NEW: Function to get total count ---
+/**
+ * Gets the total count of SERP analysis documents in the database.
+ * @returns Promise<number> The total count.
+ */
+export async function getTotalAnalyzedSerpsCount(): Promise<number> {
+  console.log('[Firestore] Getting total count of SERP analysis documents...');
+  try {
+    const collectionRef = getSerpCollection(); // Reuse existing collection logic
+    const snapshot = await collectionRef.count().get();
+    const count = snapshot.data().count;
+    console.log(`[Firestore] Total SERP documents count: ${count}`);
+    return count;
+  } catch (error) {
+    console.error('[Firestore] Error getting total SERP count:', error);
+    // Return 0 or throw, depending on desired error handling
+    // Returning 0 might be safer for display purposes
+    return 0;
+  }
+}

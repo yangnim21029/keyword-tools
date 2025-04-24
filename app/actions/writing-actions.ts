@@ -15,7 +15,6 @@ import {
     generateAnalysisJsonFromText
 } from './serp-action'; // Assuming serp-action.ts is in the same dir
 // Import the necessary type
-import type { FirebaseSerpDataDoc } from '@/app/services/firebase/schema';
 import type { TitleAnalysisJson, BetterHaveAnalysisJson } from '@/app/services/firebase/schema';
 import type { ClientSafeSerpDataDoc } from './serp-action'; // Import the client-safe type if needed
 import { generateContentSuggestionsAction } from './use-content-ai';
@@ -82,37 +81,99 @@ function getFineTuneDataStrings(names?: string[]): string {
 }
 
 function formatKeywordReportForPrompt(report: any, selectedClusterName?: string | null): string {
-     if (!report || typeof report !== 'object' || Object.keys(report).length === 0) return "";
-    const formatNumber = (num: number | null | undefined): string => typeof num === 'number' ? num.toLocaleString() : 'N/A';
-    const formatKeywords = (keywords: any[] | undefined): string => {
-        if (!keywords || keywords.length === 0) return "No specific keywords found.";
-        return keywords.map((k: any) => `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(k?.searchVolume)})`).join(', ');
-    };
-    let output = `\n- **使用以下關鍵字研究報告** (Keyword Research Report):\n`;
-    output += `  - 主查詢 (Main Query): ${report.query || 'N/A'}\n`;
-    output += `  - 語言 (Language): ${report.language || 'N/A'}\n`;
-    output += `  - 地區 (Region): ${report.region || 'N/A'}\n`;
-    if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume) && report.clustersWithVolume.length > 0) {
-        output += `  - **主題分群** (Clusters):\n`;
-        const overallTotalVolume = report.clustersWithVolume.reduce((sum: number, cluster: any) => sum + (cluster.totalVolume || 0), 0);
-        output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(overallTotalVolume)}\n`;
-        report.clustersWithVolume.forEach((cluster: any, index: number) => {
-            const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
-            const marker = selectedClusterName && clusterName === selectedClusterName ? ' [TARGET CLUSTER]' : '';
-            const clusterVol = formatNumber(cluster.totalVolume);
-            output += `    - **分群 ${index + 1}: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
-            output += `      - 關鍵字 (Keywords): ${formatKeywords(cluster.keywords)}\n`;
-        });
-    } else if (report.keywords && Array.isArray(report.keywords) && report.keywords.length > 0) {
-        const totalVolumeFromKeywords = report.keywords.reduce((sum: number, kw: any) => sum + (kw.searchVolume || 0), 0);
-        output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(totalVolumeFromKeywords)}\n`;
-        output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
-        output += `    - ${formatKeywords(report.keywords)}\n`;
-    } else {
-        output += `  - 關鍵字 (Keywords): No specific keyword data available.\n`;
-    }
-    output += `  - 報告更新時間 (Report Updated): ${report.updatedAt ? new Date(report.updatedAt).toLocaleString() : 'N/A'}\n`;
-    return output + "\n";
+    if (!report || typeof report !== 'object' || Object.keys(report).length === 0) return "";
+   const formatNumber = (num: number | null | undefined): string => typeof num === 'number' ? num.toLocaleString() : 'N/A';
+   
+   // Format and sort keywords with volume >= 100
+   const formatKeywords = (keywords: any[] | undefined): string => {
+       if (!keywords) return "No specific keywords found.";
+       const highVolumeKeywords = keywords.filter(k => 
+           k && typeof k.searchVolume === 'number' && k.searchVolume >= 100
+       );
+       highVolumeKeywords.sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
+       if (highVolumeKeywords.length === 0) return "No specific keywords found (Volume >= 100).";
+       // Add newline and indent for each keyword
+       return `\n      - ${highVolumeKeywords
+           .map((k: any) => `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(k?.searchVolume)})`)
+           .join('\n      - ')}`;
+   };
+
+   // Collector for low-volume keyword OBJECTS
+   const lowVolumeKeywordObjects: { text: string; searchVolume: number }[] = [];
+   const collectLowVolume = (keywords: any[] | undefined) => {
+       if (!keywords) return;
+       keywords.forEach((k: any) => {
+           if (k && typeof k.searchVolume === 'number' && k.searchVolume < 100 && k.text) {
+               if (!lowVolumeKeywordObjects.some(existing => existing.text === k.text)) {
+                   lowVolumeKeywordObjects.push({ text: k.text, searchVolume: k.searchVolume });
+               }
+           }
+       });
+   };
+
+   // Collect low volume keyword objects first
+   if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume)) {
+       report.clustersWithVolume.forEach((cluster: any) => {
+            collectLowVolume(cluster.keywords);
+       });
+   } else if (report.keywords && Array.isArray(report.keywords)) {
+       collectLowVolume(report.keywords);
+   }
+
+   // Process and sort low volume keywords based on count
+   let finalLowVolumeKeywords: { text: string; searchVolume: number }[] = [];
+   const initialLowVolumeCount = lowVolumeKeywordObjects.length;
+
+   if (initialLowVolumeCount > 60) {
+       let filteredKeywords = lowVolumeKeywordObjects.filter(k => k.searchVolume !== 0);
+       if (filteredKeywords.length > 100) {
+           filteredKeywords = filteredKeywords.slice(0, 100);
+       }
+       finalLowVolumeKeywords = filteredKeywords;
+   } else {
+       finalLowVolumeKeywords = lowVolumeKeywordObjects;
+   }
+   
+   // Sort final low volume list by searchVolume descending
+   finalLowVolumeKeywords.sort((a, b) => b.searchVolume - a.searchVolume); 
+
+   // Build Output String
+   let output = `\n- **使用以下關鍵字研究報告** (Keyword Research Report):\n`;
+   output += `  - 主查詢 (Main Query): ${report.query || 'N/A'}\n`;
+   output += `  - 語言 (Language): ${report.language || 'N/A'}\n`;
+   output += `  - 地區 (Region): ${report.region || 'N/A'}\n`;
+
+   if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume) && report.clustersWithVolume.length > 0) {
+       output += `  - **主題分群** (Clusters):\n`;
+       const overallTotalVolume = report.clustersWithVolume.reduce((sum: number, cluster: any) => sum + (cluster.totalVolume || 0), 0);
+       output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(overallTotalVolume)}\n`;
+       report.clustersWithVolume.forEach((cluster: any, index: number) => {
+           const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
+           const marker = selectedClusterName && clusterName === selectedClusterName ? ' [TARGET CLUSTER]' : '';
+           const clusterVol = formatNumber(cluster.totalVolume);
+           output += `    - **分群 ${index + 1}: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
+           output += `      - 關鍵字 (Keywords): ${formatKeywords(cluster.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
+       });
+   } else if (report.keywords && Array.isArray(report.keywords) && report.keywords.length > 0) {
+       const totalVolumeFromKeywords = report.keywords.reduce((sum: number, kw: any) => sum + (kw.searchVolume || 0), 0);
+       output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(totalVolumeFromKeywords)}\n`;
+       output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
+       output += `    - ${formatKeywords(report.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
+   } else {
+       output += `  - 關鍵字 (Keywords): No specific keyword data available.\n`;
+   }
+
+   // Append the (potentially filtered/limited and now sorted) Low Volume Section
+   if (finalLowVolumeKeywords.length > 0) {
+       output += `\n- **低搜尋量相關主題 (Low Volume Related Topics - < 100):**\n`;
+       output += `  - 以下是搜尋量較低 (< 100) 但可能與特定受眾相關的主題。考慮將部分主題作為文章中的小段落或補充內容來擴充文章豐富度 (These are related topics with lower search volume (< 100) that might be relevant to specific audiences. Consider incorporating some of these topics as small paragraphs or supplementary sections to enrich the article content):
+`; 
+       // Add newline and indent for each topic reference
+       output += `  - 主題參考 (Topic References):\n  - ${finalLowVolumeKeywords.map(k => k.text).join('\n  - ')}\n`; 
+   }
+
+   output += `\n  - 報告更新時間 (Report Updated): ${report.updatedAt ? new Date(report.updatedAt).toLocaleString() : 'N/A'}\n`;
+   return output + "\n";
 }
 // --- END: Helper Functions ---
 
@@ -260,7 +321,10 @@ const analyzeBetterHaveStepInputSchema = z.object({
 });
 type AnalyzeBetterHaveStepInput = z.infer<typeof analyzeBetterHaveStepInputSchema>;
 
-export async function analyzeBetterHaveStep(input: AnalyzeBetterHaveStepInput): Promise<{ analysisJson: BetterHaveAnalysisJson, recommendationText: string }> {
+export async function analyzeBetterHaveStep(input: AnalyzeBetterHaveStepInput): Promise<{ 
+    analysisJson: BetterHaveAnalysisJson, 
+    recommendationText: string,
+}> {
      const validation = analyzeBetterHaveStepInputSchema.safeParse(input);
     if (!validation.success) throw new Error(`Invalid input for analyzeBetterHaveStep: ${validation.error.format()}`);
     const { serpDocId, keyword, organicResults, peopleAlsoAsk, relatedQueries, aiOverview } = validation.data;
@@ -271,9 +335,12 @@ export async function analyzeBetterHaveStep(input: AnalyzeBetterHaveStepInput): 
     const relatedQueriesString = formatRelatedKeywords(relatedQueries);
     const aiOverviewString = formatAIOverview(aiOverview);
 
+    // Call the underlying action (which now returns analysisText)
     const result = await performBetterHaveInArticleAnalysis({ docId: serpDocId, keyword, serpString, paaString, relatedQueriesString, aiOverviewString });
-    console.log(`[Action Step 5] Better Have analysis complete.`);
-    return result; // Contains analysisJson and recommendationText
+    
+    // Log length of recommendationText instead
+    console.log(`[Action Step 5] Better Have analysis complete. Recommendation Length: ${result.recommendationText?.length || 0}`); 
+    return result; // Return the full result object { analysisJson, recommendationText }
 }
 
 // === Step 6: Generate Action Plan ===
@@ -378,41 +445,36 @@ const generateFinalPromptStepInputSchema = z.object({
     mediaSiteName: z.string().min(1), // Needed for site data string
     contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
     userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
-    // Pass full JSON or just text? Passing text for now based on original logic
     betterHaveRecommendationText: z.string().optional().nullable(),
     keywordReport: z.any().optional().nullable(), // Keep as any or define schema
     selectedClusterName: z.string().optional().nullable(),
     outlineRefName: z.string().optional().default(''),
-    contentMarketingSuggestion: z.string().optional().default(''),
     fineTuneNames: z.array(z.string()).optional(),
-    // Need betterHaveAnalysisJson if prompt logic relies on it directly
-    betterHaveAnalysisJson: z.any().optional().nullable(),
 });
 type GenerateFinalPromptStepInput = z.infer<typeof generateFinalPromptStepInputSchema>;
 
 async function generateFinalPromptInternal(input: GenerateFinalPromptStepInput): Promise<string> {
     console.log('[generateFinalPromptInternal] Generating final prompt...');
-    // Note: contentTypeReportText and userIntentReportText now contain the *recommendation* text
-    const { keyword, actionPlan, mediaSiteName, contentTypeReportText, userIntentReportText, betterHaveAnalysisJson, betterHaveRecommendationText, keywordReport, selectedClusterName, outlineRefName, contentMarketingSuggestion, fineTuneNames } = input;
+    const { keyword, actionPlan, mediaSiteName, contentTypeReportText, userIntentReportText, betterHaveRecommendationText, keywordReport, selectedClusterName, outlineRefName, fineTuneNames } = input;
 
     const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
     if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
     const mediaSiteDataString = JSON.stringify(mediaSite);
 
-    // Only include keyword report if no specific cluster was targeted earlier
     const keywordReportString = selectedClusterName
         ? "<!-- Keyword report details were incorporated into the Action Plan -->"
-        : formatKeywordReportForPrompt(keywordReport, selectedClusterName); // Pass null cluster name here if reached
+        : formatKeywordReportForPrompt(keywordReport, selectedClusterName);
 
     const fineTuneDataString = getFineTuneDataStrings(fineTuneNames);
 
-    const betterHaveJsonTyped = betterHaveAnalysisJson as BetterHaveAnalysisJson | null | undefined;
-    const serpTextAnalysisPoints = betterHaveJsonTyped?.recommendations?.map(r => r.point).join('\n - ') || betterHaveRecommendationText || 'N/A';
+    const serpTextAnalysisPoints = betterHaveRecommendationText || 'N/A';
 
     const contentTemplate = getOutlineFromReference(outlineRefName);
-    const contentSuggestion = await generateContentSuggestionsAction({ keyword });
 
-    // Restore original full system prompt text here
+    console.log('[generateFinalPromptInternal] Fetching content suggestions string...');
+    const suggestionsString = await generateContentSuggestionsAction({ keyword });
+    console.log('[generateFinalPromptInternal] Content suggestions string fetched.');
+
     const systemPrompt = `
 You will be tasked to create new content for a given keyword.(從頭撰寫一篇全新文章)
 
@@ -446,17 +508,14 @@ You MUST plan extensively before each function call, and reflect extensively on 
 寫一篇 SEO 文章，2000 字 - 3000 字
     `;
 
-    // Restore original full base prompt text here
-    // The prompt placeholders ${contentTypeReportText} and ${userIntentReportText} will use the recommendation text.
     const basePrompt = `
 ${systemPrompt}
 
 ${actionPlan}
 
-related topics: # TODO: Derive from betterHaveAnalysisJson or pass separately
-${/* Derive from betterHaveAnalysisJson?.recommendations? */ ''}
+related topics: none;
 
-keyword: ${keyword}
+focus on keyword: ${keyword}
 
 ${keywordReportString}
 
@@ -464,11 +523,14 @@ Write using this style: ${mediaSiteDataString}
 
 Use this Content Type Recommendation: ${contentTypeReportText}
 
+Use this better have to enhance the article: 
+${serpTextAnalysisPoints}
+
 Match this User Intent Recommendation: 
 ${userIntentReportText} 
 
 Follow this outline structure and order:
-${contentTemplate}
+${contentTemplate.reference}
 
 don't prefer: 
 do not write keyword insight into article
@@ -491,9 +553,9 @@ Formatting and Readability:
 - Use lists, data, and examples to improve readability.
 - Break up long paragraphs to enhance readability.
 
----
+--- 
 Content Suggestions:
-${contentSuggestion}
+${suggestionsString}
 `;
 
     const finalPrompt: string = basePrompt + fineTuneDataString;
@@ -527,7 +589,12 @@ const outlineReference = {
 
 function getOutlineFromReference(refName: string) {
     const reference = outlineReference[refName as keyof typeof outlineReference];
-    return reference;
+    // If refName is empty or not found, provide a default/empty structure
+    if (!reference) {
+        console.warn(`Outline reference '${refName}' not found. Using default empty outline.`);
+        return { name: 'default', reference: '<!-- No specific outline requested -->' }; 
+    }
+    return reference; // Return the object { name: '...', reference: '...' }
 }
 
 

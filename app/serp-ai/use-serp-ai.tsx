@@ -26,6 +26,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from 'lucide-react'; // For alert icon
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Add Select imports
+import { REGIONS, LANGUAGES } from '@/app/global-config'; // Import global configs
 
 // Define a client-safe version of the SERP data type expected from the action
 // This should match the structure returned by getOrFetchSerpDataAction after serialization
@@ -85,11 +87,16 @@ function formatAIOverview(aiOverview: string | undefined | null): string {
     return aiOverview.substring(0, 1000) + (aiOverview.length > 1000 ? '...' : '');
 }
 
-export default function TestSerpActionPage() {
+// Define props for the component
+interface TestSerpActionPageProps {
+  totalAnalyzedSerps: number;
+}
+
+export default function TestSerpActionPage({ totalAnalyzedSerps }: TestSerpActionPageProps) {
   // Input State
   const [query, setQuery] = useState<string>('best seo tools');
-  const [region, setRegion] = useState<string>('us');
-  const [language, setLanguage] = useState<string>('en');
+  const [region, setRegion] = useState<string>('HK'); // Default region - Use UPPERCASE key from REGIONS (Set to Hong Kong)
+  const [language, setLanguage] = useState<string>('en'); // Default language - Use key from LANGUAGES
 
   // SERP Data State
   // Use the client-safe type
@@ -228,6 +235,15 @@ export default function TestSerpActionPage() {
     <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-6">
       <h1 className="text-2xl font-bold mb-6">SERP Action Tester</h1>
 
+      {/* Display Total Analyzed Count */}
+      <Alert>
+        <Terminal className="h-4 w-4" />
+        <AlertTitle>Analysis Power!</AlertTitle>
+        <AlertDescription>
+          We have analyzed a total of <strong>{totalAnalyzedSerps.toLocaleString()}</strong> SERP pages, saving you significant time and effort!
+        </AlertDescription>
+      </Alert>
+
       {/* Inputs and Fetch */}
       <Card>
         <CardHeader>
@@ -241,12 +257,36 @@ export default function TestSerpActionPage() {
                 <Input id="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g., best seo tools" disabled={isLoadingSerp} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="region">Region (e.g., us):</Label>
-                <Input id="region" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us" disabled={isLoadingSerp} />
+                <Label htmlFor="region">Region:</Label>
+                <Select value={region} onValueChange={setRegion} disabled={isLoadingSerp}>
+                  <SelectTrigger id="region">
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Map over imported REGIONS object */}
+                    {Object.entries(REGIONS).map(([name, code]) => (
+                      <SelectItem key={code} value={code}>
+                        {name} ({code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="language">Language (e.g., en):</Label>
-                <Input id="language" value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="en" disabled={isLoadingSerp} />
+                <Label htmlFor="language">Language:</Label>
+                 <Select value={language} onValueChange={setLanguage} disabled={isLoadingSerp}>
+                  <SelectTrigger id="language">
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                     {/* Map over imported LANGUAGES object */}
+                    {Object.entries(LANGUAGES).map(([code, name]) => (
+                      <SelectItem key={code} value={code}>
+                         {name} ({code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
           </div>
           <Button onClick={handleFetchSerp} disabled={isLoadingSerp || isLoadingAnalysis}>

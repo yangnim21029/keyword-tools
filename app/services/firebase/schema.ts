@@ -394,7 +394,10 @@ export type TitleAnalysisJson = z.infer<typeof TitleAnalysisJsonSchema>;
 export const BetterHaveItemSchema = z.object({
     point: z.string().describe('The specific topic, question, or concept recommended'),
     justification: z.string().describe('Explanation why this point is important based on SERP data'),
-    source: z.enum(['PAA', 'Organic Results', 'Related Queries', 'AI Overview', 'Multiple']).optional().describe('Primary source driving the recommendation') // Optional: attempt to categorize source
+    source: z.enum(['PAA', 'Organic Results', 'Related Queries', 'AI Overview', 'Multiple'])
+             .optional()
+             .nullable()
+             .describe('Primary source driving the recommendation')
 });
 export type BetterHaveItem = z.infer<typeof BetterHaveItemSchema>;
 
