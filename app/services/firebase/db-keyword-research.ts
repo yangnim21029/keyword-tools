@@ -459,3 +459,27 @@ export async function findAndRemoveDuplicateEntries(): Promise<number> {
      throw new Error(`Failed to remove duplicate entries: ${error instanceof Error ? error.message : String(error)}`);
    }
 }
+
+// --- NEW: Get Total Count ---
+/**
+ * Gets the total count of keyword research documents in the database.
+ * @returns Promise<number> The total count.
+ */
+export async function getTotalKeywordResearchCount(): Promise<number> {
+  if (!db) {
+      console.error('[DB] Database not initialized. Cannot get total count.');
+      return 0;
+  }
+  console.log('[DB] Getting total count of keyword research documents...');
+  try {
+    const collectionRef = db.collection(COLLECTIONS.KEYWORD_RESEARCH);
+    const snapshot = await collectionRef.count().get();
+    const count = snapshot.data().count;
+    console.log(`[DB] Total keyword research documents count: ${count}`);
+    return count;
+  } catch (error) {
+    console.error('[DB] Error getting total keyword research count:', error);
+    // Return 0 on error for display purposes
+    return 0;
+  }
+}

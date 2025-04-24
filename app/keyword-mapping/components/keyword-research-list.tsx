@@ -186,148 +186,155 @@ export default function KeywordResearchList({
           <p className="text-muted-foreground">{UI_STRINGS.emptyState}</p>
         </div>
       ) : (
-        // --- Render Grouped List ---
-        <div className="px-0">
-          {Array.from(groupedResearches.entries()).map(([dateGroupTitle, researchesInGroup]) => (
-            <div key={dateGroupTitle} className="mb-3 last:mb-0">
-              {/* Date Group Header */}
-              <h4 className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm text-xs font-medium text-muted-foreground mb-2 pt-2 pb-1 px-3 flex items-center">
-                <CalendarDays size={13} className="mr-1.5" />
-                {dateGroupTitle}
-              </h4>
-              {/* Items within the group */}
-              <div className='space-y-0'>
-                {researchesInGroup.map(research => {
-                  const isPending = research.status === 'pending';
-                  const isFailed = research.status === 'failed';
-                  const isCompleted = !isPending && !isFailed;
+        // --- Waterfall Container --- 
+        <div className="relative h-[65vh] overflow-y-auto pr-1"> {/* Add relative, height, overflow */}
+           {/* Top Fade */} 
+           <div className="sticky top-0 z-10 h-6 bg-gradient-to-b from-background to-transparent pointer-events-none" />
+           {/* Grouped List Content */}
+          <div className="px-0 space-y-1"> {/* Adjusted spacing slightly */} 
+            {Array.from(groupedResearches.entries()).map(([dateGroupTitle, researchesInGroup]) => (
+              <div key={dateGroupTitle} className="mb-2 last:mb-0"> {/* Adjusted spacing */}
+                {/* Date Group Header */} 
+                 <h4 className="sticky top-6 z-10 bg-background/95 backdrop-blur-sm text-xs font-medium text-muted-foreground mb-1.5 pt-1 pb-1 px-3 flex items-center"> {/* Adjusted sticky top */}
+                   <CalendarDays size={13} className="mr-1.5" />
+                   {dateGroupTitle}
+                 </h4>
+                 {/* Items within the group */} 
+                <div className='space-y-0'>
+                  {researchesInGroup.map(research => {
+                    const isPending = research.status === 'pending';
+                    const isFailed = research.status === 'failed';
+                    const isCompleted = !isPending && !isFailed;
 
-                  return (
-                    isCompleted ? (
-                      <Link
-                        key={research.id}
-                        href={`/keyword-mapping/${research.id}`}
-                        className={cn(
-                          `relative group flex items-center justify-between py-2 pb-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
-                          'cursor-pointer hover:bg-accent/50'
-                        )}
-                      >
-                        {/* Left Column (Completed - Simplified Metadata) */}
-                        <div className="min-w-0 flex-1 overflow-hidden mr-4">
-                          <h3 className="text-sm font-medium truncate">
-                            {research.query}
-                          </h3>
-                        </div>
-                        {/* Right Column (Completed) */}
-                        <div className="flex items-center flex-shrink-0 space-x-2">
-                           {/* ... Volume ... */} 
-                           <div className="flex items-center text-sm font-medium text-foreground/90">
-                            <Sigma size={13} className="mr-0.5 flex-shrink-0 text-muted-foreground" />
-                            {formatVolume(research.totalVolume)}
-                           </div>
-                           {/* ... Delete Button ... */} 
-                           <Button
-                             variant="ghost"
-                             size="icon"
-                             className={cn(
-                               "h-6 flex-shrink-0 text-muted-foreground hover:text-destructive",
-                               "w-0 overflow-hidden",
-                               "group-hover:w-6",
-                               "transition-all duration-200 ease-in-out"
-                              )}
-                             onClick={e => handleDelete(e, research.id)}
-                             disabled={deletingId === research.id}
-                             aria-label={`刪除研究記錄: ${research.query}`}
-                           >
-                            {deletingId === research.id ? (
-                              <div className="h-3 w-3 border-t-2 border-b-2 border-destructive/50 rounded-full animate-spin"></div>
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                           </Button>
-                        </div>
-
-                        {/* Hover - Applicable Media Site Icons */} 
-                        <div className="absolute top-1 right-10 z-10 flex items-center gap-1.5 p-1 rounded-md bg-background/80 shadow-sm border border-border/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
-                          {(() => { // Use IIFE to calculate and log before mapping
-                            const matchingSites = getMatchingSites(research.language, research.region);
-                            // Log the region and the number of sites found for this item
-                            console.log(`[Icon Match Debug] Research ID: ${research.id}, Region: ${research.region}, Matched Sites: ${matchingSites.length}`);
-                            
-                            // Return the elements to render
-                            return (
-                              <>
-                                {matchingSites.map(site => (
-                                  <SiteFavicon key={site.name} siteName={site.name} siteUrl={site.url} />
-                                ))}
-                                {/* Show message if no sites match */} 
-                                {matchingSites.length === 0 && (
-                                  <span className="text-xs text-muted-foreground italic px-1">No matching sites</span> 
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-
-                      </Link>
-                    ) : (
-                       // --- Pending/Failed Item Layout --- 
-                      <div
-                        key={research.id}
-                        className={cn(
-                          `group flex items-center justify-between py-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
-                          isPending && 'opacity-70 bg-muted/30 cursor-default', // Adjusted pending style
-                          isFailed && 'bg-destructive/10 border-l-2 border-destructive cursor-default' // Adjusted failed style
-                        )}
-                      >
-                        {/* Left Column (Pending/Failed) */} 
-                        <div className="min-w-0 flex-1 overflow-hidden mr-4">
-                          <h3 className="text-sm font-medium truncate mb-1.5">
-                            {research.query}
-                          </h3>
-                          {/* Metadata Row - Status takes precedence */} 
-                          <div className="flex items-center gap-x-2 text-xs">
-                            <span className="flex items-center text-muted-foreground" title={formatDateTime(research.createdAt)}>
-                              <Clock size={12} className="mr-1 flex-shrink-0" />
-                              {formatDateTime(research.createdAt)}
-                            </span>
-                            {isPending && (
-                              <Badge variant="secondary" className="font-normal py-0.5 px-1.5 text-xs border border-primary/20">
-                                <Loader2 size={11} className="mr-1 animate-spin" />處 理 中...
-                              </Badge>
-                            )}
-                            {isFailed && (
-                              <Badge variant="destructive" className="font-normal py-0.5 px-1.5 text-xs">
-                                <AlertTriangle size={11} className="mr-1" />處理失敗
-                              </Badge>
-                            )}
-                           </div>
-                        </div>
-                        {/* Right Column (Pending/Failed) */} 
-                        <div className="flex items-center flex-shrink-0 space-x-2">
-                          {/* ... Placeholder ... */} 
-                          {/* ... Disabled Delete Button ... */} 
-                          <div className="flex items-center text-sm font-medium text-transparent">
-                            <Sigma size={13} className="mr-0.5" />0
-                           </div>
-                           <Button
+                    return (
+                      isCompleted ? (
+                        <Link
+                          key={research.id}
+                          href={`/keyword-mapping/${research.id}`}
+                          className={cn(
+                            `relative group flex items-center justify-between py-2.5 pb-3 px-3 max-w-full border-b border-border/40 last:border-b-0 rounded-sm transition-colors duration-150`,
+                            'cursor-pointer hover:bg-accent/50'
+                          )}
+                        >
+                          {/* Left Column - Increase text size */}
+                          <div className="min-w-0 flex-1 overflow-hidden mr-4">
+                            <h3 className="text-base font-medium truncate"> {/* text-sm -> text-base */} 
+                              {research.query}
+                            </h3>
+                          </div>
+                          {/* Right Column */}
+                          <div className="flex items-center flex-shrink-0 space-x-2">
+                            {/* Volume - Increase text size */}
+                            <div className="flex items-center text-base font-medium text-foreground/90"> {/* text-sm -> text-base */}
+                              <Sigma size={14} className="mr-1 flex-shrink-0 text-muted-foreground" /> {/* Slightly larger icon */}
+                              {formatVolume(research.totalVolume)}
+                             </div>
+                            {/* Delete Button */}
+                            <Button
                               variant="ghost"
                               size="icon"
-                              className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground/50 transition-opacity duration-150", "cursor-not-allowed")}
-                              onClick={e => {e.stopPropagation(); e.preventDefault();}}
-                              disabled={true} 
+                              className={cn(
+                                "h-7 w-0", // Adjusted size slightly
+                                "flex-shrink-0 text-muted-foreground hover:text-destructive",
+                                "overflow-hidden group-hover:w-7",
+                                "transition-all duration-200 ease-in-out"
+                               )}
+                              onClick={e => handleDelete(e, research.id)}
+                              disabled={deletingId === research.id}
                               aria-label={`刪除研究記錄: ${research.query}`}
                             >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50" />
+                             {deletingId === research.id ? (
+                               <div className="h-3.5 w-3.5 border-t-2 border-b-2 border-destructive/50 rounded-full animate-spin"></div>
+                             ) : (
+                               <Trash2 className="h-4 w-4" />
+                             )}
                             </Button>
+                          </div>
+
+                          {/* Hover Icons */}
+                          <div className="absolute top-1 right-10 z-10 flex items-center gap-1.5 p-1 rounded-md bg-background/80 shadow-sm border border-border/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+                            {(() => { // Use IIFE to calculate and log before mapping
+                              const matchingSites = getMatchingSites(research.language, research.region);
+                              // Log the region and the number of sites found for this item
+                              console.log(`[Icon Match Debug] Research ID: ${research.id}, Region: ${research.region}, Matched Sites: ${matchingSites.length}`);
+                              
+                              // Return the elements to render
+                              return (
+                                <>
+                                  {matchingSites.map(site => (
+                                    <SiteFavicon key={site.name} siteName={site.name} siteUrl={site.url} />
+                                  ))}
+                                  {/* Show message if no sites match */} 
+                                  {matchingSites.length === 0 && (
+                                    <span className="text-xs text-muted-foreground italic px-1">No matching sites</span> 
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                        </Link>
+                      ) : (
+                        // --- Pending/Failed Item Layout --- 
+                        <div
+                          key={research.id}
+                          className={cn(
+                            `group flex items-center justify-between py-2.5 px-3 max-w-full border-b border-border/50 last:border-b-0 rounded-sm transition-colors duration-150`,
+                            isPending && 'opacity-70 bg-muted/30 cursor-default', // Adjusted pending style
+                            isFailed && 'bg-destructive/10 border-l-2 border-destructive cursor-default' // Adjusted failed style
+                          )}
+                        >
+                           {/* Left Column - Increase text size */}
+                           <div className="min-w-0 flex-1 overflow-hidden mr-4">
+                            <h3 className="text-base font-medium truncate mb-1.5"> {/* text-sm -> text-base */} 
+                               {research.query}
+                             </h3>
+                             {/* Metadata Row */}
+                             <div className="flex items-center gap-x-2 text-xs">
+                               <span className="flex items-center text-muted-foreground" title={formatDateTime(research.createdAt)}>
+                                 <Clock size={12} className="mr-1 flex-shrink-0" />
+                                 {formatDateTime(research.createdAt)}
+                               </span>
+                               {isPending && (
+                                 <Badge variant="secondary" className="font-normal py-0.5 px-1.5 text-xs border border-primary/20">
+                                   <Loader2 size={11} className="mr-1 animate-spin" />處 理 中...
+                                 </Badge>
+                               )}
+                               {isFailed && (
+                                 <Badge variant="destructive" className="font-normal py-0.5 px-1.5 text-xs">
+                                   <AlertTriangle size={11} className="mr-1" />處理失敗
+                                 </Badge>
+                               )}
+                             </div>
+                          </div>
+                          {/* Right Column */}
+                          <div className="flex items-center flex-shrink-0 space-x-2">
+                            {/* ... Placeholder ... */} 
+                            {/* ... Disabled Delete Button ... */} 
+                            <div className="flex items-center text-sm font-medium text-transparent">
+                              <Sigma size={13} className="mr-0.5" />0
+                             </div>
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-6 w-6 flex-shrink-0 text-muted-foreground/50 transition-opacity duration-150", "cursor-not-allowed")}
+                                onClick={e => {e.stopPropagation(); e.preventDefault();}}
+                                disabled={true} 
+                                aria-label={`刪除研究記錄: ${research.query}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50" />
+                              </Button>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  );
-                })}
+                      )
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+           {/* Bottom Fade */} 
+           <div className="sticky bottom-0 z-10 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
         </div>
       )}
     </div>

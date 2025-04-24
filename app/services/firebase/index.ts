@@ -7,7 +7,8 @@ export {
   getKeywordResearchDetail,
   getKeywordResearchSummaryList,
   saveKeywordResearch,
-  updateKeywordResearchResults
+  updateKeywordResearchResults,
+  getTotalKeywordResearchCount
 } from './db-keyword-research';
 
 // 導出 SERP 分析相關功能

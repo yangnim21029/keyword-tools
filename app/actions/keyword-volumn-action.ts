@@ -86,6 +86,8 @@ export async function requestDeleteKeywordResearch(
   try {
     const success = await deleteKeywordResearchEntry(researchId);
     if (success) {
+      revalidateTag('keyword-research-summary-list');
+      console.log(`[Action] Revalidated list tag: keyword-research-summary-list`);
       await revalidateKeywordResearch(researchId);
       console.log(`[Action] Successfully deleted research: ${researchId} and revalidated cache.`);
       return { success: true };
