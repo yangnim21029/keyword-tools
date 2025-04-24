@@ -200,13 +200,13 @@ export type SettingsItem = {
 // Define the main navigation items
 export const NAV_ITEMS: NavItem[] = [
   // Primary Items
-  { href: '/keyword-mapping', label: '關鍵字工具', icon: 'list', isPrimary: true },
+  { href: '/keyword-mapping', label: '關鍵字工具', icon: 'search', isPrimary: true },
   { href: '/writing', label: 'Writing', icon: 'pen', isPrimary: true },
   { href: '/help', label: '說明', icon: 'help', isPrimary: true },
   // Secondary Items (Less clicked - will be tagged)
-  { href: '/serp-ai', label: 'SERP 分析', icon: 'search', isPrimary: true },
-  { href: '/demo-product-function', label: 'Demo 功能', icon: 'box', isPrimary: false },
-  { href: '/api', label: 'API Docs', icon: 'box', isPrimary: false },
+  { href: '/serp-ai', label: 'SERP 分析', icon: 'bar-chart', isPrimary: true },
+  { href: '/demo-product-function', label: 'Demo 功能', icon: 'bar-chart', isPrimary: false },
+  { href: '/api', label: 'API Docs', icon: 'bar-chart', isPrimary: false },
   { href: '/dev', label: '各站成效', icon: 'bar-chart', isPrimary: false },
 
 ];

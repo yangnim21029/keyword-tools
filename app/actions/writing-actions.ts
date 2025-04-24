@@ -373,20 +373,20 @@ async function generateActionPlanInternal(input: GenerateActionPlanStepInput): P
     const prompt = `
 You are an SEO Project Manager with knowledge in consumer behavior theory, traditional marketing theory, and digital marketing theory. You will execute the following tasks:
 
-1. **Keyword Theme Identification**: Identify the theme and subthemes of a user-provided keyword.
-2. **Action Plan Creation**: Craft a specific action plan for each subtheme, ensuring action plan format is bilingual (Chinese and English) with smooth language transition, using the provided example structure.
+1. **Keyword Theme Identification**: Identify the theme of a user-provided keyword.
+2. **Action Plan Creation**: Craft a specific action plan for the keyword, ensuring action plan format is bilingual (Chinese and English) with smooth language transition, using the provided example structure.
 
 # Steps
 
-1. **Read the SEO Analysis Results**:
-    - Content Type Analysis Recommendation: ${contentTypeReportText} 
-    - User Intent Analysis Recommendation: ${userIntentReportText}
-    - Title Analysis Summary: ${titleRecommendationText}
-    - Key Topics/Trust Factors ('Better Have'): ${betterHaveRecommendationText}
+1. **Accroding and Read the SEO Analysis Results to write a detailed SEO action plan**:
+    - Include Key Topics/Trust Factors ('Better Have'): ${betterHaveRecommendationText}
+    - choose Content Type Analysis: ${contentTypeReportText} 
+    - choose User Intent Analysis: ${userIntentReportText}
+    - choose Title Analysis: ${titleRecommendationText}
 2. **Identify Theme**:
     - Analyze the keyword to discern the main theme
 3. **Create Action Plan**:
-    - Formulate a detailed, bilingual action plan per subtheme.
+    - Formulate a detailed, bilingual action plan.
     - Follow the provided sentence structure examples for coherence.
 
 # Output Format

@@ -12,14 +12,6 @@ type KeywordToolPageProps = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
-// Define a simple loading fallback component
-const LoadingFallback = () => {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <p className="text-muted-foreground">Loading Keyword Tool...</p>
-    </div>
-  );
-};
 
 const getKeywordResearchSummaryListCached = unstable_cache(async ({limit, region}: {limit: number, region: string | undefined}) => getKeywordResearchSummaryList(limit, region), ['keyword-research-summary-list'], { revalidate: 3600 });
 

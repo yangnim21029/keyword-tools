@@ -74,12 +74,12 @@ call_api "Step 1: Fetch SERP" "${API_STEP1_FETCH_SERP_URL}" "${STEP1_INPUT}" "ST
 # --- Step 2: Analyze Content Type --- 
 STEP2_INPUT=$(echo "${STEP1_OUTPUT_JSON}" | jq '{ serpDocId: .id, keyword: .query, organicResults: .organicResults }')
 call_api "Step 2: Analyze Content Type" "${API_STEP2_ANALYZE_CONTENT_TYPE_URL}" "${STEP2_INPUT}" "STEP2_OUTPUT_JSON"
-CONTENT_TYPE_TEXT=$(echo "${STEP2_OUTPUT_JSON}" | jq -r '.analysisText')
+CONTENT_TYPE_TEXT=$(echo "${STEP2_OUTPUT_JSON}" | jq -r '.recommendationText')
 
 # --- Step 3: Analyze User Intent ---
 STEP3_INPUT=$(echo "${STEP1_OUTPUT_JSON}" | jq '{ serpDocId: .id, keyword: .query, organicResults: .organicResults, relatedQueries: .relatedQueries }')
 call_api "Step 3: Analyze User Intent" "${API_STEP3_ANALYZE_USER_INTENT_URL}" "${STEP3_INPUT}" "STEP3_OUTPUT_JSON"
-USER_INTENT_TEXT=$(echo "${STEP3_OUTPUT_JSON}" | jq -r '.analysisText')
+USER_INTENT_TEXT=$(echo "${STEP3_OUTPUT_JSON}" | jq -r '.recommendationText')
 
 # --- Step 4: Analyze Title ---
 STEP4_INPUT=$(echo "${STEP1_OUTPUT_JSON}" | jq '{ serpDocId: .id, keyword: .query, organicResults: .organicResults }')
@@ -113,8 +113,7 @@ STEP7_INPUT=$(jq -n \
                 --arg ct "${CONTENT_TYPE_TEXT}" \
                 --arg ui "${USER_INTENT_TEXT}" \
                 --arg bh "${BETTER_HAVE_RECOMMENDATION_TEXT}" \
-                --argjson bhJson "${BETTER_HAVE_JSON}" \
-            '{ keyword: $kw, actionPlan: $ap, mediaSiteName: $site, contentTypeReportText: $ct, userIntentReportText: $ui, betterHaveRecommendationText: $bh, keywordReport: null, selectedClusterName: null, articleTemplate: "<!-- Default Outline -->", contentMarketingSuggestion: "", fineTuneNames: [], betterHaveAnalysisJson: $bhJson }')
+            '{ keyword: $kw, actionPlan: $ap, mediaSiteName: $site, contentTypeReportText: $ct, userIntentReportText: $ui, betterHaveRecommendationText: $bh, keywordReport: null, selectedClusterName: null, outlineRefName: "", fineTuneNames: [] }')
 call_api "Step 7: Generate Final Prompt" "${API_STEP7_GENERATE_FINAL_PROMPT_URL}" "${STEP7_INPUT}" "STEP7_OUTPUT_JSON"
 
 # --- Final Output --- 

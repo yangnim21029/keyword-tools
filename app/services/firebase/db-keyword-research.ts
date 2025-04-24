@@ -1,4 +1,5 @@
 import 'server-only'
+import { revalidateTag } from 'next/cache';
 
 import {
   type KeywordResearchItem,
@@ -208,6 +209,8 @@ export async function deleteKeywordResearch(
   try {
     await db.collection(COLLECTIONS.KEYWORD_RESEARCH).doc(researchId).delete();
     console.log(`已刪除 Keyword Research: ${researchId}`);
+    revalidateTag("keyword-research-summary-list");
+    console.log('[Cache] Revalidated tag: keyword-research-summary-list');
     return true;
   } catch (error) {
     console.error('刪除 Keyword Research 失敗:', error);
