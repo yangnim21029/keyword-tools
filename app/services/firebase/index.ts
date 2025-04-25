@@ -7,7 +7,7 @@ export {
   getKeywordResearchDetail,
   getKeywordResearchSummaryList,
   saveKeywordResearch,
-  updateKeywordResearchResults,
+  dbUpdateKeywordResearchResults,
   getTotalKeywordResearchCount
 } from './db-keyword-research';
 

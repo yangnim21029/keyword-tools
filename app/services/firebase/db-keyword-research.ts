@@ -5,7 +5,6 @@ import {
   type KeywordResearchItem,
   type KeywordVolumeItem,
   type UpdateKeywordResearchInput,
-  type UserPersona,
   type ClusterItem
 } from './types'; // <-- CORRECT PATH: Import types from types.ts
 import { Timestamp } from 'firebase-admin/firestore';
@@ -272,7 +271,7 @@ export async function updateKeywordResearchClustersWithVolume(
  * @param keywords 完整的 KeywordVolumeItem 列表
  * @returns 更新是否成功
  */
-export async function updateKeywordResearchResults(
+export async function dbUpdateKeywordResearchResults(
   researchId: string,
   keywords: KeywordVolumeItem[]
 ): Promise<boolean> {
@@ -314,7 +313,7 @@ export async function updateKeywordResearchResults(
  * @returns The ID of the newly created document.
  * @throws Throws error if creation fails.
  */
-export async function createKeywordResearchEntry(
+export async function dbCreateKeywordResearch(
   dataToSave: Omit<KeywordResearchItem, 'id' | 'createdAt' | 'updatedAt'> & {
     createdAt: Timestamp;
     updatedAt: Timestamp;
@@ -352,7 +351,7 @@ export async function createKeywordResearchEntry(
  * @returns True if update was successful.
  * @throws Throws error if update fails.
  */
-export async function updateKeywordResearchEntry(
+export async function dbUpdateKeywordResearch(
   researchId: string,
   input: UpdateKeywordResearchInput
 ): Promise<boolean> {
@@ -381,7 +380,7 @@ export async function updateKeywordResearchEntry(
  * @returns True if deletion was successful.
  * @throws Throws error if deletion fails.
  */
-export async function deleteKeywordResearchEntry(
+export async function dbDeleteKeywordResearch(
   researchId: string
 ): Promise<boolean> {
   if (!db) throw new Error('Database not initialized');
@@ -405,7 +404,7 @@ export async function deleteKeywordResearchEntry(
  * @returns The number of entries removed.
  * @throws Throws error if the process fails.
  */
-export async function findAndRemoveDuplicateEntries(): Promise<number> {
+export async function dbFindAndRemoveDuplicate(): Promise<number> {
    if (!db) throw new Error('Database not initialized');
    console.log('[DB] Starting duplicate removal process...');
 

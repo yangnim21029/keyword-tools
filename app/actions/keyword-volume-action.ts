@@ -1,13 +1,12 @@
 'use server';
 
-import { getKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
-import { generateRelatedKeywordsAI } from '@/app/services/ai-keyword-patch';
+import { performFetchKeywordSuggestions, getUrlSuggestions } from '@/app/actions';
+import { aiGetDifferenceEntityName } from '@/app/services/ai-keyword-patch';
 import {
-  createKeywordResearchEntry,
-  deleteKeywordResearchEntry,
+  dbCreateKeywordResearch,
+  dbDeleteKeywordResearch,
   getKeywordResearchSummaryList,
-  updateKeywordResearchEntry,
-  updateKeywordResearchResults,
+  dbUpdateKeywordResearchResults,
   getKeywordResearchDetail,
 } from '@/app/services/firebase/db-keyword-research';
 import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
@@ -15,19 +14,10 @@ import { getSearchVolume } from '@/app/services/keyword-idea-api.service';
 import type { 
   KeywordResearchItem, 
   KeywordVolumeItem, 
-  UpdateClustersInput, 
-  UpdateKeywordResearchInput, 
 } from '@/app/services/firebase/types'; 
 
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag } from 'next/cache';
-// --- Import the Chinese type detection utility ---
-import { openai } from '@ai-sdk/openai';
-import { generateObject } from 'ai';
-import { z } from 'zod';
-// --- Re-add Import for the persona generation action --- 
-import { generateUserPersonaFromClusters } from './persona-for-writing';
-
 
 interface ProcessQueryInput {
   query: string;
@@ -84,7 +74,7 @@ export async function requestDeleteKeywordResearch(
   if (!researchId) return { success: false, error: 'Research ID is required' };
 
   try {
-    const success = await deleteKeywordResearchEntry(researchId);
+    const success = await dbDeleteKeywordResearch(researchId);
     if (success) {
       revalidateTag('keyword-research-summary-list');
       console.log(`[Action] Revalidated list tag: keyword-research-summary-list`);
@@ -106,77 +96,51 @@ export async function requestDeleteKeywordResearch(
 
 // --- Process and Save Keyword Query (remains the same for now) ---
 export async function requestNewKeywordResearch(
-  input: ProcessQueryInput
+  { query, region, language, filterZeroVolume, useAlphabet, useSymbols }: ProcessQueryInput
 ): Promise<ProcessQueryResult> {
-  console.log('[Action: processAndSave] Received input:', input);
-  
-  const { query, region, language, filterZeroVolume } = input;
-
-  const useAlphabet = false;
-  const useSymbols = true;
 
   let aiSuggestList: string[] = [];
   let googleSuggestList: string[] = [];
   let volumeDataList: KeywordVolumeItem[] = [];
   let savedResearchId: string | null = null;
-  const isUrl = query.startsWith('http');
-  const currentInputType = isUrl ? 'url' : 'keyword';
+  let suggestionsResult;
+
+  const isUrl = query.startsWith('https://');
 
   try {
-    console.log(
-      '[Server Action] Step 2: Space Variations Generation Disabled.'
+    aiSuggestList = await aiGetDifferenceEntityName(
+      query,
+      region,
+      language,
+      10
     );
 
-    console.log(
-      `[Server Action] Starting Step 3: Get AI Suggestions for: ${query}`
-    );
-    try {
-      aiSuggestList = await generateRelatedKeywordsAI(
-        query,
+    
+    if (isUrl) {
+      suggestionsResult = await getUrlSuggestions({
+        url: query,
         region,
-        language,
-        10
-      );
-      console.log(
-        `[Server Action] Got ${aiSuggestList.length} suggestions from AI.`
-      );
-    } catch (aiError) {
-      console.error(`[Server Action] Failed to get AI suggestions:`, aiError);
-      aiSuggestList = [];
-    }
-
-    console.log(
-      `[Server Action] Starting Step 4: Get Google Suggestions for: ${query}`
-    );
-    let suggestionsResult;
-    if (currentInputType === 'keyword') {
-      console.log(`[Action: processAndSave] >>> Calling getKeywordSuggestions with useSymbols: ${useSymbols}`);
-      suggestionsResult = await getKeywordSuggestions({
+        language
+      });
+    } 
+    
+    if (!isUrl) {
+      suggestionsResult = await performFetchKeywordSuggestions({
         query,
         region,
         language,
         useAlphabet,
         useSymbols  
       });
-    } else {
-      suggestionsResult = await getUrlSuggestions({
-        url: query,
-        region,
-        language
-      });
     }
-    if (suggestionsResult.error || !suggestionsResult.suggestions) {
+
+    if (suggestionsResult && (suggestionsResult.error || !suggestionsResult.suggestions)) {
       console.warn(
         `[Server Action] Google Suggestion Warning: ${
           suggestionsResult.error || 'No suggestions found'
         }`
       );
       googleSuggestList = [];
-    } else {
-      googleSuggestList = suggestionsResult.suggestions;
-      console.log(
-        `[Server Action] Got ${googleSuggestList.length} suggestions from Google.`
-      );
     }
 
     console.log('[Server Action] Starting Step 5: Combine All & Deduplicate');
@@ -196,7 +160,7 @@ export async function requestNewKeywordResearch(
       console.warn(
         '[Server Action] No unique keywords found after combining sources. Aborting further processing.'
       );
-      const createdResearchId = await createKeywordResearchEntry({
+      const createdResearchId = await dbCreateKeywordResearch({
         query,
         region,
         language,
@@ -257,12 +221,11 @@ export async function requestNewKeywordResearch(
       `[Server Action] Final list for volume check (${keywordsForVolumeCheck.length} keywords):`
     );
 
-    const volumeResult = await getSearchVolume(
-      keywordsForVolumeCheck,
-      region,
-      isUrl ? query : undefined,
-      language
-    );
+    const volumeResult = await getSearchVolume({
+      keywords: keywordsForVolumeCheck,
+      region: region,
+      language: language
+    });
 
     if (volumeResult.error || !volumeResult.results) {
       console.warn(
@@ -345,14 +308,14 @@ export async function requestNewKeywordResearch(
         updatedAt: now,
       };
 
-      savedResearchId = await createKeywordResearchEntry(researchDataToCreate);
+      savedResearchId = await dbCreateKeywordResearch(researchDataToCreate);
       console.log(`[Action: processAndSave] Research record created via DB service: ${savedResearchId}`);
 
       if (finalKeywordsToSave.length > 0) {
         console.log(
           `[Server Action] Updating record ${savedResearchId} with ${finalKeywordsToSave.length} final keywords...`
         );
-        const updateKeywordsResult = await updateKeywordResearchResults(
+        const updateKeywordsResult = await dbUpdateKeywordResearchResults(
           savedResearchId,
           finalKeywordsToSave
         );

@@ -49,19 +49,19 @@ export async function processWithAI(
  * @param count The desired number of suggestions (default: 10).
  * @returns A promise that resolves to an array of suggested related search phrases.
  */
-export async function generateRelatedKeywordsAI(
+export async function aiGetDifferenceEntityName(
   query: string,
   region: string,
   language: string,
   count: number = 10
 ): Promise<string[]> {
   if (!query) {
-    console.warn('[AI Service] generateRelatedKeywordsAI: Query is empty.');
+    console.warn('[AI Service] aiGetDifferenceEntityName: Query is empty.');
     return [];
   }
 
   console.log(
-    `[AI Service] generateRelatedKeywordsAI called for query: "${query}", Region: ${region}, Lang: ${language}, Count: ${count}`
+    `[AI Service] aiGetDifferenceEntityName called for query: "${query}", Region: ${region}, Lang: ${language}, Count: ${count}`
   );
 
   // --- NEW Prompt (Focus on Prefixes, Suffixes, Alternatives) ---
@@ -141,3 +141,4 @@ export async function generateRelatedKeywordsAI(
     return [];
   }
 }
+

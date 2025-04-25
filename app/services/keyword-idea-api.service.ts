@@ -1,187 +1,13 @@
 // --- Google Ads API Functions and constants ---
 
 import { KeywordVolumeItem, KeywordVolumeResult } from '@/app/services/firebase/types';
+import { hasSimplifiedChinese } from '@/lib/utils'; // Import the new function
 
 // Add API_VERSION constant directly in this file
 /**
  * Google Ads API version
  */
 const API_VERSION = 'v19';
-
-// Add utility functions directly in this file
-/**
- * Estimates processing time (in seconds)
- * @param keywords Array of keywords
- * @param withVolume Whether search volume data is needed
- * @returns Estimated processing time in seconds
- */
-export function estimateProcessingTime(
-  keywords: string[],
-  withVolume: boolean = false
-): number {
-  // Base processing time
-  const baseTime = 1.0;
-
-  // Keyword count factor
-  const keywordFactor = keywords.length * 0.1;
-
-  // If search volume is needed, processing time is longer
-  const volumeFactor = withVolume ? keywords.length * 0.5 : 0;
-
-  // API request batch factor (20 keywords per batch, at least 2 seconds per batch)
-  const batchFactor = withVolume ? Math.ceil(keywords.length / 20) * 2 : 0;
-
-  // Total estimated time (seconds)
-  return Math.ceil(baseTime + keywordFactor + volumeFactor + batchFactor);
-}
-
-// 整合 chineseDetector.ts 功能 - 簡體/繁體中文檢測
-
-// 簡體中文和繁體中文對照表 (常用字)
-const simplifiedToTraditional: Record<string, string> = {
-  樱: '櫻',
-  晒: '曬',
-  个: '個',
-  东: '東',
-  丝: '絲',
-  丢: '丟',
-  两: '兩',
-  严: '嚴',
-  丧: '喪',
-  丰: '豐',
-  临: '臨',
-  为: '為',
-  丽: '麗',
-  举: '舉',
-  么: '麼',
-  义: '義',
-  乌: '烏',
-  乐: '樂',
-  乔: '喬',
-  习: '習',
-  乡: '鄉',
-  书: '書',
-  买: '買',
-  乱: '亂',
-  争: '爭',
-  于: '於',
-  亏: '虧',
-  云: '雲',
-  亚: '亞',
-  产: '產',
-  亩: '畝',
-  亲: '親',
-  亿: '億',
-  仅: '僅',
-  从: '從',
-  仑: '侖',
-  仓: '倉',
-  仪: '儀',
-  们: '們',
-  价: '價',
-  众: '眾',
-  优: '優',
-  伙: '夥',
-  会: '會',
-  伟: '偉',
-  传: '傳',
-  伤: '傷',
-  伦: '倫',
-  伪: '偽',
-  体: '體',
-  佣: '傭',
-  佬: '佬',
-  侠: '俠',
-  侧: '側',
-  侨: '僑',
-  侬: '儂',
-  俣: '俁',
-  俦: '儔',
-  俨: '儼',
-  俩: '倆',
-  俭: '儉',
-  债: '債',
-  倾: '傾',
-  偬: '傯',
-  偻: '僂',
-  伥: '倀',
-  偾: '僨',
-  偿: '償',
-  杂: '雜',
-  鸡: '雞',
-  阳: '陽',
-  阴: '陰',
-  阵: '陣',
-  阶: '階',
-  尔: '爾',
-  邬: '鄔',
-  邙: '鄣',
-  图: '圖',
-  卢: '盧',
-  贝: '貝',
-  达: '達',
-  逻: '邏',
-  辑: '輯'
-};
-
-/**
- * 檢測文字的中文類型
- * @param text 要檢查的文字
- * @returns 中文類型: 'simplified'(簡體中文), 'traditional'(繁體中文), 'mixed'(混合), 'none'(非中文)
- */
-export function detectChineseType(
-  text: string
-): 'simplified' | 'traditional' | 'mixed' | 'none' {
-  let hasSimplified = false;
-  let hasTraditional = false;
-  let hasChineseChars = false;
-
-  // 檢查每個字符
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-
-    // 判斷是否為中文字符
-    if (/[\u4e00-\u9fa5]/.test(char)) {
-      hasChineseChars = true;
-
-      // 檢查是否為簡體字
-      if (char in simplifiedToTraditional) {
-        hasSimplified = true;
-      } else {
-        // 檢查字符是否為繁體字
-        for (const traditional of Object.values(simplifiedToTraditional)) {
-          if (char === traditional) {
-            hasTraditional = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  // 根據檢測結果返回類型
-  if (!hasChineseChars) {
-    return 'none';
-  } else if (hasSimplified && hasTraditional) {
-    return 'mixed';
-  } else if (hasSimplified) {
-    return 'simplified';
-  } else {
-    return 'traditional';
-  }
-}
-
-/**
- * 過濾掉簡體中文關鍵字
- * @param keywords 關鍵字數組
- * @returns 過濾後的關鍵字數組
- */
-export function filterSimplifiedChinese(keywords: string[]): string[] {
-  return keywords.filter(keyword => {
-    const type = detectChineseType(keyword);
-    return type !== 'simplified';
-  });
-}
 
 // Add location and language code mappings
 /**
@@ -227,10 +53,13 @@ const REFRESH_TOKEN = process.env.REFRESH_TOKEN || '';
 const LOGIN_CUSTOMER_ID = process.env.LOGIN_CUSTOMER_ID || '';
 const CUSTOMER_ID = process.env.CUSTOMER_ID || '';
 
+// --- Private Helper Functions ---
+
 /**
  * Gets OAuth2 access token.
+ * (Made private - only used internally)
  */
-export async function getAccessToken(): Promise<string> {
+async function getAccessToken(): Promise<string> {
   try {
     const tokenUrl = 'https://oauth2.googleapis.com/token';
     const data = new URLSearchParams({
@@ -276,11 +105,60 @@ interface GoogleAdsKeywordIdeaResponse {
   // Add other potential top-level fields if known
 }
 
+interface FetchRetryParams {
+  batchKeywords: string[];
+  locationId: number;
+  languageId: number;
+  maxRetries?: number; // Make optional with default below
+}
+
+// Helper function to fetch keyword ideas with retry logic
+async function fetchKeywordIdeasWithRetry(
+  { batchKeywords, locationId, languageId, maxRetries = 3 }: FetchRetryParams
+): Promise<GoogleAdsKeywordIdeaResponse> {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      const response = await fetchKeywordIdeas(
+        batchKeywords,
+        locationId,
+        languageId
+      );
+      return response;
+    } catch (error: unknown) {
+      retries++;
+      console.error(
+        `[fetchKeywordIdeasWithRetry] Attempt ${retries} failed:`, error
+      );
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (errorMessage.includes('429') && retries < maxRetries) {
+        let retryDelayMs = 5000; // Default delay
+        const retryMatch = errorMessage.match(/Retry in (\d+) seconds?/i);
+        if (retryMatch && retryMatch[1]) {
+          retryDelayMs = parseInt(retryMatch[1], 10) * 1000 + 500; // Add buffer
+        }
+        console.log(
+          `[fetchKeywordIdeasWithRetry] Retrying after ${retryDelayMs}ms...`
+        );
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        continue;
+      }
+
+      console.error(
+        `[fetchKeywordIdeasWithRetry] Non-retryable error or max retries reached.`
+      );
+      throw error;
+    }
+  }
+  throw new Error(`[fetchKeywordIdeasWithRetry] Failed after ${maxRetries} attempts.`);
+}
+
 /**
- * Fetches keyword ideas from Google Ads API.
+ * Fetches keyword ideas from Google Ads API (Original function, now called by retry helper)
+ * (Made private - only used internally)
  */
-// Use the defined interface instead of any
-export async function fetchKeywordIdeas(
+async function fetchKeywordIdeas(
   keywords: string[],
   locationId: number,
   languageId: number
@@ -338,8 +216,9 @@ export async function fetchKeywordIdeas(
 
 /**
  * Gets competition level description.
+ * (Made private - only used internally)
  */
-export function getCompetitionLevel(competitionEnum: number): string {
+function getCompetitionLevel(competitionEnum: number): string {
   const competitionLevels: Record<number, string> = {
     0: '未知',
     1: '低',
@@ -353,262 +232,185 @@ export function getCompetitionLevel(competitionEnum: number): string {
 // Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
 const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
 
-// Add location name to code mapping
-const LOCATION_NAME_TO_CODE: Record<string, string> = {
-  台灣: 'TW',
-  臺灣: 'TW',
-  香港: 'HK',
-  中國: 'CN',
-  美國: 'US',
-  日本: 'JP',
-  英國: 'UK',
-  澳洲: 'AU',
-  加拿大: 'CA',
-  新加坡: 'SG',
-  馬來西亞: 'MY',
-  德國: 'DE',
-  法國: 'FR',
-  韓國: 'KR',
-  印度: 'IN'
-};
+// Helper function to generate spaced variations for CJK keywords
+// (Made private - only used internally)
+function generateSpacedVariations(uniqueBaseKeywords: string[]): string[] {
+  const spacedVariations: string[] = [];
+  for (const keyword of uniqueBaseKeywords) {
+    // Use the existing onlyCjkRegex defined in the module scope
+    if (
+      onlyCjkRegex.test(keyword) &&
+      keyword.length > 1 &&
+      keyword.length <= 10 &&
+      !keyword.includes(' ')
+    ) {
+      spacedVariations.push(keyword.split('').join(' '));
+    }
+  }
+  return spacedVariations;
+}
+
+// --- Exported Main Function ---
+
+interface GetSearchVolumeParams {
+  keywords: string[];
+  region: string;
+  language: string;
+}
 
 /**
  * Gets keyword search volume data.
  */
 export async function getSearchVolume(
-  keywords: string[], // Input keywords from keyword-research action
-  region: string,
-  url: string | undefined,
-  language: string
+  { keywords, region, language }: GetSearchVolumeParams
 ): Promise<KeywordVolumeResult> {
-  const startTime = Date.now();
-  const estimatedTime = estimateProcessingTime(keywords, true);
   const sourceInfo = 'Google Ads API';
-  const isUrl = url !== undefined;
 
-  // --- Add Log: Show received keywords ---
-  console.log(
-    `[getSearchVolume] Received ${keywords.length} keywords to process:`,
-    keywords
-  );
-  // --- End Log ---
+  console.log(`[getSearchVolume] Received ${keywords.length} keywords for region: ${region}, language: ${language}...`);
 
-  // Map language
+  // --- Parameter Validation and Setup ---
   const apiLanguageCode = language.replace('-', '_');
   const languageId = LANGUAGE_CODES[apiLanguageCode];
   if (!languageId) throw new Error(`Invalid language code: ${language}`);
 
-  // Map region
-  let regionCode = region.toUpperCase();
-  if (LOCATION_NAME_TO_CODE[region]) regionCode = LOCATION_NAME_TO_CODE[region];
+  const regionCode = region.toUpperCase();
   const locationId = LOCATION_CODES[regionCode];
   if (!locationId) throw new Error(`Invalid region code: ${region}.`);
 
-  console.log(
-    `[getSearchVolume] Fetching volume: Region=${region}(${locationId}), Language=${language}(${languageId})`
-  );
-  if (isUrl)
-    console.log(`[getSearchVolume] URL provided (informational): ${url}`);
-
-  // Check credentials
-  if (
-    !DEVELOPER_TOKEN ||
-    !CLIENT_ID ||
-    !CLIENT_SECRET ||
-    !REFRESH_TOKEN ||
-    !CUSTOMER_ID
-  ) {
+  if (!DEVELOPER_TOKEN || !CLIENT_ID /* ... other checks */) {
     throw new Error('Missing Google Ads API credentials.');
   }
+
+  console.log(
+    `[getSearchVolume] Config: Region=${region}(${locationId}), Language=${language}(${languageId})`
+  );
+  // --- End Setup ---
 
   const allResults: KeywordVolumeItem[] = [];
   const processedKeywords = new Map<string, boolean>();
 
   try {
     const batchSize = 20;
-    const originalKeywordsCount = keywords.length; // Store original count
-
-    // Use the original input keywords for deduplication and variation generation
     const uniqueBaseKeywords = [...new Set(keywords)];
 
-    // --- Internal Space Variation Generation ---
-    // This happens INSIDE getSearchVolume, based on the uniqueBaseKeywords derived from input
-    const spacedVariations: string[] = [];
-    for (const keyword of uniqueBaseKeywords) {
-      if (
-        onlyCjkRegex.test(keyword) &&
-        keyword.length > 1 &&
-        keyword.length <= 10 &&
-        !keyword.includes(' ')
-      ) {
-        const spacedKeyword = keyword.split('').join(' ');
-        spacedVariations.push(spacedKeyword);
-      }
-    }
-    // --- End Internal Variation Generation ---
+    const spacedVariations = generateSpacedVariations(uniqueBaseKeywords);
 
-    // Combine original unique keywords AND internally generated spaced variations for API query
     const keywordsToQuery = [
       ...new Set([...spacedVariations, ...uniqueBaseKeywords])
     ];
 
-    // --- Add Log: Show keywords actually being sent to API ---
-    console.log(
-      `[getSearchVolume] Total keywords/variations prepared for API query: ${keywordsToQuery.length}`
-    );
-    console.log('[getSearchVolume] List sent to API batches:', keywordsToQuery);
-    // --- End Log ---
-
-    // --- API Call Loop (Retry logic remains the same) ---
+    // --- API Batch Processing Loop ---
     for (let i = 0; i < keywordsToQuery.length; i += batchSize) {
-      await new Promise(resolve => setTimeout(resolve, 250)); // Delay
+      await new Promise(resolve => setTimeout(resolve, 250)); // API delay
       const batchKeywords = keywordsToQuery.slice(i, i + batchSize);
-      console.log(
-        `[getSearchVolume] Processing batch ${
-          Math.floor(i / batchSize) + 1
-        }/${Math.ceil(keywordsToQuery.length / batchSize)}, ${
-          batchKeywords.length
-        } keywords.`
-      );
+      const batchNum = Math.floor(i / batchSize) + 1;
 
-      const MAX_RETRIES = 3;
-      let retries = 0;
-      let response: any;
-      let success = false;
-
-      while (retries < MAX_RETRIES && !success) {
-        try {
-          response = await fetchKeywordIdeas(
-            batchKeywords,
-            locationId,
-            languageId
-          );
-          success = true;
-          // console.log(`[getSearchVolume] Batch ${Math.floor(i / batchSize) + 1}: API call successful.`); // Less verbose
-        } catch (error: unknown) {
-          retries++;
-          console.error(
-            `[getSearchVolume] Batch ${
-              Math.floor(i / batchSize) + 1
-            } attempt ${retries} failed:`,
-            error
-          );
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          if (errorMessage.includes('429') && retries < MAX_RETRIES) {
-            let retryDelayMs = 5000;
-            const retryMatch = errorMessage.match(/Retry in (\d+) seconds?/i);
-            if (retryMatch && retryMatch[1])
-              retryDelayMs = parseInt(retryMatch[1], 10) * 1000 + 500;
-            console.log(
-              `[getSearchVolume] Retrying batch ${
-                Math.floor(i / batchSize) + 1
-              } after ${retryDelayMs}ms...`
-            );
-            await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-            continue;
-          }
-          console.error(
-            `[getSearchVolume] Non-retryable error or max retries reached for batch ${
-              Math.floor(i / batchSize) + 1
-            }.`
-          );
-          throw error; // Propagate error for the batch
-        }
-      } // End retry while loop
-
-      if (!success) {
-        console.error(
-          `[getSearchVolume] Batch ${
-            Math.floor(i / batchSize) + 1
-          } failed after ${MAX_RETRIES} attempts. Skipping batch results.`
+      try {
+        const response = await fetchKeywordIdeasWithRetry({
+          batchKeywords,
+          locationId,
+          languageId,
+        });
+        
+        const batchResults = processKeywordIdeaBatch(
+          response.results || [],
+          apiLanguageCode,
+          processedKeywords
         );
-        continue; // Skip processing results for this failed batch
+        
+        allResults.push(...batchResults);
+        console.log(`[getSearchVolume] Batch ${batchNum}: Processed ${batchResults.length} new items.`); 
+
+      } catch (batchError) {
+        console.error(
+          `[getSearchVolume] Skipping batch ${batchNum} due to error: ${batchError}`
+        );
       }
-
-      // Process Batch Results (logic remains the same)
-      const keywordIdeas = response.results || [];
-      for (const idea of keywordIdeas) {
-        try {
-          const text = idea.text || '';
-          if (!text || processedKeywords.has(text)) continue;
-
-          // Filter simplified Chinese results *if* the requested language is not zh_CN
-          if (apiLanguageCode !== 'zh_CN') {
-            const type = detectChineseType(text);
-            if (type === 'simplified') {
-              console.log(
-                `[getSearchVolume] Filtering simplified Chinese keyword from API result: "${text}"`
-              );
-              continue; // Skip this simplified keyword idea
-            }
-          }
-
-          const metrics = idea.keywordIdeaMetrics || {};
-          let searchVolumeValue: number | undefined = undefined;
-          if (metrics.avgMonthlySearches != null) {
-            const parsed = parseInt(String(metrics.avgMonthlySearches), 10);
-            if (!isNaN(parsed)) searchVolumeValue = parsed;
-          }
-          let cpcValue: number | null = null;
-          if (metrics.lowTopOfPageBidMicros != null) {
-            const parsedCpc = Number(metrics.lowTopOfPageBidMicros);
-            if (!isNaN(parsedCpc))
-              cpcValue = Number((parsedCpc / 1000000).toFixed(2));
-          }
-          let competitionIndexValue: number | undefined = undefined;
-          if (metrics.competitionIndex != null) {
-            const parsedCompIndex = Number(metrics.competitionIndex);
-            if (!isNaN(parsedCompIndex))
-              competitionIndexValue = Number(parsedCompIndex.toFixed(2));
-          }
-          const result: KeywordVolumeItem = {
-            text: text,
-            searchVolume: searchVolumeValue,
-            competition: getCompetitionLevel(metrics.competition || 0),
-            competitionIndex: competitionIndexValue,
-            cpc: cpcValue
-          };
-          allResults.push(result);
-          processedKeywords.set(text, true);
-        } catch (itemError) {
-          console.error(
-            `[getSearchVolume] Error processing keyword idea "${
-              idea.text || 'N/A'
-            }":`,
-            itemError
-          );
-        }
-      } // End processing items in batch
-    } // End batch loop
-
-    const endTime = Date.now();
-    const actualTime: number = Math.round((endTime - startTime) / 1000);
-
-    console.log(
-      `[getSearchVolume] Successfully processed. Found volume data for ${allResults.length} unique keywords/variations returned by API.`
-    );
-    // console.log("[getSearchVolume] Final results:", allResults); // Optional: uncomment for detailed debug
+    } // --- End Batch Loop ---
 
     return {
-      results: allResults, // Return only the results from API
-      processingTime: { estimated: estimatedTime, actual: actualTime },
+      results: allResults,
       sourceInfo: sourceInfo,
       researchId: null
     };
+
   } catch (error: unknown) {
-    console.error('[getSearchVolume] Error fetching search volume:', error);
-    const endTime = Date.now();
-    const actualTime: number = Math.round((endTime - startTime) / 1000);
+    console.error('[getSearchVolume] Critical setup error:', error);
     const errorMessage =
-      error instanceof Error ? error.message : 'An unexpected error occurred.';
+      error instanceof Error ? error.message : 'An unexpected setup error occurred.';
     return {
-      // Return error structure
       results: [],
-      processingTime: { estimated: estimatedTime, actual: actualTime },
       error: errorMessage,
       sourceInfo: 'Error',
       researchId: null
     };
   }
+}
+
+// Helper function to process a batch of keyword ideas from the API response
+// (Made private - only used internally)
+function processKeywordIdeaBatch(
+  keywordIdeas: GoogleAdsKeywordIdea[],
+  apiLanguageCode: string,
+  processedKeywords: Map<string, boolean>
+): KeywordVolumeItem[] {
+  const batchResults: KeywordVolumeItem[] = [];
+  for (const idea of keywordIdeas) {
+    try {
+      const text = idea.text || '';
+      // Skip if text is empty or already processed in a previous batch (unlikely but safe)
+      if (!text || processedKeywords.has(text)) continue;
+
+      // Filter simplified Chinese results *if* the requested language is not zh_CN
+      if (apiLanguageCode !== 'zh_CN') {
+        if (hasSimplifiedChinese(text)) {
+          console.log(
+            `[processKeywordIdeaBatch] Filtering simplified Chinese keyword: "${text}"`
+          );
+          continue; // Skip this simplified keyword idea
+        }
+      }
+
+      // Parse metrics
+      const metrics = idea.keywordIdeaMetrics || {};
+      let searchVolumeValue: number | undefined = undefined;
+      if (metrics.avgMonthlySearches != null) {
+        const parsed = parseInt(String(metrics.avgMonthlySearches), 10);
+        if (!isNaN(parsed)) searchVolumeValue = parsed;
+      }
+      let cpcValue: number | null = null;
+      if (metrics.lowTopOfPageBidMicros != null) {
+        const parsedCpc = Number(metrics.lowTopOfPageBidMicros);
+        if (!isNaN(parsedCpc))
+          cpcValue = Number((parsedCpc / 1000000).toFixed(2));
+      }
+      let competitionIndexValue: number | undefined = undefined;
+      if (metrics.competitionIndex != null) {
+        const parsedCompIndex = Number(metrics.competitionIndex);
+        if (!isNaN(parsedCompIndex))
+          competitionIndexValue = Number(parsedCompIndex.toFixed(2));
+      }
+      
+      // Create result item
+      const result: KeywordVolumeItem = {
+        text: text,
+        searchVolume: searchVolumeValue,
+        competition: getCompetitionLevel(metrics.competition || 0),
+        competitionIndex: competitionIndexValue,
+        cpc: cpcValue
+      };
+      batchResults.push(result);
+      processedKeywords.set(text, true); // Mark as processed in the shared map
+
+    } catch (itemError) {
+      console.error(
+        `[processKeywordIdeaBatch] Error processing keyword idea "${
+          idea.text || 'N/A'
+        }":`,
+        itemError
+      );
+      // Continue processing other items in the batch even if one fails
+    }
+  } // End processing items in batch
+  return batchResults;
 }

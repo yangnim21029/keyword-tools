@@ -8,7 +8,7 @@ import { revalidateTag } from 'next/cache';
 // --- DB IMPORTS ---
 import {
   getKeywordResearchDetail,
-  updateKeywordResearchEntry,
+  dbUpdateKeywordResearch,
 } from '@/app/services/firebase/db-keyword-research';
 
 // Define input schema for a SINGLE cluster
@@ -205,7 +205,7 @@ export async function requestGenPersonaForKeywordCluster(
     });
 
     // 6. Save the updated clustersWithVolume array back to Firestore
-    const updateSuccess = await updateKeywordResearchEntry(
+    const updateSuccess = await dbUpdateKeywordResearch(
       validatedInput.researchId,
       { 
           clustersWithVolume: updatedClustersArray,

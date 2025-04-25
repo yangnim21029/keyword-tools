@@ -34,7 +34,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { fetchKeywordResearchSummaryList, fetchKeywordResearchDetail } from "@/app/actions/keyword-volumn-action";
+import { fetchKeywordResearchSummaryList, fetchKeywordResearchDetail } from "@/app/actions/keyword-volume-action";
 import type { KeywordResearchSummaryItem } from '@/app/services/firebase/db-keyword-research';
 import type { ProcessedKeywordResearchData, TitleAnalysisJson, BetterHaveAnalysisJson } from '@/app/services/firebase/schema';
 import type { ClientSafeSerpDataDoc } from '@/app/actions/serp-action';
