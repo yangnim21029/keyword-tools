@@ -1,52 +1,84 @@
 'use client';
 
+import { KeywordVolumeItem } from '@/app/services/firebase/schema';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card';
-import { type KeywordVolumeItem } from '@/app/services/firebase/types';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { BarChart3, X } from 'lucide-react';
+import { BarChart, Filter } from 'lucide-react';
 import React from 'react';
+// Import thresholds from global config
+import {
+  HIGH_VOLUME_THRESHOLD,
+  MEDIUM_VOLUME_THRESHOLD
+} from '@/app/global-config';
 
 // Define filter types
-export type VolumeFilterType = 'high' | 'medium' | 'low' | 'all';
+export type VolumeFilterType = 'all' | 'high' | 'medium' | 'low';
 
-interface KeywordVolumeVisualizationProps {
-  keywords: KeywordVolumeItem[];
+interface VolumeFilterProps {
+  keywords: KeywordVolumeItem[] | undefined | null; // Accept potentially null/undefined
   currentFilter: VolumeFilterType;
-  onFilterChange: (filter: VolumeFilterType) => void;
+  onFilterChange: (newFilter: VolumeFilterType) => void; // Add callback prop
 }
 
-// Define fixed thresholds
-const HIGH_VOLUME_THRESHOLD = 10000;
-const MEDIUM_VOLUME_THRESHOLD = 500;
+// Define NEW fixed thresholds
+// const HIGH_VOLUME_THRESHOLD = 400; // Removed - Defined globally
+// const MEDIUM_VOLUME_THRESHOLD = 100; // Removed - Defined globally
+// Low is implicitly < 100
 
-const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
+export default function VolumeFilter({
   keywords,
   currentFilter,
-  onFilterChange
-}) => {
+  onFilterChange // Use the callback prop
+}: VolumeFilterProps) {
+  // Remove commented out hooks
+
+  // Use the passed callback directly
+  const handleFilterChange = (newFilter: VolumeFilterType) => {
+    onFilterChange(newFilter);
+  };
+
+  // Calculate counts based on the received keywords (Using NEW thresholds)
+  const validKeywords = Array.isArray(keywords) ? keywords : [];
+  const highVolumeCount = validKeywords.filter(
+    kw => (kw.searchVolume ?? 0) >= HIGH_VOLUME_THRESHOLD // >= 400
+  ).length;
+  const mediumVolumeCount = validKeywords.filter(
+    kw =>
+      (kw.searchVolume ?? 0) >= MEDIUM_VOLUME_THRESHOLD && // >= 100
+      (kw.searchVolume ?? 0) < HIGH_VOLUME_THRESHOLD // < 400
+  ).length;
+  const lowVolumeCount = validKeywords.filter(
+    kw => (kw.searchVolume ?? 0) < MEDIUM_VOLUME_THRESHOLD // < 100
+  ).length;
+  const totalCount = validKeywords.length;
+
   const distribution = React.useMemo(() => {
     let highCount = 0;
     let mediumCount = 0;
     let lowCount = 0;
 
-    keywords.forEach(kw => {
+    validKeywords.forEach(kw => {
       const volume = kw.searchVolume;
-      // Handle null/undefined as zero
       const cleanVolume = volume ?? 0;
 
+      // Apply NEW thresholds
       if (cleanVolume >= HIGH_VOLUME_THRESHOLD) {
+        // >= 400
         highCount++;
       } else if (cleanVolume >= MEDIUM_VOLUME_THRESHOLD) {
+        // 100 - 399
         mediumCount++;
       } else if (cleanVolume > 0) {
+        // 1 - 99 (Assuming low means > 0 and < 100)
         lowCount++;
       }
+      // Note: cleanVolume === 0 is excluded from percentages but included in total
     });
 
     // Total for percentage is only non-zero volumes
@@ -65,38 +97,44 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
       },
       low: {
         count: lowCount,
-        percentage: totalNonZeroCount > 0 ? (lowCount / totalNonZeroCount) * 100 : 0
+        percentage:
+          totalNonZeroCount > 0 ? (lowCount / totalNonZeroCount) * 100 : 0
       },
-      total: keywords.length,
+      total: validKeywords.length
     };
-  }, [keywords]);
-
-  const handleFilterClick = (filter: VolumeFilterType) => {
-    // If clicking the already active filter, clear it
-    onFilterChange(currentFilter === filter ? 'all' : filter);
-  };
+  }, [validKeywords]);
 
   // Simple visual representation using colored bars
   return (
-    <div className="mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h3 className="flex items-center text-lg font-semibold">
-            <BarChart3 className="mr-2 h-5 w-5" /> 點擊分類篩選關鍵字 - 快速查看不同搜索量級
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            點擊下方 高 / 中 / 低 分類，即可篩選出對應搜索量範圍的關鍵字。
-          </p>
+    <div className="border rounded-lg p-4 bg-card">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold flex items-center">
+          <BarChart className="mr-2 h-5 w-5" /> 關鍵字數量與搜索量分佈
+        </h3>
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={currentFilter} onValueChange={handleFilterChange}>
+            <SelectTrigger className="w-[150px] h-8 text-xs">
+              <SelectValue placeholder="篩選搜索量" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部 ({totalCount})</SelectItem>
+              <SelectItem value="high">
+                高量 (&gt;= {HIGH_VOLUME_THRESHOLD.toLocaleString()}) (
+                {highVolumeCount})
+              </SelectItem>
+              <SelectItem value="medium">
+                中量 ({MEDIUM_VOLUME_THRESHOLD.toLocaleString()}-
+                {(HIGH_VOLUME_THRESHOLD - 1).toLocaleString()}) (
+                {mediumVolumeCount})
+              </SelectItem>
+              <SelectItem value="low">
+                低量 (&lt; {MEDIUM_VOLUME_THRESHOLD.toLocaleString()}) (
+                {lowVolumeCount})
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        {currentFilter !== 'all' && (
-          <button
-            onClick={() => onFilterChange('all')}
-            className="text-xs text-muted-foreground hover:text-primary p-1 rounded hover:bg-muted transition-colors"
-            title="清除過濾器"
-          >
-            <X size={16} />
-          </button>
-        )}
       </div>
       <div>
         {distribution.total === 0 ? (
@@ -119,7 +157,6 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   )}
                   style={{ width: `${distribution.high.percentage}%` }}
                   title={`高量級 (${distribution.high.count}) - 點擊過濾`}
-                  onClick={() => handleFilterClick('high')}
                 >
                   {distribution.high.percentage >= 10 &&
                     `${distribution.high.percentage.toFixed(0)}%`}
@@ -135,7 +172,6 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   )}
                   style={{ width: `${distribution.medium.percentage}%` }}
                   title={`中量級 (${distribution.medium.count}) - 點擊過濾`}
-                  onClick={() => handleFilterClick('medium')}
                 >
                   {distribution.medium.percentage >= 10 &&
                     `${distribution.medium.percentage.toFixed(0)}%`}
@@ -151,7 +187,6 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   )}
                   style={{ width: `${distribution.low.percentage}%` }}
                   title={`低量級 (${distribution.low.count}) - 點擊過濾`}
-                  onClick={() => handleFilterClick('low')}
                 >
                   {distribution.low.percentage >= 10 &&
                     `${distribution.low.percentage.toFixed(0)}%`}
@@ -172,7 +207,7 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   )}
                   style={{ width: `${distribution.zero.percentage}%` }}
                   title={`零量級 (${distribution.zero.count}) - 點擊過濾`}
-                  onClick={() => handleFilterClick('zero')}
+                  onClick={() => handleFilterChange('zero')}
                 >
                   {distribution.zero.percentage >= 10 && `${distribution.zero.percentage.toFixed(0)}%`}
                 </div>
@@ -180,14 +215,13 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
             )}
             */}
 
-            {/* Legend / Counts - Added cursor-pointer and active state */}
+            {/* Legend / Counts - Update labels */}
             <div className="flex flex-wrap justify-around gap-4 text-sm text-muted-foreground pt-2">
               <div
                 className={cn(
                   'text-center p-1 rounded cursor-pointer hover:bg-muted transition-colors flex flex-col items-center',
                   currentFilter === 'high' && 'bg-red-100 dark:bg-red-900/30'
                 )}
-                onClick={() => handleFilterClick('high')}
               >
                 <p className="font-semibold text-red-600">
                   {distribution.high.count}
@@ -202,13 +236,16 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   currentFilter === 'medium' &&
                     'bg-yellow-100 dark:bg-yellow-900/30'
                 )}
-                onClick={() => handleFilterClick('medium')}
               >
                 <p className="font-semibold text-yellow-500">
                   {distribution.medium.count}
                 </p>
                 <p className="text-xs">
-                  中 ({`${MEDIUM_VOLUME_THRESHOLD.toLocaleString()}-${(HIGH_VOLUME_THRESHOLD - 1).toLocaleString()}`})
+                  中 (
+                  {`${MEDIUM_VOLUME_THRESHOLD.toLocaleString()}-${(
+                    HIGH_VOLUME_THRESHOLD - 1
+                  ).toLocaleString()}`}
+                  )
                 </p>
               </div>
               <div
@@ -216,13 +253,13 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
                   'text-center p-1 rounded cursor-pointer hover:bg-muted transition-colors flex flex-col items-center',
                   currentFilter === 'low' && 'bg-green-100 dark:bg-green-900/30'
                 )}
-                onClick={() => handleFilterClick('low')}
               >
                 <p className="font-semibold text-green-600">
                   {distribution.low.count}
                 </p>
                 <p className="text-xs">
-                  低 ({`1-${(MEDIUM_VOLUME_THRESHOLD - 1).toLocaleString()}`})
+                  低 ({`<${MEDIUM_VOLUME_THRESHOLD.toLocaleString()}`})
+                  {/* Adjusted low label slightly for clarity */}
                 </p>
               </div>
             </div>
@@ -231,6 +268,4 @@ const KeywordVolumeVisualization: React.FC<KeywordVolumeVisualizationProps> = ({
       </div>
     </div>
   );
-};
-
-export default KeywordVolumeVisualization;
+}

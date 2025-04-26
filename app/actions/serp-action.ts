@@ -1,50 +1,58 @@
 'use server';
 
 import {
+  getBetterHaveConversionPrompt,
+  getBetterHaveInArticlePrompt,
+  getBetterHaveRecommendationPrompt,
   getContentTypeAnalysisPrompt,
   getContentTypeConversionPrompt,
   getContentTypeRecommendationPrompt,
-  getUserIntentConversionPrompt,
-  getUserIntentRecommendationPrompt,
-  getTitleRecommendationPrompt,
   getSerpTitleAnalysisPrompt,
+  getTitleRecommendationPrompt,
   getUserIntentAnalysisPrompt,
-  getBetterHaveConversionPrompt,
-  getBetterHaveRecommendationPrompt,
-  getBetterHaveInArticlePrompt,
+  getUserIntentConversionPrompt,
+  getUserIntentRecommendationPrompt
 } from '@/app/prompt/serp-prompt-design';
 import {
-  findSerpDataDoc,
-  saveSerpDataDoc,
-  updateSerpDataField,
   deleteSerpDataDocById,
-  getSerpDataDocById
+  findSerpDataDoc,
+  getSerpDataDocById,
+  saveSerpDataDoc,
+  updateSerpDataField
 } from '@/app/services/firebase/db-serp-data';
+import type {
+  AiSerpBetterHaveAnalysisJson as BetterHaveAnalysisJson,
+  AiContentTypeAnalysisJson as ContentTypeAnalysisJson,
+  FirebaseSerpResultObject as OriginalFirebaseSerpResultObject,
+  AiTitleAnalysisJson as TitleAnalysisJson,
+  AiUserIntentAnalysisJson as UserIntentAnalysisJson
+} from '@/app/services/firebase/schema';
+import { AiSerpBetterHaveJsonSchema as BetterHaveJsonSchema } from '@/app/services/firebase/schema';
 import { fetchSerpByKeyword } from '@/app/services/serp.service';
 import { openai } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
+import { revalidateTag } from 'next/cache';
 import { z } from 'zod';
-import {
-    BetterHaveJsonSchema,
-} from '@/app/services/firebase/schema';
-import type {
-    FirebaseSerpDataDoc as OriginalFirebaseSerpDataDoc, 
-    ContentTypeAnalysisJson, 
-    UserIntentAnalysisJson, 
-    TitleAnalysisJson,
-    BetterHaveAnalysisJson
-} from '@/app/services/firebase/schema';
+
+// Define a generic tag for list revalidation
+const SERP_DATA_LIST_TAG = 'serpDataList';
 
 // Define a client-safe version for the return type
-export type ClientSafeSerpDataDoc = Omit<OriginalFirebaseSerpDataDoc, 'createdAt' | 'updatedAt'> & {
-    id: string;
-    createdAt: string | null;
-    updatedAt: string | null;
+export type ClientSafeSerpDataDoc = Omit<
+  OriginalFirebaseSerpResultObject,
+  'createdAt' | 'updatedAt'
+> & {
+  id: string;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
+
+// Helper function to generate a specific tag for a document
+const getSerpDocTag = (docId: string) => `serpDoc-${docId}`;
 
 // --- Zod Schemas for AI Output Validation ---
 
-// --- RE-ADD Schemas for generateText output --- 
+// --- RE-ADD Schemas for generateText output ---
 const contentTypeAnalysisTextSchema = z.object({
   analysisText: z.string().describe('包含內容類型分析的原始文本/Markdown')
 });
@@ -149,20 +157,25 @@ export async function performContentTypeAnalysis({
     console.log(
       `[Action] Content Type Analysis (Text) successful for Doc ID: ${docId}. Saving to ${analysisKey}...`
     );
-    
-    // --- Update specific field in SERP_DATA doc ---
-    await updateSerpDataField(docId, analysisKey, analysisResultText); 
-    console.log(`[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`);
-    
-    return { analysisText: analysisResultText }; // Return the generated text
 
+    // --- Update specific field in SERP_DATA doc ---
+    await updateSerpDataField(docId, analysisKey, analysisResultText);
+    console.log(
+      `[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`
+    );
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(docId));
+
+    return { analysisText: analysisResultText }; // Return the generated text
   } catch (error) {
     console.error(
       `[Action] Content Type Analysis (Text) failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
-      `內容類型分析失敗: ${error instanceof Error ? error.message : String(error)}`
+      `內容類型分析失敗: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -182,7 +195,11 @@ export async function performUserIntentAnalysis({
   if (!docId) throw new Error('Document ID is required to save analysis text.');
 
   try {
-    const prompt = getUserIntentAnalysisPrompt(keyword, serpString, relatedKeywordsRaw);
+    const prompt = getUserIntentAnalysisPrompt(
+      keyword,
+      serpString,
+      relatedKeywordsRaw
+    );
     console.log('[AI Call] Calling AI for User Intent Text Analysis...');
     const { text: analysisResultText } = await generateText({
       model: openai(model),
@@ -194,17 +211,22 @@ export async function performUserIntentAnalysis({
 
     // --- Update specific field in SERP_DATA doc ---
     await updateSerpDataField(docId, analysisKey, analysisResultText);
-    console.log(`[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`);
+    console.log(
+      `[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`
+    );
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(docId));
 
     return { analysisText: analysisResultText }; // Return the generated text
-
   } catch (error) {
     console.error(
       `[Action] User Intent Analysis (Text) failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
-      `用戶意圖分析失敗: ${error instanceof Error ? error.message : String(error)}`
+      `用戶意圖分析失敗: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -237,7 +259,9 @@ export async function generateAnalysisJsonFromText({
     throw new Error('Missing Document ID, cannot save conversion result.');
   }
   if (!analysisText) {
-    throw new Error('Missing analysis text, cannot perform conversion or generate recommendation.');
+    throw new Error(
+      'Missing analysis text, cannot perform conversion or generate recommendation.'
+    );
   }
 
   try {
@@ -254,7 +278,10 @@ export async function generateAnalysisJsonFromText({
       saveKey = 'contentTypeAnalysis';
     } else if (analysisType === 'userIntent') {
       conversionPrompt = getUserIntentConversionPrompt(analysisText, keyword);
-      recommendationPrompt = getUserIntentRecommendationPrompt(analysisText, keyword);
+      recommendationPrompt = getUserIntentRecommendationPrompt(
+        analysisText,
+        keyword
+      );
       schema = userIntentAnalysisJsonSchema;
       saveKey = 'userIntentAnalysis';
     } else {
@@ -273,7 +300,9 @@ export async function generateAnalysisJsonFromText({
     );
 
     // --- Perform Recommendation Generation (generateText) ---
-    console.log(`[AI Call] Calling AI for ${analysisType} Recommendation Text...`);
+    console.log(
+      `[AI Call] Calling AI for ${analysisType} Recommendation Text...`
+    );
     const { text: recommendationResultText } = await generateText({
       model: openai(model),
       prompt: recommendationPrompt
@@ -288,13 +317,16 @@ export async function generateAnalysisJsonFromText({
     console.log(
       `[Action] Successfully updated ${saveKey} JSON for Doc ID: ${docId}`
     );
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(docId));
 
     // --- Return both JSON and Recommendation Text ---
     return {
-      analysisJson: convertedResult as (ContentTypeAnalysisJson | UserIntentAnalysisJson),
+      analysisJson: convertedResult as
+        | ContentTypeAnalysisJson
+        | UserIntentAnalysisJson,
       recommendationText: recommendationResultText
     };
-
   } catch (error) {
     console.error(
       `[Action] Processing failed for ${analysisType} of Doc ID: ${docId}:`,
@@ -310,15 +342,17 @@ export async function generateAnalysisJsonFromText({
 
 // --- Action to Delete SERP Data ---
 // Interface needed for the delete action
-interface DeleteParams { 
+interface DeleteParams {
   docId: string;
 }
 
 // Renamed from deleteSerpAnalysisAction
-export async function deleteSerpDataAction({ 
-  docId 
-}: DeleteParams): Promise<{ success: boolean; message?: string }> { 
-  console.log(`[Action] Attempting to delete SERP data document with ID: ${docId}`);
+export async function deleteSerpDataAction({
+  docId
+}: DeleteParams): Promise<{ success: boolean; message?: string }> {
+  console.log(
+    `[Action] Attempting to delete SERP data document with ID: ${docId}`
+  );
 
   if (!docId) {
     console.error('[Action] Delete failed: Document ID is missing.');
@@ -327,12 +361,15 @@ export async function deleteSerpDataAction({
 
   try {
     // Use the renamed DB function targeting the SERP_DATA collection
-    await deleteSerpDataDocById(docId); 
+    await deleteSerpDataDocById(docId);
     console.log(
       `[Action] Successfully requested deletion for document ID: ${docId}`
     );
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(docId)); // Revalidate specific doc (might already be deleted)
+    revalidateTag(SERP_DATA_LIST_TAG); // Revalidate any list view
     // Consider if revalidation is needed here
-    // revalidatePath('/some-path-displaying-serp-data'); 
+    // revalidatePath('/some-path-displaying-serp-data');
     return { success: true };
   } catch (error) {
     console.error(
@@ -358,7 +395,9 @@ interface GetOrFetchParams {
 /**
  * Converts Firestore Timestamps/Dates within a SERP data object to ISO strings.
  */
-function serializeTimestamps(data: (OriginalFirebaseSerpDataDoc & { id: string }) | null): ClientSafeSerpDataDoc | null {
+function serializeTimestamps(
+  data: (OriginalFirebaseSerpResultObject & { id: string }) | null
+): ClientSafeSerpDataDoc | null {
   if (!data) {
     return null;
   }
@@ -368,23 +407,27 @@ function serializeTimestamps(data: (OriginalFirebaseSerpDataDoc & { id: string }
   // Firestore Timestamp or JS Date
   if (serializableData.createdAt) {
     if (typeof serializableData.createdAt.toDate === 'function') {
-      serializableData.createdAt = serializableData.createdAt.toDate().toISOString();
+      serializableData.createdAt = serializableData.createdAt
+        .toDate()
+        .toISOString();
     } else if (serializableData.createdAt instanceof Date) {
       serializableData.createdAt = serializableData.createdAt.toISOString();
     }
   } else {
-     serializableData.createdAt = null; // Ensure null if originally missing
+    serializableData.createdAt = null; // Ensure null if originally missing
   }
 
   // Firestore Timestamp or JS Date
   if (serializableData.updatedAt) {
     if (typeof serializableData.updatedAt.toDate === 'function') {
-      serializableData.updatedAt = serializableData.updatedAt.toDate().toISOString();
+      serializableData.updatedAt = serializableData.updatedAt
+        .toDate()
+        .toISOString();
     } else if (serializableData.updatedAt instanceof Date) {
       serializableData.updatedAt = serializableData.updatedAt.toISOString();
     }
   } else {
-      serializableData.updatedAt = null; // Ensure null if originally missing
+    serializableData.updatedAt = null; // Ensure null if originally missing
   }
 
   // Cast to the final client-safe type
@@ -400,7 +443,9 @@ export async function getOrFetchSerpDataAction({
   region,
   language
 }: GetOrFetchParams): Promise<ClientSafeSerpDataDoc | null> {
-  console.log(`[Action] Getting or fetching SERP data for: ${query} (R: ${region}, L: ${language})`);
+  console.log(
+    `[Action] Getting or fetching SERP data for: ${query} (R: ${region}, L: ${language})`
+  );
 
   if (!query || !region || !language) {
     throw new Error('Query, region, and language are required.');
@@ -410,55 +455,68 @@ export async function getOrFetchSerpDataAction({
     // 1. Try to find existing data in Firestore
     const existingData = await findSerpDataDoc(query, region, language);
     if (existingData) {
-      console.log(`[Action] Found existing SERP data in DB: ${existingData.id}`);
+      console.log(
+        `[Action] Found existing SERP data in DB: ${existingData.id}`
+      );
       // --- Serialize before returning ---
       return serializeTimestamps(existingData);
     }
 
     // 2. Not found, fetch from service (e.g., Apify)
-    console.log(`[Action] Existing data not found. Fetching from SERP service...`);
+    console.log(
+      `[Action] Existing data not found. Fetching from SERP service...`
+    );
     const fetchedData = await fetchSerpByKeyword({ query, region, language });
     console.log(`[Action] Fetched data from SERP service.`);
 
     // 3. Map fetched data to our schema and save
     //    Handle potential type mismatches identified by linter previously.
-    const dataToSave: Omit<OriginalFirebaseSerpDataDoc, 'id' | 'createdAt' | 'updatedAt'> = {
+    const dataToSave: Omit<
+      OriginalFirebaseSerpResultObject,
+      'id' | 'createdAt' | 'updatedAt'
+    > = {
       query: query, // Use the input query
       region: region, // Use the input region
       language: language, // Use the input language
 
       // Map fetched fields carefully, providing defaults or null
-      searchQuery: typeof fetchedData.searchQuery === 'string' ? fetchedData.searchQuery : JSON.stringify(fetchedData.searchQuery ?? null),
+      searchQuery:
+        typeof fetchedData.searchQuery === 'string'
+          ? fetchedData.searchQuery
+          : JSON.stringify(fetchedData.searchQuery ?? null),
       resultsTotal: fetchedData.resultsTotal ?? null,
       // Fix relatedQueries mapping
       relatedQueries: Array.isArray(fetchedData.relatedQueries)
         ? fetchedData.relatedQueries.map((q: any) => ({
-          query: q.query || q.title || 'Missing Query', // Attempt to get query or title
-          url: q.url ?? null
-        }))
+            query: q.query || q.title || 'Missing Query', // Attempt to get query or title
+            url: q.url ?? null
+          }))
         : [],
       // Fix aiOverview mapping
-      aiOverview: typeof fetchedData.aiOverview === 'string' ? fetchedData.aiOverview : JSON.stringify(fetchedData.aiOverview ?? null),
+      aiOverview:
+        typeof fetchedData.aiOverview === 'string'
+          ? fetchedData.aiOverview
+          : JSON.stringify(fetchedData.aiOverview ?? null),
       paidResults: fetchedData.paidResults ?? [], // Keep as any[] for now
       paidProducts: fetchedData.paidProducts ?? [], // Keep as any[] for now
       // Fix peopleAlsoAsk mapping
       peopleAlsoAsk: Array.isArray(fetchedData.peopleAlsoAsk)
         ? fetchedData.peopleAlsoAsk.map((paa: any) => ({
-          question: paa.question || 'Missing Question',
-          answer: paa.answer ?? null,
-          title: paa.title ?? null,
-          url: paa.url ?? null
-        }))
+            question: paa.question || 'Missing Question',
+            answer: paa.answer ?? null,
+            title: paa.title ?? null,
+            url: paa.url ?? null
+          }))
         : [],
       organicResults: Array.isArray(fetchedData.organicResults)
         ? fetchedData.organicResults.map((org: any) => ({
-          position: org.position,
-          url: org.url,
-          title: org.title,
-          description: org.description ?? null,
-          displayedUrl: org.displayedUrl ?? null
-          // Map other fields if needed
-        }))
+            position: org.position,
+            url: org.url,
+            title: org.title,
+            description: org.description ?? null,
+            displayedUrl: org.displayedUrl ?? null
+            // Map other fields if needed
+          }))
         : [],
 
       // Initialize new fields to null
@@ -467,36 +525,46 @@ export async function getOrFetchSerpDataAction({
       userIntentAnalysisText: null,
       contentTypeAnalysis: null,
       userIntentAnalysis: null,
-      titleAnalysis: null,
+      titleAnalysis: null
     };
 
     console.log(`[Action] Saving newly fetched data to Firestore...`);
     const newDocId = await saveSerpDataDoc(dataToSave);
     console.log(`[Action] Saved new SERP data with ID: ${newDocId}`);
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(newDocId)); // Revalidate the new document
+    revalidateTag(SERP_DATA_LIST_TAG); // Revalidate any list view
 
     // Fetch the newly created doc to include timestamps in the return
     const savedDoc = await getSerpDataDocById(newDocId);
     if (!savedDoc) {
-        // This shouldn't happen ideally, but handle it
-        console.error(`[Action] Failed to retrieve newly saved doc: ${newDocId}`);
-        // Return the data we have, even without DB timestamps
-        // Add placeholder/null timestamps to satisfy the type temporarily
-        // Create a fallback object with current dates and serialize it
-         const fallbackData = {
-            ...dataToSave,
-            id: newDocId,
-            createdAt: new Date(), // Use JS Date
-            updatedAt: new Date()  // Use JS Date
-        };
-         // Need to cast the fallback to match the input expectation of serializeTimestamps
-         return serializeTimestamps(fallbackData as (OriginalFirebaseSerpDataDoc & { id: string }));
+      // This shouldn't happen ideally, but handle it
+      console.error(`[Action] Failed to retrieve newly saved doc: ${newDocId}`);
+      // Return the data we have, even without DB timestamps
+      // Add placeholder/null timestamps to satisfy the type temporarily
+      // Create a fallback object with current dates and serialize it
+      const fallbackData = {
+        ...dataToSave,
+        id: newDocId,
+        createdAt: new Date(), // Use JS Date
+        updatedAt: new Date() // Use JS Date
+      };
+      // Need to cast the fallback to match the input expectation of serializeTimestamps
+      // Use the assumed correct type name
+      return serializeTimestamps(
+        fallbackData as OriginalFirebaseSerpResultObject & { id: string }
+      );
     }
-    console.log(`[Action] Successfully retrieved newly saved doc with timestamps.`);
+    console.log(
+      `[Action] Successfully retrieved newly saved doc with timestamps.`
+    );
     // --- Serialize before returning ---
     return serializeTimestamps(savedDoc);
-
   } catch (error) {
-    console.error(`[Action] Failed to get or fetch SERP data for ${query}:`, error);
+    console.error(
+      `[Action] Failed to get or fetch SERP data for ${query}:`,
+      error
+    );
     // Depending on requirements, you might return null or re-throw
     return null;
   }
@@ -516,7 +584,8 @@ export async function performSerpTitleAnalysis({
   console.log(
     `[Action] Performing Title Analysis & Recommendation for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
   );
-  if (!docId) throw new Error('Document ID is required to save title analysis.');
+  if (!docId)
+    throw new Error('Document ID is required to save title analysis.');
 
   try {
     // --- 1. Generate the structured JSON analysis ---
@@ -528,8 +597,8 @@ export async function performSerpTitleAnalysis({
       prompt: analysisPrompt
     });
     console.log(
-        `[Action] Title Analysis JSON generation successful for Doc ID: ${docId}.`
-      );
+      `[Action] Title Analysis JSON generation successful for Doc ID: ${docId}.`
+    );
 
     // --- 2. Generate the recommendation text based on the JSON analysis ---
     const recommendationPrompt = getTitleRecommendationPrompt(
@@ -538,31 +607,36 @@ export async function performSerpTitleAnalysis({
     );
     console.log('[AI Call] Calling AI for Title Recommendation Text...');
     const { text: recommendationResultText } = await generateText({
-        model: openai(model), // Can use the same model
-        prompt: recommendationPrompt
+      model: openai(model), // Can use the same model
+      prompt: recommendationPrompt
     });
     console.log(
-        `[Action] Title Recommendation Text generation successful for Doc ID: ${docId}.`
-      );
+      `[Action] Title Recommendation Text generation successful for Doc ID: ${docId}.`
+    );
 
     // --- 3. Save the JSON analysis to Firestore ---
     console.log(`[Action] Saving ${analysisKey} JSON to Firestore...`);
     await updateSerpDataField(docId, analysisKey, analysisResultJson);
-    console.log(`[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`);
+    console.log(
+      `[Action] Successfully updated ${analysisKey} for Doc ID: ${docId}`
+    );
+    // --- Revalidate Cache ---
+    revalidateTag(getSerpDocTag(docId));
 
     // --- 4. Return both the JSON and the recommendation text ---
     return {
-        analysisJson: analysisResultJson, // No need to cast if schema matches type
-        recommendationText: recommendationResultText
+      analysisJson: analysisResultJson, // No need to cast if schema matches type
+      recommendationText: recommendationResultText
     };
-
   } catch (error) {
     console.error(
       `[Action] Title Analysis or Recommendation failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
-      `標題分析或建議生成失敗: ${error instanceof Error ? error.message : String(error)}`
+      `標題分析或建議生成失敗: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -589,12 +663,12 @@ export async function performBetterHaveInArticleAnalysis({
   aiOverviewString,
   model = 'gpt-4.1-mini'
 }: BetterHaveParams): Promise<{
-    analysisJson: BetterHaveAnalysisJson;
-    recommendationText: string;
+  analysisJson: BetterHaveAnalysisJson;
+  recommendationText: string;
 }> {
-  // Define keys for saving, matching the updated schema
+  // Define keys for saving, assuming schema has both
   const textAnalysisKey = 'betterHaveAnalysisText';
-  const jsonAnalysisKey = 'betterHaveAnalysisJson';
+  const jsonAnalysisKey = 'betterHaveAnalysis'; // Storing JSON under the main key
 
   console.log(
     `[Action] Performing 'Better Have' Analysis (Text, JSON, Recommendation) for Doc ID: ${docId} (Keyword: ${keyword}) using ${model}`
@@ -604,28 +678,51 @@ export async function performBetterHaveInArticleAnalysis({
   try {
     // --- 1. Generate Raw Markdown Analysis Text ---
     const textPrompt = getBetterHaveInArticlePrompt(
-        keyword, serpString, paaString, relatedQueriesString, aiOverviewString
+      keyword,
+      serpString,
+      paaString,
+      relatedQueriesString,
+      aiOverviewString
     );
     console.log('[AI Call 1/3] Generating Better Have Markdown Text...');
     const { text: markdownAnalysisResultText } = await generateText({
       model: openai(model),
       prompt: textPrompt
     });
-    console.log(`[Action] Raw Markdown generation successful for Doc ID: ${docId}.`);
+    console.log(
+      `[Action] Raw Markdown generation successful for Doc ID: ${docId}.`
+    );
 
     // --- Save Raw Text Immediately ---
+    /*
+    // TODO: Uncomment this block after adding 'betterHaveAnalysisText: z.string().nullable()'
+    //       to the FirebaseSerpResultObject schema in app/services/firebase/schema.ts
     try {
-         console.log(`[Action] Saving ${textAnalysisKey} to Firestore...`);
-         await updateSerpDataField(docId, textAnalysisKey, markdownAnalysisResultText);
-         console.log(`[Action] Successfully updated ${textAnalysisKey} for Doc ID: ${docId}`);
-    } catch(saveError) {
-        console.error(`[Action] Failed to save ${textAnalysisKey} for Doc ID: ${docId}:`, saveError);
-        // Decide if this error is critical or if we can proceed
+      console.log(`[Action] Saving ${textAnalysisKey} to Firestore...`);
+      await updateSerpDataField(
+        docId,
+        textAnalysisKey, // Use the specific text key
+        markdownAnalysisResultText
+      );
+      console.log(
+        `[Action] Successfully updated ${textAnalysisKey} for Doc ID: ${docId}`
+      );
+      // --- Revalidate Cache for text update ---
+      revalidateTag(getSerpDocTag(docId));
+    } catch (saveError) {
+      console.error(
+        `[Action] Failed to save ${textAnalysisKey} for Doc ID: ${docId}:`,
+        saveError
+      );
+      // Decide if this error is critical or if we can proceed
     }
-
+    */
 
     // --- 2. Convert Markdown to Structured JSON ---
-    const conversionPrompt = getBetterHaveConversionPrompt(markdownAnalysisResultText, keyword);
+    const conversionPrompt = getBetterHaveConversionPrompt(
+      markdownAnalysisResultText,
+      keyword
+    );
     console.log('[AI Call 2/3] Converting Better Have Markdown to JSON...');
     const { object: analysisResultJson } = await generateObject({
       model: openai(model),
@@ -635,38 +732,51 @@ export async function performBetterHaveInArticleAnalysis({
     console.log(`[Action] JSON conversion successful for Doc ID: ${docId}.`);
 
     // --- Save JSON Analysis ---
-     try {
-         console.log(`[Action] Saving ${jsonAnalysisKey} to Firestore...`);
-         await updateSerpDataField(docId, jsonAnalysisKey, analysisResultJson);
-         console.log(`[Action] Successfully updated ${jsonAnalysisKey} for Doc ID: ${docId}`);
-    } catch(saveError) {
-        console.error(`[Action] Failed to save ${jsonAnalysisKey} for Doc ID: ${docId}:`, saveError);
+    try {
+      console.log(`[Action] Saving ${jsonAnalysisKey} to Firestore...`);
+      await updateSerpDataField(docId, jsonAnalysisKey, analysisResultJson);
+      console.log(
+        `[Action] Successfully updated ${jsonAnalysisKey} for Doc ID: ${docId}`
+      );
+      // --- Revalidate Cache for JSON update ---
+      revalidateTag(getSerpDocTag(docId));
+    } catch (saveError) {
+      console.error(
+        `[Action] Failed to save ${jsonAnalysisKey} for Doc ID: ${docId}:`,
+        saveError
+      );
+      // Rethrowing save error for JSON as it might be critical
+      throw saveError;
     }
 
-
     // --- 3. Generate Concise Recommendation Text ---
-    const recommendationPrompt = getBetterHaveRecommendationPrompt(markdownAnalysisResultText, keyword);
+    const recommendationPrompt = getBetterHaveRecommendationPrompt(
+      markdownAnalysisResultText,
+      keyword
+    );
     console.log('[AI Call 3/3] Generating Better Have Recommendation Text...');
     const { text: recommendationResultText } = await generateText({
-        model: openai(model),
-        prompt: recommendationPrompt
+      model: openai(model),
+      prompt: recommendationPrompt
     });
-     console.log(`[Action] Recommendation text generation successful for Doc ID: ${docId}.`);
-
+    console.log(
+      `[Action] Recommendation text generation successful for Doc ID: ${docId}.`
+    );
 
     // --- 4. Return JSON and Recommendation Text ONLY ---
     return {
-        analysisJson: analysisResultJson,
-        recommendationText: recommendationResultText,
+      analysisJson: analysisResultJson,
+      recommendationText: recommendationResultText
     };
-
   } catch (error) {
     console.error(
       `[Action] 'Better Have' Analysis pipeline failed for Doc ID: ${docId}:`,
       error
     );
     throw new Error(
-      `'Better Have In Article' 分析流程失敗: ${error instanceof Error ? error.message : String(error)}`
+      `'Better Have In Article' 分析流程失敗: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }

@@ -1,5 +1,5 @@
+import { getTotalAnalyzedSerpsCount } from '@/app/services/firebase/data-serp-result';
 import TestSerpActionPage from './use-serp-ai';
-import { getTotalAnalyzedSerpsCount } from '@/app/services/firebase/db-serp';
 
 export default async function SerpAnalysisTestRoute() {
   const totalAnalyzedCount = await getTotalAnalyzedSerpsCount();

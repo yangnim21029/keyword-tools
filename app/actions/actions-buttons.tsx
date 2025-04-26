@@ -1,0 +1,279 @@
+'use client';
+
+import {
+  ArrowUp,
+  ListTree,
+  Loader2,
+  LucideIcon,
+  Sparkles,
+  Trash2
+} from 'lucide-react'; // Add ArrowUp, Trash2, and ShieldAlert
+import { useRouter } from 'next/navigation'; // Import useRouter
+import { useTransition } from 'react';
+import { toast } from 'sonner';
+
+import { submitGeneratePersonaForCluster } from '@/app/actions/actions-ai-persona'; // Action for persona
+import {
+  submitCreateKeywordVolumeObj,
+  submitDeleteKeywordVolumeObj
+} from '@/app/actions/actions-keyword-volume'; // Import the keyword research action, delete action, and new cleanup action
+import { submitClustering } from '@/app/actions/actions-semantic-clustering'; // Action for clustering
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { cn } from '@/lib/utils';
+
+// === Cluster Analysis Button ===
+
+interface ClusterAnalysisButtonProps {
+  researchId: string;
+  buttonText?: string;
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+}
+
+export function ClusterAnalysisButton({
+  researchId,
+  buttonText = '執行關鍵字分群',
+  variant = 'outline',
+  size = 'sm',
+  className = ''
+}: ClusterAnalysisButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleClusterAnalysis = () => {
+    startTransition(async () => {
+      toast.info(`Starting keyword clustering for ${researchId}...`);
+      const result = await submitClustering({
+        keywordVolumeObjectId: researchId
+        // Add other options like model or maxKeywords if needed
+      });
+      if (result.success) {
+        toast.success(
+          `Keyword clustering completed successfully for ${researchId}!`
+        );
+        // Revalidation should happen within the server action
+      } else {
+        toast.error(
+          `Keyword clustering failed for ${researchId}: ${
+            result.error || 'Unknown error'
+          }`
+        );
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleClusterAnalysis}
+      isLoading={isPending}
+      disabled={isPending}
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+    >
+      {!isPending && <ListTree className="h-4 w-4 mr-2" />}
+      {buttonText}
+    </LoadingButton>
+  );
+}
+
+// === Generate Persona Button (Moved from keyword-mapping/components) ===
+
+interface GeneratePersonaButtonProps {
+  researchId: string;
+  clusterName: string;
+  buttonText?: string;
+  icon?: LucideIcon;
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+}
+
+export function GeneratePersonaButton({
+  researchId,
+  clusterName,
+  buttonText = '生成用戶畫像',
+  icon: Icon = Sparkles, // Default to Sparkles icon
+  variant = 'outline',
+  size = 'sm',
+  className = 'w-full text-xs' // Keep original default class or adjust
+}: GeneratePersonaButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleGenerate = () => {
+    startTransition(async () => {
+      const result = await submitGeneratePersonaForCluster({
+        keywordVolumeObjectId: researchId,
+        clusterName: clusterName
+      });
+      if (result.success) {
+        toast.success(`用戶畫像 for "${clusterName}" generated successfully!`);
+        // Revalidation should happen within the server action
+      } else {
+        toast.error(
+          `Failed to generate persona for "${clusterName}": ${
+            result.error || 'Unknown error'
+          }`
+        );
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleGenerate}
+      isLoading={isPending}
+      disabled={isPending}
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+    >
+      {!isPending && <Icon className="h-4 w-4 mr-2" />}
+      {buttonText}
+    </LoadingButton>
+  );
+}
+
+// === Submit Keyword Research Button ===
+
+interface SubmitKeywordResearchButtonProps {
+  query: string;
+  region: string;
+  language: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+export function SubmitKeywordResearchButton({
+  query,
+  region,
+  language,
+  className = 'h-10 w-10 rounded-full bg-black hover:bg-gray-800 text-white flex items-center justify-center shadow-md transition-colors p-0', // Default style from original form
+  disabled = false
+}: SubmitKeywordResearchButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleSubmit = () => {
+    if (!query.trim() || isPending) return;
+
+    startTransition(async () => {
+      toast.info('Starting new keyword research...');
+      try {
+        const result = await submitCreateKeywordVolumeObj({
+          query: query,
+          region: region,
+          language: language,
+          // Keep other options as default/fixed for now
+          useAlphabet: false,
+          useSymbols: true,
+          filterZeroVolume: false
+        });
+
+        if (result.success && result.researchId) {
+          toast.success(`研究記錄已創建 (ID: ${result.researchId})`);
+          router.push(`/keyword-mapping/${result.researchId}`);
+        } else {
+          const errorMsg = result.error || '創建研究記錄失敗，請稍後再試。';
+          toast.error(errorMsg);
+          if (result.researchId) {
+            toast.info(
+              `研究記錄可能已部分創建 (ID: ${result.researchId})，但後續步驟失敗。`
+            );
+          }
+        }
+      } catch (err) {
+        console.error(
+          '[SubmitKeywordResearchButton] Error calling server action:',
+          err
+        );
+        const message =
+          err instanceof Error ? err.message : '處理請求時發生意外錯誤。';
+        toast.error(message);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      className={className}
+      onClick={handleSubmit}
+      isLoading={isPending}
+      disabled={disabled || isPending || !query.trim()} // Ensure button is disabled if query is empty
+      aria-label="研究關鍵字"
+      loadingText=""
+      variant="default" // Using default variant, style handled by className mostly
+    >
+      {!isPending && <ArrowUp size={20} />}
+      {/* Loader is handled internally by LoadingButton when isLoading is true */}
+    </LoadingButton>
+  );
+}
+
+// === Delete Keyword Volume Button ===
+
+interface DeleteKeywordVolumeButtonProps {
+  researchId: string;
+  className?: string;
+  // Allow only variants supported by the underlying Button/LoadingButton
+  variant?: Extract<
+    React.ComponentProps<typeof LoadingButton>['variant'],
+    'default' | 'outline' | 'secondary' | 'ghost' // Explicitly list supported variants
+  >;
+  // Allow only sizes supported by the underlying LoadingButton
+  size?: Extract<
+    React.ComponentProps<typeof LoadingButton>['size'],
+    'default' | 'sm' | 'lg' // Explicitly list supported sizes
+  >;
+  ariaLabel?: string;
+}
+
+export function DeleteKeywordVolumeButton({
+  researchId,
+  className = 'h-7 w-7 p-0',
+  variant = 'ghost', // Default to ghost
+  size = 'sm', // Default to sm
+  ariaLabel
+}: DeleteKeywordVolumeButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleDelete = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault(); // Prevent link navigation if inside a Link
+    e.stopPropagation(); // Stop event bubbling
+
+    if (!researchId || isPending) return;
+
+    startTransition(async () => {
+      toast.info(`Deleting research ${researchId}...`);
+      const result = await submitDeleteKeywordVolumeObj({ researchId });
+      if (result.success) {
+        toast.success(`Research ${researchId} deleted.`);
+      } else {
+        toast.error(
+          `Failed to delete ${researchId}: ${result.error || 'Unknown error'}`
+        );
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={cn(
+        'flex-shrink-0 text-muted-foreground hover:text-destructive',
+        className
+      )}
+      onClick={handleDelete}
+      isLoading={isPending}
+      disabled={isPending || !researchId}
+      aria-label={ariaLabel || `Delete research ${researchId}`}
+      loadingIcon={<Loader2 className="h-4 w-4 animate-spin" />}
+    >
+      {!isPending && <Trash2 className="h-4 w-4" />}
+    </LoadingButton>
+  );
+}

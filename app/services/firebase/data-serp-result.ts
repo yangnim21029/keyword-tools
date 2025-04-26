@@ -163,11 +163,11 @@ const serpAnalysisSchema = z.object({
   // Renamed field to use the expanded organic result schema
   organicResults: z.array(organicResultSchema).optional().nullable(),
 
-  // --- REVERTED: Keep both Text and JSON analysis fields --- 
-  contentTypeAnalysis: contentTypeAnalysisJsonSchema.optional().nullable(), 
-  userIntentAnalysis: userIntentAnalysisJsonSchema.optional().nullable(), 
+  // --- REVERTED: Keep both Text and JSON analysis fields ---
+  contentTypeAnalysis: contentTypeAnalysisJsonSchema.optional().nullable(),
+  userIntentAnalysis: userIntentAnalysisJsonSchema.optional().nullable(),
   titleAnalysis: titleAnalysisOutputSchema.optional().nullable(),
-  // --- RE-ADD Text fields --- 
+  // --- RE-ADD Text fields ---
   contentTypeAnalysisText: z.string().optional().nullable(),
   userIntentAnalysisText: z.string().optional().nullable()
 });
@@ -188,15 +188,15 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
       timestamp: FieldValue.serverTimestamp() // Always set/update timestamp
     };
 
-    // --- UPDATED: Handle optional fields (both JSON and Text) --- 
+    // --- UPDATED: Handle optional fields (both JSON and Text) ---
     if (data.contentTypeAnalysis !== undefined) {
-      dataToSave.contentTypeAnalysis = data.contentTypeAnalysis; 
+      dataToSave.contentTypeAnalysis = data.contentTypeAnalysis;
     }
     if (data.userIntentAnalysis !== undefined) {
-      dataToSave.userIntentAnalysis = data.userIntentAnalysis; 
+      dataToSave.userIntentAnalysis = data.userIntentAnalysis;
     }
     if (data.titleAnalysis !== undefined) {
-      dataToSave.titleAnalysis = data.titleAnalysis; 
+      dataToSave.titleAnalysis = data.titleAnalysis;
     }
     if (data.contentTypeAnalysisText !== undefined) {
       dataToSave.contentTypeAnalysisText = data.contentTypeAnalysisText;
@@ -235,10 +235,10 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
     const getOptionalField = (
       obj: any,
       fieldName: string,
-      defaultValue: any = null 
+      defaultValue: any = null
     ) => (obj?.[fieldName] === undefined ? defaultValue : obj[fieldName]);
 
-    // --- UPDATED: Map all fields (Text and JSON) --- 
+    // --- UPDATED: Map all fields (Text and JSON) ---
     const returnData: SerpAnalysisData = {
       id: snapshot.id,
       originalKeyword: data.originalKeyword,
@@ -257,8 +257,8 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
       // Map organic results
       organicResults: getOptionalField(data, 'organicResults', []).map(
         (res: any) => ({
-          position: getOptionalField(res, 'position', 0), 
-          title: getOptionalField(res, 'title', ''), 
+          position: getOptionalField(res, 'position', 0),
+          title: getOptionalField(res, 'title', ''),
           url: getOptionalField(res, 'url', ''),
           description: getOptionalField(res, 'description'),
           displayedUrl: getOptionalField(res, 'displayedUrl'),
@@ -277,10 +277,13 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
       ),
 
       // Map analysis fields (JSON and Text)
-      contentTypeAnalysis: getOptionalField(data, 'contentTypeAnalysis'), 
-      userIntentAnalysis: getOptionalField(data, 'userIntentAnalysis'), 
+      contentTypeAnalysis: getOptionalField(data, 'contentTypeAnalysis'),
+      userIntentAnalysis: getOptionalField(data, 'userIntentAnalysis'),
       titleAnalysis: getOptionalField(data, 'titleAnalysis'),
-      contentTypeAnalysisText: getOptionalField(data, 'contentTypeAnalysisText'), 
+      contentTypeAnalysisText: getOptionalField(
+        data,
+        'contentTypeAnalysisText'
+      ),
       userIntentAnalysisText: getOptionalField(data, 'userIntentAnalysisText')
     };
 
@@ -293,10 +296,12 @@ const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
 const getSerpCollection = () => {
   if (!db) throw new Error('Firestore is not initialized.');
   // Use converter directly
-  return db
-    // Use the correct collection name
-    .collection(COLLECTIONS.SERP_DATA) 
-    .withConverter(serpAnalysisConverter);
+  return (
+    db
+      // Use the correct collection name
+      .collection(COLLECTIONS.SERP_RESULT)
+      .withConverter(serpAnalysisConverter)
+  );
 };
 
 // --- Modified saveSerpAnalysis (REVERTED) ---
@@ -322,7 +327,7 @@ export async function saveSerpAnalysis(
       const updateData: FirebaseFirestore.WithFieldValue<
         Partial<FirebaseSerpAnalysisDoc>
       > = {
-        ...data 
+        ...data
         // Timestamp handled by converter on update
       };
       await docRef.set(updateData, { merge: true });
@@ -368,7 +373,7 @@ export async function saveSerpAnalysis(
 
       // Merge any analysis data provided in the input (e.g., if fetched data included it)
       // This allows initiating with fetched Apify data AND potentially pre-existing analysis
-      Object.assign(dataToCreate, data); 
+      Object.assign(dataToCreate, data);
 
       // Validate the final structure for creation
       const validationResult = serpAnalysisSchema.safeParse(dataToCreate);
@@ -384,7 +389,7 @@ export async function saveSerpAnalysis(
 
       // --- REVERTED: Use collectionRef.add directly, converter handles types/timestamp ---
       // Type assertion might be needed if TS inference struggles
-      const docRef = await collectionRef.add(validationResult.data as any); 
+      const docRef = await collectionRef.add(validationResult.data as any);
       console.log(
         `[Firestore] Successfully created SERP analysis (ID: ${docRef.id})`
       );
@@ -471,7 +476,7 @@ export async function getSerpAnalysisList(): Promise<
   console.log('[Firestore] Fetching SERP analysis list (ID and Keyword)...');
   try {
     const snapshot = await getSerpCollection() // Use reverted function
-      .orderBy('timestamp', 'desc') 
+      .orderBy('timestamp', 'desc')
       .select('originalKeyword')
       .get();
 

@@ -1,0 +1,37 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+id: keyword-data-flow
+name: Keyword Research Data Flow
+lastUpdated: 2024-07-27T10:00:00Z
+description: Explains how keyword research data is fetched and manipulated.
+tags: ['data-fetching', 'server-actions', 'firebase', 'keyword-research', 'cache']
+scopes: ['app/services/firebase/db-keyword-research.ts', 'app/actions/keyword-volume-action.ts']
+---
+
+# Keyword Research Data Access and Manipulation
+
+This rule outlines the separation of concerns for handling Keyword Research data stored in Firebase.
+
+## Data Fetching (Read Operations)
+
+-   All functions for **reading** Keyword Research data reside in [`app/services/firebase/db-keyword-research.ts`](mdc:app/services/firebase/db-keyword-research.ts).
+-   These functions (`getKeywordResearchSummaryList`, `getKeywordResearchDetail`, `getTotalKeywordResearchCount`) use Next.js `unstable_cache` for performance.
+-   Data fetching functions should be imported directly into Server Components or other server-side modules where read access is needed.
+-   Cache revalidation is primarily handled by Server Actions after data modification.
+
+## Data Manipulation (Write/Update/Delete Operations)
+
+-   All functions for **modifying** Keyword Research data (create, update, delete, cluster updates, duplicate removal) are implemented as **Server Actions** in [`app/actions/keyword-volume-action.ts`](mdc:app/actions/keyword-volume-action.ts).
+-   These actions (`submitNewKeywordResearch`, `submitDeleteKeywordResearch`, `actionUpdateKeywordResearch`, etc.) directly interact with the Firebase database using `db` and `COLLECTIONS` imported from [`app/services/firebase/db-config.ts`](mdc:app/services/firebase/db-config.ts).
+-   Client components should invoke these Server Actions to modify data.
+-   These Server Actions are responsible for calling `actionRevalidateKeywordResearch` (defined within the same file) to invalidate the relevant caches after successful data modification.
+
+## Supporting Files
+
+-   Firebase configuration (db instance, collection names) is in [`app/services/firebase/db-config.ts`](mdc:app/services/firebase/db-config.ts).
+-   Shared Firestore data types are defined in [`app/services/firebase/types.ts`](mdc:app/services/firebase/types.ts).
+-   Processed data schemas (like `ProcessedKeywordResearchData`) are in [`app/services/firebase/schema.ts`](mdc:app/services/firebase/schema.ts).

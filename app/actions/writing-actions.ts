@@ -1,21 +1,28 @@
-"use server"
+'use server';
 
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai'; // Removed generateObject for now
 import { MEDIASITE_DATA } from '../global-config';
 // Import fine-tune data
-import { THEME_FINE_TUNE_DATA, MEDIA_SITE_FINE_TUNE_DATA, LANGUAGE_FINE_TUNE_DATA } from '../prompt/fine-tune';
 import { z } from 'zod';
-import { 
-    getOrFetchSerpDataAction, 
-    performContentTypeAnalysis,
-    performUserIntentAnalysis,
-    performSerpTitleAnalysis,
-    performBetterHaveInArticleAnalysis,
-    generateAnalysisJsonFromText
+import {
+  LANGUAGE_FINE_TUNE_DATA,
+  MEDIA_SITE_FINE_TUNE_DATA,
+  THEME_FINE_TUNE_DATA
+} from '../prompt/fine-tune';
+import {
+  generateAnalysisJsonFromText,
+  getOrFetchSerpDataAction,
+  performBetterHaveInArticleAnalysis,
+  performContentTypeAnalysis,
+  performSerpTitleAnalysis,
+  performUserIntentAnalysis
 } from './serp-action'; // Assuming serp-action.ts is in the same dir
 // Import the necessary type
-import type { TitleAnalysisJson, BetterHaveAnalysisJson } from '@/app/services/firebase/schema';
+import type {
+  AiSerpBetterHaveAnalysisJson,
+  AiTitleAnalysisJson
+} from '@/app/services/firebase/schema';
 import type { ClientSafeSerpDataDoc } from './serp-action'; // Import the client-safe type if needed
 import { generateContentSuggestionsAction } from './use-content-ai';
 
@@ -27,350 +34,517 @@ function formatSerpResults(organicResults: any[] | undefined | null): string {
   return organicResults
     .map(
       (result, index) =>
-        `Position ${result.position || index + 1}:\nTitle: ${result.title || 'N/A'}\nDescription: ${result.description || 'N/A'}\nURL: ${result.url || 'N/A'}\n---`
+        `Position ${result.position || index + 1}:\nTitle: ${
+          result.title || 'N/A'
+        }\nDescription: ${result.description || 'N/A'}\nURL: ${
+          result.url || 'N/A'
+        }\n---`
     )
     .join('\n\n');
 }
 
-function formatRelatedKeywords(relatedQueries: any[] | undefined | null): string {
-    if (!Array.isArray(relatedQueries) || relatedQueries.length === 0) {
-        return 'No related keywords found.';
-    }
-    return relatedQueries
-        .map(q => `${q?.query || JSON.stringify(q)}`) // Handle missing query property
-        .join('\n');
+function formatRelatedKeywords(
+  relatedQueries: any[] | undefined | null
+): string {
+  if (!Array.isArray(relatedQueries) || relatedQueries.length === 0) {
+    return 'No related keywords found.';
+  }
+  return relatedQueries
+    .map(q => `${q?.query || JSON.stringify(q)}`) // Handle missing query property
+    .join('\n');
 }
 
 function formatPAA(peopleAlsoAsk: any[] | undefined | null): string {
-     if (!Array.isArray(peopleAlsoAsk) || peopleAlsoAsk.length === 0) {
-        return 'No People Also Ask data found.';
-    }
-    return peopleAlsoAsk
-        .map(paa => {
-            const question = paa?.question || 'Unknown question';
-            const answerSnippet = paa?.answer ? `\n  Answer Snippet: ${paa.answer.substring(0, 150)}...` : '';
-            return `- ${question}${answerSnippet}`;
-        })
-        .join('\n');
+  if (!Array.isArray(peopleAlsoAsk) || peopleAlsoAsk.length === 0) {
+    return 'No People Also Ask data found.';
+  }
+  return peopleAlsoAsk
+    .map(paa => {
+      const question = paa?.question || 'Unknown question';
+      const answerSnippet = paa?.answer
+        ? `\n  Answer Snippet: ${paa.answer.substring(0, 150)}...`
+        : '';
+      return `- ${question}${answerSnippet}`;
+    })
+    .join('\n');
 }
 
 function formatAIOverview(aiOverview: string | undefined | null): string {
-    if (!aiOverview || typeof aiOverview !== 'string' || aiOverview.trim().length === 0) {
-        return 'No AI Overview data found.';
-    }
-    const maxLength = 1500;
-    return aiOverview.substring(0, maxLength) + (aiOverview.length > maxLength ? '...' : '');
+  if (
+    !aiOverview ||
+    typeof aiOverview !== 'string' ||
+    aiOverview.trim().length === 0
+  ) {
+    return 'No AI Overview data found.';
+  }
+  const maxLength = 1500;
+  return (
+    aiOverview.substring(0, maxLength) +
+    (aiOverview.length > maxLength ? '...' : '')
+  );
 }
 
 function getFineTuneDataStrings(names?: string[]): string {
-    if (!names || names.length === 0) return "";
-    const allData = [
-        ...THEME_FINE_TUNE_DATA,
-        ...MEDIA_SITE_FINE_TUNE_DATA,
-        ...LANGUAGE_FINE_TUNE_DATA
-    ];
-    const filteredData = allData.filter(item => names.includes(item.name));
-    if (filteredData.length === 0) return "";
-    const formattedStrings = filteredData.map(item => {
-        const description = item.data_set_description || 'No description provided';
-        const dataString = JSON.stringify(item.data, null, 2);
-        return `===\n${description}\n${dataString}\n===`;
-    });
-    return `\n\n---
+  if (!names || names.length === 0) return '';
+  const allData = [
+    ...THEME_FINE_TUNE_DATA,
+    ...MEDIA_SITE_FINE_TUNE_DATA,
+    ...LANGUAGE_FINE_TUNE_DATA
+  ];
+  const filteredData = allData.filter(item => names.includes(item.name));
+  if (filteredData.length === 0) return '';
+  const formattedStrings = filteredData.map(item => {
+    const description = item.data_set_description || 'No description provided';
+    const dataString = JSON.stringify(item.data, null, 2);
+    return `===\n${description}\n${dataString}\n===`;
+  });
+  return `\n\n---
 檢查文章，不要犯以下錯誤\n===\n${formattedStrings.join('\n\n')}`;
 }
 
-function formatKeywordReportForPrompt(report: any, selectedClusterName?: string | null): string {
-    if (!report || typeof report !== 'object' || Object.keys(report).length === 0) return "";
-   const formatNumber = (num: number | null | undefined): string => typeof num === 'number' ? num.toLocaleString() : 'N/A';
-   
-   // Format and sort keywords with volume >= 100
-   const formatKeywords = (keywords: any[] | undefined): string => {
-       if (!keywords) return "No specific keywords found.";
-       const highVolumeKeywords = keywords.filter(k => 
-           k && typeof k.searchVolume === 'number' && k.searchVolume >= 100
-       );
-       highVolumeKeywords.sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
-       if (highVolumeKeywords.length === 0) return "No specific keywords found (Volume >= 100).";
-       // Add newline and indent for each keyword
-       return `\n      - ${highVolumeKeywords
-           .map((k: any) => `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(k?.searchVolume)})`)
-           .join('\n      - ')}`;
-   };
+function formatKeywordReportForPrompt(
+  report: any,
+  selectedClusterName?: string | null
+): string {
+  if (!report || typeof report !== 'object' || Object.keys(report).length === 0)
+    return '';
+  const formatNumber = (num: number | null | undefined): string =>
+    typeof num === 'number' ? num.toLocaleString() : 'N/A';
 
-   // Collector for low-volume keyword OBJECTS
-   const lowVolumeKeywordObjects: { text: string; searchVolume: number }[] = [];
-   const collectLowVolume = (keywords: any[] | undefined) => {
-       if (!keywords) return;
-       keywords.forEach((k: any) => {
-           if (k && typeof k.searchVolume === 'number' && k.searchVolume < 100 && k.text) {
-               if (!lowVolumeKeywordObjects.some(existing => existing.text === k.text)) {
-                   lowVolumeKeywordObjects.push({ text: k.text, searchVolume: k.searchVolume });
-               }
-           }
-       });
-   };
+  // Format and sort keywords with volume >= 100
+  const formatKeywords = (keywords: any[] | undefined): string => {
+    if (!keywords) return 'No specific keywords found.';
+    const highVolumeKeywords = keywords.filter(
+      k => k && typeof k.searchVolume === 'number' && k.searchVolume >= 100
+    );
+    highVolumeKeywords.sort(
+      (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
+    );
+    if (highVolumeKeywords.length === 0)
+      return 'No specific keywords found (Volume >= 100).';
+    // Add newline and indent for each keyword
+    return `\n      - ${highVolumeKeywords
+      .map(
+        (k: any) =>
+          `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(
+            k?.searchVolume
+          )})`
+      )
+      .join('\n      - ')}`;
+  };
 
-   // Collect low volume keyword objects first
-   if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume)) {
-       report.clustersWithVolume.forEach((cluster: any) => {
-            collectLowVolume(cluster.keywords);
-       });
-   } else if (report.keywords && Array.isArray(report.keywords)) {
-       collectLowVolume(report.keywords);
-   }
+  // Collector for low-volume keyword OBJECTS
+  const lowVolumeKeywordObjects: { text: string; searchVolume: number }[] = [];
+  const collectLowVolume = (keywords: any[] | undefined) => {
+    if (!keywords) return;
+    keywords.forEach((k: any) => {
+      if (
+        k &&
+        typeof k.searchVolume === 'number' &&
+        k.searchVolume < 100 &&
+        k.text
+      ) {
+        if (
+          !lowVolumeKeywordObjects.some(existing => existing.text === k.text)
+        ) {
+          lowVolumeKeywordObjects.push({
+            text: k.text,
+            searchVolume: k.searchVolume
+          });
+        }
+      }
+    });
+  };
 
-   // Process and sort low volume keywords based on count
-   let finalLowVolumeKeywords: { text: string; searchVolume: number }[] = [];
-   const initialLowVolumeCount = lowVolumeKeywordObjects.length;
+  // Collect low volume keyword objects first
+  if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume)) {
+    report.clustersWithVolume.forEach((cluster: any) => {
+      collectLowVolume(cluster.keywords);
+    });
+  } else if (report.keywords && Array.isArray(report.keywords)) {
+    collectLowVolume(report.keywords);
+  }
 
-   if (initialLowVolumeCount > 60) {
-       let filteredKeywords = lowVolumeKeywordObjects.filter(k => k.searchVolume !== 0);
-       if (filteredKeywords.length > 100) {
-           filteredKeywords = filteredKeywords.slice(0, 100);
-       }
-       finalLowVolumeKeywords = filteredKeywords;
-   } else {
-       finalLowVolumeKeywords = lowVolumeKeywordObjects;
-   }
-   
-   // Sort final low volume list by searchVolume descending
-   finalLowVolumeKeywords.sort((a, b) => b.searchVolume - a.searchVolume); 
+  // Process and sort low volume keywords based on count
+  let finalLowVolumeKeywords: { text: string; searchVolume: number }[] = [];
+  const initialLowVolumeCount = lowVolumeKeywordObjects.length;
 
-   // Build Output String
-   let output = `\n- **使用以下關鍵字研究報告** (Keyword Research Report):\n`;
-   output += `  - 主查詢 (Main Query): ${report.query || 'N/A'}\n`;
-   output += `  - 語言 (Language): ${report.language || 'N/A'}\n`;
-   output += `  - 地區 (Region): ${report.region || 'N/A'}\n`;
+  if (initialLowVolumeCount > 60) {
+    let filteredKeywords = lowVolumeKeywordObjects.filter(
+      k => k.searchVolume !== 0
+    );
+    if (filteredKeywords.length > 100) {
+      filteredKeywords = filteredKeywords.slice(0, 100);
+    }
+    finalLowVolumeKeywords = filteredKeywords;
+  } else {
+    finalLowVolumeKeywords = lowVolumeKeywordObjects;
+  }
 
-   if (report.clustersWithVolume && Array.isArray(report.clustersWithVolume) && report.clustersWithVolume.length > 0) {
-       output += `  - **主題分群** (Clusters):\n`;
-       const overallTotalVolume = report.clustersWithVolume.reduce((sum: number, cluster: any) => sum + (cluster.totalVolume || 0), 0);
-       output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(overallTotalVolume)}\n`;
-       report.clustersWithVolume.forEach((cluster: any, index: number) => {
-           const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
-           const marker = selectedClusterName && clusterName === selectedClusterName ? ' [TARGET CLUSTER]' : '';
-           const clusterVol = formatNumber(cluster.totalVolume);
-           output += `    - **分群 ${index + 1}: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
-           output += `      - 關鍵字 (Keywords): ${formatKeywords(cluster.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
-       });
-   } else if (report.keywords && Array.isArray(report.keywords) && report.keywords.length > 0) {
-       const totalVolumeFromKeywords = report.keywords.reduce((sum: number, kw: any) => sum + (kw.searchVolume || 0), 0);
-       output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(totalVolumeFromKeywords)}\n`;
-       output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
-       output += `    - ${formatKeywords(report.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
-   } else {
-       output += `  - 關鍵字 (Keywords): No specific keyword data available.\n`;
-   }
+  // Sort final low volume list by searchVolume descending
+  finalLowVolumeKeywords.sort((a, b) => b.searchVolume - a.searchVolume);
 
-   // Append the (potentially filtered/limited and now sorted) Low Volume Section
-   if (finalLowVolumeKeywords.length > 0) {
-       output += `\n- **低搜尋量相關主題 (Low Volume Related Topics - < 100):**\n`;
-       output += `  - 以下是搜尋量較低 (< 100) 但可能與特定受眾相關的主題。考慮將部分主題作為文章中的小段落或補充內容來擴充文章豐富度 (These are related topics with lower search volume (< 100) that might be relevant to specific audiences. Consider incorporating some of these topics as small paragraphs or supplementary sections to enrich the article content):
-`; 
-       // Add newline and indent for each topic reference
-       output += `  - 主題參考 (Topic References):\n  - ${finalLowVolumeKeywords.map(k => k.text).join('\n  - ')}\n`; 
-   }
+  // Build Output String
+  let output = `\n- **使用以下關鍵字研究報告** (Keyword Research Report):\n`;
+  output += `  - 主查詢 (Main Query): ${report.query || 'N/A'}\n`;
+  output += `  - 語言 (Language): ${report.language || 'N/A'}\n`;
+  output += `  - 地區 (Region): ${report.region || 'N/A'}\n`;
 
-   output += `\n  - 報告更新時間 (Report Updated): ${report.updatedAt ? new Date(report.updatedAt).toLocaleString() : 'N/A'}\n`;
-   return output + "\n";
+  if (
+    report.clustersWithVolume &&
+    Array.isArray(report.clustersWithVolume) &&
+    report.clustersWithVolume.length > 0
+  ) {
+    output += `  - **主題分群** (Clusters):\n`;
+    const overallTotalVolume = report.clustersWithVolume.reduce(
+      (sum: number, cluster: any) => sum + (cluster.totalVolume || 0),
+      0
+    );
+    output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(
+      overallTotalVolume
+    )}\n`;
+    report.clustersWithVolume.forEach((cluster: any, index: number) => {
+      const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
+      const marker =
+        selectedClusterName && clusterName === selectedClusterName
+          ? ' [TARGET CLUSTER]'
+          : '';
+      const clusterVol = formatNumber(cluster.totalVolume);
+      output += `    - **分群 ${
+        index + 1
+      }: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
+      output += `      - 關鍵字 (Keywords): ${formatKeywords(
+        cluster.keywords
+      )}\n`; // Uses filtered & sorted (>=100) keywords
+    });
+  } else if (
+    report.keywords &&
+    Array.isArray(report.keywords) &&
+    report.keywords.length > 0
+  ) {
+    const totalVolumeFromKeywords = report.keywords.reduce(
+      (sum: number, kw: any) => sum + (kw.searchVolume || 0),
+      0
+    );
+    output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(
+      totalVolumeFromKeywords
+    )}\n`;
+    output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
+    output += `    - ${formatKeywords(report.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
+  } else {
+    output += `  - 關鍵字 (Keywords): No specific keyword data available.\n`;
+  }
+
+  // Append the (potentially filtered/limited and now sorted) Low Volume Section
+  if (finalLowVolumeKeywords.length > 0) {
+    output += `\n- **低搜尋量相關主題 (Low Volume Related Topics - < 100):**\n`;
+    output += `  - 以下是搜尋量較低 (< 100) 但可能與特定受眾相關的主題。考慮將部分主題作為文章中的小段落或補充內容來擴充文章豐富度 (These are related topics with lower search volume (< 100) that might be relevant to specific audiences. Consider incorporating some of these topics as small paragraphs or supplementary sections to enrich the article content):
+`;
+    // Add newline and indent for each topic reference
+    output += `  - 主題參考 (Topic References):\n  - ${finalLowVolumeKeywords
+      .map(k => k.text)
+      .join('\n  - ')}\n`;
+  }
+
+  output += `\n  - 報告更新時間 (Report Updated): ${
+    report.updatedAt ? new Date(report.updatedAt).toLocaleString() : 'N/A'
+  }\n`;
+  return output + '\n';
 }
 // --- END: Helper Functions ---
 
 // === Step 1: Fetch SERP Data ===
 const fetchSerpStepInputSchema = z.object({
-    keyword: z.string().min(1),
-    mediaSiteName: z.string().min(1),
+  keyword: z.string().min(1),
+  mediaSiteName: z.string().min(1)
 });
 type FetchSerpStepInput = z.infer<typeof fetchSerpStepInputSchema>;
 
-export async function fetchSerpStep(input: FetchSerpStepInput): Promise<ClientSafeSerpDataDoc> {
-    const validation = fetchSerpStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for fetchSerpStep: ${validation.error.format()}`);
-    const { keyword, mediaSiteName } = validation.data;
+export async function fetchSerpStep(
+  input: FetchSerpStepInput
+): Promise<ClientSafeSerpDataDoc> {
+  const validation = fetchSerpStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for fetchSerpStep: ${validation.error.format()}`
+    );
+  const { keyword, mediaSiteName } = validation.data;
 
-    console.log(`[Action Step 1] Fetching SERP for keyword: "${keyword}", site: "${mediaSiteName}"`);
-    const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-    if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
+  console.log(
+    `[Action Step 1] Fetching SERP for keyword: "${keyword}", site: "${mediaSiteName}"`
+  );
+  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+  if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
 
-    const serpResult = await getOrFetchSerpDataAction({ query: keyword, region: mediaSite.region, language: mediaSite.language });
-    if (!serpResult) throw new Error(`Failed to get or fetch SERP data for ${keyword}`);
+  const serpResult = await getOrFetchSerpDataAction({
+    query: keyword,
+    region: mediaSite.region,
+    language: mediaSite.language
+  });
+  if (!serpResult)
+    throw new Error(`Failed to get or fetch SERP data for ${keyword}`);
 
-    console.log(`[Action Step 1] SERP data obtained. Doc ID: ${serpResult.id}`);
+  console.log(`[Action Step 1] SERP data obtained. Doc ID: ${serpResult.id}`);
 
-    // Return client-safe version, ensuring all required fields are present
-    const clientSafeResult: ClientSafeSerpDataDoc = {
-        id: serpResult.id,
-        query: serpResult.query,
-        region: serpResult.region,
-        language: serpResult.language,
-        organicResults: serpResult.organicResults?.slice(0, 15) || [],
-        peopleAlsoAsk: serpResult.peopleAlsoAsk || [],
-        relatedQueries: serpResult.relatedQueries || [],
-        aiOverview: serpResult.aiOverview,
-        contentTypeAnalysisText: serpResult.contentTypeAnalysisText,
-        userIntentAnalysisText: serpResult.userIntentAnalysisText,
-        titleAnalysis: serpResult.titleAnalysis,
-        betterHaveAnalysisJson: serpResult.betterHaveAnalysisJson,
-        // Add missing required fields
-        createdAt: serpResult.createdAt || null, // Add createdAt, handle potential undefined
-        updatedAt: serpResult.updatedAt || null, // Ensure updatedAt is also handled (already present but ensure null fallback)
-    };
-    return clientSafeResult;
+  // Return client-safe version, ensuring all required fields are present
+  const clientSafeResult: ClientSafeSerpDataDoc = {
+    id: serpResult.id,
+    query: serpResult.query,
+    region: serpResult.region,
+    language: serpResult.language,
+    organicResults: serpResult.organicResults?.slice(0, 15) || [],
+    peopleAlsoAsk: serpResult.peopleAlsoAsk || [],
+    relatedQueries: serpResult.relatedQueries || [],
+    aiOverview: serpResult.aiOverview,
+    contentTypeAnalysisText: serpResult.contentTypeAnalysisText,
+    userIntentAnalysisText: serpResult.userIntentAnalysisText,
+    titleAnalysis: serpResult.titleAnalysis,
+    betterHaveAnalysis: serpResult.betterHaveAnalysis,
+    // Add missing required fields
+    createdAt: serpResult.createdAt || null, // Add createdAt, handle potential undefined
+    updatedAt: serpResult.updatedAt || null // Ensure updatedAt is also handled (already present but ensure null fallback)
+  };
+  return clientSafeResult;
 }
 
 // === Step 2: Analyze Content Type ===
 const analyzeContentTypeStepInputSchema = z.object({
-    serpDocId: z.string().min(1),
-    keyword: z.string().min(1),
-    organicResults: z.array(z.any()).optional().nullable(), // Use z.any() for simplicity, refine if needed
+  serpDocId: z.string().min(1),
+  keyword: z.string().min(1),
+  organicResults: z.array(z.any()).optional().nullable() // Use z.any() for simplicity, refine if needed
 });
-type AnalyzeContentTypeStepInput = z.infer<typeof analyzeContentTypeStepInputSchema>;
+type AnalyzeContentTypeStepInput = z.infer<
+  typeof analyzeContentTypeStepInputSchema
+>;
 
-export async function analyzeContentTypeStep(input: AnalyzeContentTypeStepInput): Promise<{ recommendationText: string }> {
-    const validation = analyzeContentTypeStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for analyzeContentTypeStep: ${validation.error.format()}`);
-    const { serpDocId, keyword, organicResults } = validation.data;
+export async function analyzeContentTypeStep(
+  input: AnalyzeContentTypeStepInput
+): Promise<{ recommendationText: string }> {
+  const validation = analyzeContentTypeStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for analyzeContentTypeStep: ${validation.error.format()}`
+    );
+  const { serpDocId, keyword, organicResults } = validation.data;
 
-    console.log(`[Action Step 2a] Analyzing Content Type (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`);
-    const serpString = formatSerpResults(organicResults);
+  console.log(
+    `[Action Step 2a] Analyzing Content Type (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`
+  );
+  const serpString = formatSerpResults(organicResults);
 
-    // Get the raw analysis text first
-    const { analysisText } = await performContentTypeAnalysis({ docId: serpDocId, keyword, serpString });
-    console.log(`[Action Step 2a] Content Type analysis (Text) complete.`);
+  // Get the raw analysis text first
+  const { analysisText } = await performContentTypeAnalysis({
+    docId: serpDocId,
+    keyword,
+    serpString
+  });
+  console.log(`[Action Step 2a] Content Type analysis (Text) complete.`);
 
-    // Now convert to JSON and get recommendation text
-    console.log(`[Action Step 2b] Converting Content Type text and getting recommendation for Doc ID: ${serpDocId}`);
-    const conversionResult = await generateAnalysisJsonFromText({
-        docId: serpDocId,
-        analysisType: 'contentType',
-        analysisText: analysisText,
-        keyword: keyword,
-    });
-    console.log(`[Action Step 2b] Content Type recommendation text obtained.`);
+  // Now convert to JSON and get recommendation text
+  console.log(
+    `[Action Step 2b] Converting Content Type text and getting recommendation for Doc ID: ${serpDocId}`
+  );
+  const conversionResult = await generateAnalysisJsonFromText({
+    docId: serpDocId,
+    analysisType: 'contentType',
+    analysisText: analysisText,
+    keyword: keyword
+  });
+  console.log(`[Action Step 2b] Content Type recommendation text obtained.`);
 
-    // Return only the recommendation text
-    return { recommendationText: conversionResult.recommendationText };
+  // Return only the recommendation text
+  return { recommendationText: conversionResult.recommendationText };
 }
 
 // === Step 3: Analyze User Intent ===
 const analyzeUserIntentStepInputSchema = z.object({
-    serpDocId: z.string().min(1),
-    keyword: z.string().min(1),
-    organicResults: z.array(z.any()).optional().nullable(),
-    relatedQueries: z.array(z.any()).optional().nullable(),
+  serpDocId: z.string().min(1),
+  keyword: z.string().min(1),
+  organicResults: z.array(z.any()).optional().nullable(),
+  relatedQueries: z.array(z.any()).optional().nullable()
 });
-type AnalyzeUserIntentStepInput = z.infer<typeof analyzeUserIntentStepInputSchema>;
+type AnalyzeUserIntentStepInput = z.infer<
+  typeof analyzeUserIntentStepInputSchema
+>;
 
-export async function analyzeUserIntentStep(input: AnalyzeUserIntentStepInput): Promise<{ recommendationText: string }> {
-    const validation = analyzeUserIntentStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for analyzeUserIntentStep: ${validation.error.format()}`);
-    const { serpDocId, keyword, organicResults, relatedQueries } = validation.data;
+export async function analyzeUserIntentStep(
+  input: AnalyzeUserIntentStepInput
+): Promise<{ recommendationText: string }> {
+  const validation = analyzeUserIntentStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for analyzeUserIntentStep: ${validation.error.format()}`
+    );
+  const { serpDocId, keyword, organicResults, relatedQueries } =
+    validation.data;
 
-    console.log(`[Action Step 3a] Analyzing User Intent (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`);
-    const serpString = formatSerpResults(organicResults);
-    const relatedKeywordsRaw = formatRelatedKeywords(relatedQueries);
+  console.log(
+    `[Action Step 3a] Analyzing User Intent (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`
+  );
+  const serpString = formatSerpResults(organicResults);
+  const relatedKeywordsRaw = formatRelatedKeywords(relatedQueries);
 
-    // Get the raw analysis text first
-    const { analysisText } = await performUserIntentAnalysis({ docId: serpDocId, keyword, serpString, relatedKeywordsRaw });
-    console.log(`[Action Step 3a] User Intent analysis (Text) complete.`);
+  // Get the raw analysis text first
+  const { analysisText } = await performUserIntentAnalysis({
+    docId: serpDocId,
+    keyword,
+    serpString,
+    relatedKeywordsRaw
+  });
+  console.log(`[Action Step 3a] User Intent analysis (Text) complete.`);
 
-    // Now convert to JSON and get recommendation text
-    console.log(`[Action Step 3b] Converting User Intent text and getting recommendation for Doc ID: ${serpDocId}`);
-     const conversionResult = await generateAnalysisJsonFromText({
-        docId: serpDocId,
-        analysisType: 'userIntent',
-        analysisText: analysisText,
-        keyword: keyword,
-    });
-    console.log(`[Action Step 3b] User Intent recommendation text obtained.`);
+  // Now convert to JSON and get recommendation text
+  console.log(
+    `[Action Step 3b] Converting User Intent text and getting recommendation for Doc ID: ${serpDocId}`
+  );
+  const conversionResult = await generateAnalysisJsonFromText({
+    docId: serpDocId,
+    analysisType: 'userIntent',
+    analysisText: analysisText,
+    keyword: keyword
+  });
+  console.log(`[Action Step 3b] User Intent recommendation text obtained.`);
 
-    // Return only the recommendation text
-    return { recommendationText: conversionResult.recommendationText };
+  // Return only the recommendation text
+  return { recommendationText: conversionResult.recommendationText };
 }
 
 // === Step 4: Analyze Title ===
 const analyzeTitleStepInputSchema = z.object({
-    serpDocId: z.string().min(1),
-    keyword: z.string().min(1),
-    organicResults: z.array(z.any()).optional().nullable(),
+  serpDocId: z.string().min(1),
+  keyword: z.string().min(1),
+  organicResults: z.array(z.any()).optional().nullable()
 });
 type AnalyzeTitleStepInput = z.infer<typeof analyzeTitleStepInputSchema>;
 
-export async function analyzeTitleStep(input: AnalyzeTitleStepInput): Promise<{ analysisJson: TitleAnalysisJson, recommendationText: string }> {
-    const validation = analyzeTitleStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for analyzeTitleStep: ${validation.error.format()}`);
-    const { serpDocId, keyword, organicResults } = validation.data;
+export async function analyzeTitleStep(
+  input: AnalyzeTitleStepInput
+): Promise<{ analysisJson: AiTitleAnalysisJson; recommendationText: string }> {
+  const validation = analyzeTitleStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for analyzeTitleStep: ${validation.error.format()}`
+    );
+  const { serpDocId, keyword, organicResults } = validation.data;
 
-    console.log(`[Action Step 4] Analyzing Title for Doc ID: ${serpDocId}, Keyword: ${keyword}`);
-    const serpString = formatSerpResults(organicResults);
+  console.log(
+    `[Action Step 4] Analyzing Title for Doc ID: ${serpDocId}, Keyword: ${keyword}`
+  );
+  const serpString = formatSerpResults(organicResults);
 
-    const result = await performSerpTitleAnalysis({ docId: serpDocId, keyword, serpString });
-    console.log(`[Action Step 4] Title analysis complete.`);
-    return result; // Contains analysisJson and recommendationText
+  const result = await performSerpTitleAnalysis({
+    docId: serpDocId,
+    keyword,
+    serpString
+  });
+  console.log(`[Action Step 4] Title analysis complete.`);
+  return result; // Contains analysisJson and recommendationText
 }
 
 // === Step 5: Analyze Better Have ===
 const analyzeBetterHaveStepInputSchema = z.object({
-    serpDocId: z.string().min(1),
-    keyword: z.string().min(1),
-    organicResults: z.array(z.any()).optional().nullable(),
-    peopleAlsoAsk: z.array(z.any()).optional().nullable(),
-    relatedQueries: z.array(z.any()).optional().nullable(),
-    aiOverview: z.string().optional().nullable(),
+  serpDocId: z.string().min(1),
+  keyword: z.string().min(1),
+  organicResults: z.array(z.any()).optional().nullable(),
+  peopleAlsoAsk: z.array(z.any()).optional().nullable(),
+  relatedQueries: z.array(z.any()).optional().nullable(),
+  aiOverview: z.string().optional().nullable()
 });
-type AnalyzeBetterHaveStepInput = z.infer<typeof analyzeBetterHaveStepInputSchema>;
+type AnalyzeBetterHaveStepInput = z.infer<
+  typeof analyzeBetterHaveStepInputSchema
+>;
 
-export async function analyzeBetterHaveStep(input: AnalyzeBetterHaveStepInput): Promise<{ 
-    analysisJson: BetterHaveAnalysisJson, 
-    recommendationText: string,
+export async function analyzeBetterHaveStep(
+  input: AnalyzeBetterHaveStepInput
+): Promise<{
+  analysisJson: AiSerpBetterHaveAnalysisJson;
+  recommendationText: string;
 }> {
-     const validation = analyzeBetterHaveStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for analyzeBetterHaveStep: ${validation.error.format()}`);
-    const { serpDocId, keyword, organicResults, peopleAlsoAsk, relatedQueries, aiOverview } = validation.data;
+  const validation = analyzeBetterHaveStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for analyzeBetterHaveStep: ${validation.error.format()}`
+    );
+  const {
+    serpDocId,
+    keyword,
+    organicResults,
+    peopleAlsoAsk,
+    relatedQueries,
+    aiOverview
+  } = validation.data;
 
-    console.log(`[Action Step 5] Analyzing Better Have for Doc ID: ${serpDocId}, Keyword: ${keyword}`);
-    const serpString = formatSerpResults(organicResults);
-    const paaString = formatPAA(peopleAlsoAsk);
-    const relatedQueriesString = formatRelatedKeywords(relatedQueries);
-    const aiOverviewString = formatAIOverview(aiOverview);
+  console.log(
+    `[Action Step 5] Analyzing Better Have for Doc ID: ${serpDocId}, Keyword: ${keyword}`
+  );
+  const serpString = formatSerpResults(organicResults);
+  const paaString = formatPAA(peopleAlsoAsk);
+  const relatedQueriesString = formatRelatedKeywords(relatedQueries);
+  const aiOverviewString = formatAIOverview(aiOverview);
 
-    // Call the underlying action (which now returns analysisText)
-    const result = await performBetterHaveInArticleAnalysis({ docId: serpDocId, keyword, serpString, paaString, relatedQueriesString, aiOverviewString });
-    
-    // Log length of recommendationText instead
-    console.log(`[Action Step 5] Better Have analysis complete. Recommendation Length: ${result.recommendationText?.length || 0}`); 
-    return result; // Return the full result object { analysisJson, recommendationText }
+  // Call the underlying action (which now returns analysisText)
+  const result = await performBetterHaveInArticleAnalysis({
+    docId: serpDocId,
+    keyword,
+    serpString,
+    paaString,
+    relatedQueriesString,
+    aiOverviewString
+  });
+
+  // Log length of recommendationText instead
+  console.log(
+    `[Action Step 5] Better Have analysis complete. Recommendation Length: ${
+      result.recommendationText?.length || 0
+    }`
+  );
+  return result; // Return the full result object { analysisJson, recommendationText }
 }
 
 // === Step 6: Generate Action Plan ===
 const generateActionPlanStepInputSchema = z.object({
-    keyword: z.string().min(1),
-    mediaSiteName: z.string().min(1), // Need site name to get data string
-    contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
-    userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
-    titleRecommendationText: z.string(),
-    betterHaveRecommendationText: z.string(),
-    keywordReport: z.any().optional().nullable(), // Add keywordReport
-    selectedClusterName: z.string().optional().nullable(), // Add selectedClusterName
+  keyword: z.string().min(1),
+  mediaSiteName: z.string().min(1), // Need site name to get data string
+  contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
+  userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
+  titleRecommendationText: z.string(),
+  betterHaveRecommendationText: z.string(),
+  keywordReport: z.any().optional().nullable(), // Add keywordReport
+  selectedClusterName: z.string().optional().nullable() // Add selectedClusterName
 });
-type GenerateActionPlanStepInput = z.infer<typeof generateActionPlanStepInputSchema>;
+type GenerateActionPlanStepInput = z.infer<
+  typeof generateActionPlanStepInputSchema
+>;
 
-async function generateActionPlanInternal(input: GenerateActionPlanStepInput): Promise<string> {
-    console.log('[generateActionPlanInternal] Generating action plan...');
-    // Note: contentTypeReportText and userIntentReportText now contain the *recommendation* text
-    const { keyword, mediaSiteName, contentTypeReportText, userIntentReportText, titleRecommendationText, betterHaveRecommendationText, keywordReport, selectedClusterName } = input;
+async function generateActionPlanInternal(
+  input: GenerateActionPlanStepInput
+): Promise<string> {
+  console.log('[generateActionPlanInternal] Generating action plan...');
+  // Note: contentTypeReportText and userIntentReportText now contain the *recommendation* text
+  const {
+    keyword,
+    mediaSiteName,
+    contentTypeReportText,
+    userIntentReportText,
+    titleRecommendationText,
+    betterHaveRecommendationText,
+    keywordReport,
+    selectedClusterName
+  } = input;
 
-    const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-    if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
-    const mediaSiteDataString = JSON.stringify(mediaSite);
+  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+  if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
+  const mediaSiteDataString = JSON.stringify(mediaSite);
 
-    // Format keyword report if available (pass selectedClusterName for highlighting)
-    const keywordReportString = formatKeywordReportForPrompt(keywordReport, selectedClusterName);
+  // Format keyword report if available (pass selectedClusterName for highlighting)
+  const keywordReportString = formatKeywordReportForPrompt(
+    keywordReport,
+    selectedClusterName
+  );
 
-    // Restore original full prompt text here
-    // The prompt placeholders ${contentTypeReportText} and ${userIntentReportText} will use the recommendation text.
-    const prompt = `
+  // Restore original full prompt text here
+  // The prompt placeholders ${contentTypeReportText} and ${userIntentReportText} will use the recommendation text.
+  const prompt = `
 You are an SEO Project Manager with knowledge in consumer behavior theory, traditional marketing theory, and digital marketing theory. You will execute the following tasks:
 
 1. **Keyword Theme Identification**: Identify the theme of a user-provided keyword.
@@ -418,64 +592,90 @@ h2 Action Plan
 h2 Keyword need to cover in article
 `;
 
-    const { text: actionPlanText } = await generateText({
-        model: openai('gpt-4.1-mini'),
-        prompt: prompt,
-    });
-    console.log('[generateActionPlanInternal] Generated Action Plan.');
-    return actionPlanText;
+  const { text: actionPlanText } = await generateText({
+    model: openai('gpt-4.1-mini'),
+    prompt: prompt
+  });
+  console.log('[generateActionPlanInternal] Generated Action Plan.');
+  return actionPlanText;
 }
 
-export async function generateActionPlanStep(input: GenerateActionPlanStepInput): Promise<{ actionPlanText: string }> {
-    const validation = generateActionPlanStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for generateActionPlanStep: ${validation.error.format()}`);
+export async function generateActionPlanStep(
+  input: GenerateActionPlanStepInput
+): Promise<{ actionPlanText: string }> {
+  const validation = generateActionPlanStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for generateActionPlanStep: ${validation.error.format()}`
+    );
 
-    const validatedInput = validation.data; // Use validated data
-    console.log(`[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`);
-    // Pass the keywordReport from the validated input to the internal function
-    const actionPlanText = await generateActionPlanInternal(validatedInput);
-    console.log(`[Action Step 6] Action Plan generation complete.`);
-    return { actionPlanText };
+  const validatedInput = validation.data; // Use validated data
+  console.log(
+    `[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`
+  );
+  // Pass the keywordReport from the validated input to the internal function
+  const actionPlanText = await generateActionPlanInternal(validatedInput);
+  console.log(`[Action Step 6] Action Plan generation complete.`);
+  return { actionPlanText };
 }
 
 // === Step 7: Generate Final Prompt ===
 const generateFinalPromptStepInputSchema = z.object({
-    keyword: z.string().min(1),
-    actionPlan: z.string(),
-    mediaSiteName: z.string().min(1), // Needed for site data string
-    contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
-    userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
-    betterHaveRecommendationText: z.string().optional().nullable(),
-    keywordReport: z.any().optional().nullable(), // Keep as any or define schema
-    selectedClusterName: z.string().optional().nullable(),
-    outlineRefName: z.string().optional().default(''),
-    fineTuneNames: z.array(z.string()).optional(),
+  keyword: z.string().min(1),
+  actionPlan: z.string(),
+  mediaSiteName: z.string().min(1), // Needed for site data string
+  contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
+  userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
+  betterHaveRecommendationText: z.string().optional().nullable(),
+  keywordReport: z.any().optional().nullable(), // Keep as any or define schema
+  selectedClusterName: z.string().optional().nullable(),
+  outlineRefName: z.string().optional().default(''),
+  fineTuneNames: z.array(z.string()).optional()
 });
-type GenerateFinalPromptStepInput = z.infer<typeof generateFinalPromptStepInputSchema>;
+type GenerateFinalPromptStepInput = z.infer<
+  typeof generateFinalPromptStepInputSchema
+>;
 
-async function generateFinalPromptInternal(input: GenerateFinalPromptStepInput): Promise<string> {
-    console.log('[generateFinalPromptInternal] Generating final prompt...');
-    const { keyword, actionPlan, mediaSiteName, contentTypeReportText, userIntentReportText, betterHaveRecommendationText, keywordReport, selectedClusterName, outlineRefName, fineTuneNames } = input;
+async function generateFinalPromptInternal(
+  input: GenerateFinalPromptStepInput
+): Promise<string> {
+  console.log('[generateFinalPromptInternal] Generating final prompt...');
+  const {
+    keyword,
+    actionPlan,
+    mediaSiteName,
+    contentTypeReportText,
+    userIntentReportText,
+    betterHaveRecommendationText,
+    keywordReport,
+    selectedClusterName,
+    outlineRefName,
+    fineTuneNames
+  } = input;
 
-    const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-    if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
-    const mediaSiteDataString = JSON.stringify(mediaSite);
+  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+  if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
+  const mediaSiteDataString = JSON.stringify(mediaSite);
 
-    const keywordReportString = selectedClusterName
-        ? "<!-- Keyword report details were incorporated into the Action Plan -->"
-        : formatKeywordReportForPrompt(keywordReport, selectedClusterName);
+  const keywordReportString = selectedClusterName
+    ? '<!-- Keyword report details were incorporated into the Action Plan -->'
+    : formatKeywordReportForPrompt(keywordReport, selectedClusterName);
 
-    const fineTuneDataString = getFineTuneDataStrings(fineTuneNames);
+  const fineTuneDataString = getFineTuneDataStrings(fineTuneNames);
 
-    const serpTextAnalysisPoints = betterHaveRecommendationText || 'N/A';
+  const serpTextAnalysisPoints = betterHaveRecommendationText || 'N/A';
 
-    const contentTemplate = getOutlineFromReference(outlineRefName);
+  const contentTemplate = getOutlineFromReference(outlineRefName);
 
-    console.log('[generateFinalPromptInternal] Fetching content suggestions string...');
-    const suggestionsString = await generateContentSuggestionsAction({ keyword });
-    console.log('[generateFinalPromptInternal] Content suggestions string fetched.');
+  console.log(
+    '[generateFinalPromptInternal] Fetching content suggestions string...'
+  );
+  const suggestionsString = await generateContentSuggestionsAction({ keyword });
+  console.log(
+    '[generateFinalPromptInternal] Content suggestions string fetched.'
+  );
 
-    const systemPrompt = `
+  const systemPrompt = `
 You will be tasked to create new content for a given keyword.(從頭撰寫一篇全新文章)
 
     Your thinking should be thorough and so it's fine if it's very long. You can think step by step before and after each action you decide to take.
@@ -508,7 +708,7 @@ You MUST plan extensively before each function call, and reflect extensively on 
 寫一篇 SEO 文章，2000 字 - 3000 字
     `;
 
-    const basePrompt = `
+  const basePrompt = `
 ${systemPrompt}
 
 ${actionPlan}
@@ -558,43 +758,53 @@ Content Suggestions:
 ${suggestionsString}
 `;
 
-    const finalPrompt: string = basePrompt + fineTuneDataString;
-    console.log('[generateFinalPromptInternal] Final prompt generation complete.');
-    return finalPrompt;
+  const finalPrompt: string = basePrompt + fineTuneDataString;
+  console.log(
+    '[generateFinalPromptInternal] Final prompt generation complete.'
+  );
+  return finalPrompt;
 }
 
-export async function generateFinalPromptStep(input: GenerateFinalPromptStepInput): Promise<{ finalPrompt: string }> {
-    const validation = generateFinalPromptStepInputSchema.safeParse(input);
-    if (!validation.success) throw new Error(`Invalid input for generateFinalPromptStep: ${validation.error.format()}`);
+export async function generateFinalPromptStep(
+  input: GenerateFinalPromptStepInput
+): Promise<{ finalPrompt: string }> {
+  const validation = generateFinalPromptStepInputSchema.safeParse(input);
+  if (!validation.success)
+    throw new Error(
+      `Invalid input for generateFinalPromptStep: ${validation.error.format()}`
+    );
 
-    console.log(`[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`);
-    const finalPrompt = await generateFinalPromptInternal(input);
-    console.log(`[Action Step 7] Final Prompt generation complete.`);
-    return { finalPrompt };
+  console.log(
+    `[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`
+  );
+  const finalPrompt = await generateFinalPromptInternal(input);
+  console.log(`[Action Step 7] Final Prompt generation complete.`);
+  return { finalPrompt };
 }
-
 
 const outlineReference = {
-    "recipe": {
-        "name": "recipe",
-        "reference": `
+  recipe: {
+    name: 'recipe',
+    reference: `
      ## xx食材介紹與功效引言
      ## 食譜
      ## FAQ
      ## 連結
      `
-    }
-}
-
+  }
+};
 
 function getOutlineFromReference(refName: string) {
-    const reference = outlineReference[refName as keyof typeof outlineReference];
-    // If refName is empty or not found, provide a default/empty structure
-    if (!reference) {
-        console.warn(`Outline reference '${refName}' not found. Using default empty outline.`);
-        return { name: 'default', reference: '<!-- No specific outline requested -->' }; 
-    }
-    return reference; // Return the object { name: '...', reference: '...' }
+  const reference = outlineReference[refName as keyof typeof outlineReference];
+  // If refName is empty or not found, provide a default/empty structure
+  if (!reference) {
+    console.warn(
+      `Outline reference '${refName}' not found. Using default empty outline.`
+    );
+    return {
+      name: 'default',
+      reference: '<!-- No specific outline requested -->'
+    };
+  }
+  return reference; // Return the object { name: '...', reference: '...' }
 }
-
-

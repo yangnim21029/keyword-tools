@@ -1,10 +1,16 @@
 'use client';
 
-import { requestNewKeywordResearch } from '@/app/actions';
-import { REGIONS, LANGUAGES } from '@/app/global-config';
-import { Input } from '@/components/ui/input';
-import { LoadingButton } from '@/components/ui/LoadingButton';
+import { SubmitKeywordResearchButton } from '@/app/actions/actions-buttons';
+import { LANGUAGES, REGIONS } from '@/app/global-config';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -12,18 +18,10 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Search, ArrowUp, Loader2, Globe, Languages as LanguagesIcon } from 'lucide-react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useCallback, useEffect, useState, startTransition } from 'react';
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Globe, Languages as LanguagesIcon } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { startTransition, useEffect, useState } from 'react';
 
 export default function KeywordSearchForm() {
   // --- Hooks ---
@@ -33,8 +31,6 @@ export default function KeywordSearchForm() {
 
   // --- Local State ---
   const [queryInput, setQueryInput] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string>(() => {
     return searchParams.get('region') || Object.values(REGIONS)[0] || '';
   });
@@ -60,52 +56,6 @@ export default function KeywordSearchForm() {
       setSelectedLanguage(initialLanguage);
     }
   }, [searchParams, queryInput, selectedRegion, selectedLanguage]);
-
-  const triggerQuery = useCallback(async () => {
-    if (!queryInput.trim() || isLoading) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await requestNewKeywordResearch({
-        query: queryInput,
-        region: selectedRegion,
-        language: selectedLanguage,
-        useAlphabet: false,
-        useSymbols: true,
-        filterZeroVolume: false
-      });
-
-      if (result.success && result.researchId) {
-        toast.success(`研究記錄已創建 (ID: ${result.researchId})`);
-        router.push(`/keyword-mapping/${result.researchId}`);
-      } else {
-        const errorMsg = result.error || '創建研究記錄失敗，請稍後再試。';
-        setError(errorMsg);
-        toast.error(errorMsg);
-        if (result.researchId) {
-          toast.info(
-            `研究記錄可能已部分創建 (ID: ${result.researchId})，但後續步驟失敗。`
-          );
-        }
-      }
-    } catch (err) {
-      console.error('[KeywordToolPage] Error calling server action:', err);
-      const message =
-        err instanceof Error ? err.message : '處理請求時發生意外錯誤。';
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [
-    queryInput,
-    selectedRegion,
-    selectedLanguage,
-    router,
-    isLoading,
-  ]);
 
   const updateSearchParams = (key: string, value: string) => {
     const current = new URLSearchParams(searchParams.toString());
@@ -133,39 +83,38 @@ export default function KeywordSearchForm() {
     setLanguageDialogOpen(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isLoading) {
-      triggerQuery();
-    }
-  };
-
-  const getRegionName = (code: string) => Object.entries(REGIONS).find(([_, c]) => c === code)?.[0] || code;
-  const getLanguageName = (code: string) => LANGUAGES[code as keyof typeof LANGUAGES] || code;
+  const getRegionName = (code: string) =>
+    Object.entries(REGIONS).find(([_, c]) => c === code)?.[0] || code;
+  const getLanguageName = (code: string) =>
+    LANGUAGES[code as keyof typeof LANGUAGES] || code;
 
   // --- Render ---
   return (
     <div className="flex flex-col items-center justify-center w-full max-w-xl px-4">
-      <div className={cn(
-        "w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3",
-        "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200"
-      )}>
+      <div
+        className={cn(
+          'w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3',
+          'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200'
+        )}
+      >
         <div className="relative w-full flex items-center">
           <Input
             type="text"
             placeholder="輸入關鍵字開始研究..."
             value={queryInput}
             onChange={e => setQueryInput(e.target.value)}
-            onKeyDown={handleKeyDown}
             className="h-12 text-lg pl-5 pr-5 w-full border-none ring-offset-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 bg-transparent shadow-none"
-            disabled={isLoading}
           />
         </div>
 
-        <div className={cn("flex items-center justify-between pt-2 px-2")}>
+        <div className={cn('flex items-center justify-between pt-2 px-2')}>
           <div className="flex flex-wrap gap-2">
             <Dialog open={regionDialogOpen} onOpenChange={setRegionDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="ghost" className="rounded-full h-8 px-3 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-normal">
+                <Button
+                  variant="ghost"
+                  className="rounded-full h-8 px-3 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-normal"
+                >
                   <Globe size={14} className="mr-1.5" />
                   {getRegionName(selectedRegion)} ({selectedRegion})
                 </Button>
@@ -174,7 +123,10 @@ export default function KeywordSearchForm() {
                 <DialogHeader>
                   <DialogTitle>選擇地區</DialogTitle>
                 </DialogHeader>
-                <Select value={selectedRegion} onValueChange={handleRegionChange}>
+                <Select
+                  value={selectedRegion}
+                  onValueChange={handleRegionChange}
+                >
                   <SelectTrigger className="mt-2">
                     <SelectValue placeholder="選擇地區" />
                   </SelectTrigger>
@@ -189,9 +141,15 @@ export default function KeywordSearchForm() {
               </DialogContent>
             </Dialog>
 
-            <Dialog open={languageDialogOpen} onOpenChange={setLanguageDialogOpen}>
+            <Dialog
+              open={languageDialogOpen}
+              onOpenChange={setLanguageDialogOpen}
+            >
               <DialogTrigger asChild>
-                <Button variant="ghost" className="rounded-full h-8 px-3 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-normal">
+                <Button
+                  variant="ghost"
+                  className="rounded-full h-8 px-3 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-normal"
+                >
                   <LanguagesIcon size={14} className="mr-1.5" />
                   {getLanguageName(selectedLanguage)} ({selectedLanguage})
                 </Button>
@@ -200,7 +158,10 @@ export default function KeywordSearchForm() {
                 <DialogHeader>
                   <DialogTitle>選擇語言</DialogTitle>
                 </DialogHeader>
-                <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
+                <Select
+                  value={selectedLanguage}
+                  onValueChange={handleLanguageChange}
+                >
                   <SelectTrigger className="mt-2">
                     <SelectValue placeholder="選擇語言" />
                   </SelectTrigger>
@@ -217,24 +178,14 @@ export default function KeywordSearchForm() {
           </div>
 
           <div>
-            <LoadingButton
-              onClick={triggerQuery}
-              className="h-10 w-10 rounded-full bg-black hover:bg-gray-800 text-white flex items-center justify-center shadow-md transition-colors p-0"
-              isLoading={isLoading}
-              disabled={isLoading || !queryInput.trim()}
-              aria-label="研究關鍵字"
-              loadingText=""
-            >
-              <ArrowUp size={20} />
-            </LoadingButton>
+            <SubmitKeywordResearchButton
+              query={queryInput}
+              region={selectedRegion}
+              language={selectedLanguage}
+              disabled={!queryInput.trim()}
+            />
           </div>
         </div>
-
-        {error && (
-          <div className="pt-1 px-2">
-            <p className="text-sm text-destructive">錯誤：{error}</p>
-          </div>
-        )}
       </div>
     </div>
   );
