@@ -1,548 +1,437 @@
-import {
-  FieldValue,
-  FirestoreDataConverter,
-  Timestamp
-} from 'firebase-admin/firestore';
-import { z } from 'zod';
+import { Timestamp } from 'firebase-admin/firestore';
+import { unstable_cache } from 'next/cache';
 import { COLLECTIONS, db } from './db-config';
-// --- NEW: Import specific JSON schemas ---
+import {
+  FirebaseSerpResultObject,
+  FirebaseSerpResultObjectSchema
+} from './schema';
 
-// Helper for normalizing keywords for querying
-const normalizeKeyword = (keyword: string): string => {
-  return keyword.trim().toLowerCase();
-};
+// --- Define Cache Tags Here --- //
+const SERP_DATA_LIST_TAG = 'serpDataList';
+const getSerpDocTag = (docId: string) => `serpDoc-${docId}`;
 
-// --- Detailed Zod Schemas based on Apify Structure ---
+const SERP_COLLECTION = COLLECTIONS.SERP_RESULT;
 
-const searchQuerySchema = z
-  .object({
-    term: z.string().optional().nullable(),
-    url: z.string().url().optional().nullable(),
-    device: z.string().optional().nullable(),
-    page: z.number().int().optional().nullable(),
-    type: z.string().optional().nullable(),
-    domain: z.string().optional().nullable(),
-    countryCode: z.string().optional().nullable(),
-    languageCode: z.string().optional().nullable(),
-    locationUule: z.string().optional().nullable(),
-    resultsPerPage: z.string().optional().nullable() // Often a string like "100"
-  })
-  .optional()
-  .nullable();
-
-const relatedQuerySchema = z.object({
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
-});
-
-const aiOverviewSourceSchema = z.object({
-  // Define structure if known, otherwise keep flexible
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
-});
-
-const aiOverviewSchema = z
-  .object({
-    type: z.string().optional().nullable(),
-    content: z.string().optional().nullable(),
-    sources: z.array(aiOverviewSourceSchema).optional().nullable()
-  })
-  .optional()
-  .nullable();
-
-// Basic schemas for potentially empty or unknown structures
-const paidResultSchema = z.record(z.any()).optional().nullable(); // Allow any structure
-const paidProductSchema = z.record(z.any()).optional().nullable();
-const peopleAlsoAskSchema = z.record(z.any()).optional().nullable();
-
-const siteLinkSchema = z.object({
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable(),
-  description: z.string().optional().nullable() // Added based on organicResults example
-});
-
-const productInfoSchema = z.record(z.any()).optional().nullable(); // Keep flexible
-
-// Renamed and expanded schema for Organic Results
-const organicResultSchema = z.object({
-  position: z.number().int().positive(),
-  title: z.string().min(1),
-  url: z.string().url(),
-  description: z.string().optional().nullable(),
-  displayedUrl: z.string().optional().nullable(),
-  emphasizedKeywords: z.array(z.string()).optional().nullable(),
-  siteLinks: z.array(siteLinkSchema).optional().nullable(),
-  productInfo: productInfoSchema,
-  type: z.string().optional().nullable(),
-  date: z.string().optional().nullable(), // Keep as string, parsing can be complex
-  views: z.string().optional().nullable(),
-  lastUpdated: z.string().optional().nullable(),
-  commentsAmount: z.string().optional().nullable(),
-  followersAmount: z.string().optional().nullable(),
-  likes: z.string().optional().nullable(),
-  channelName: z.string().optional().nullable()
-});
-
-// --- NEW: Schemas for Analysis JSON structures ---
-const pageReferenceSchema = z.object({
-  position: z.number().int().positive(),
-  url: z.string().url()
-});
-
-const contentTypeAnalysisJsonSchema = z.object({
-  analysisTitle: z.string(),
-  reportDescription: z.string(),
-  usageHint: z.string(),
-  contentTypes: z.array(
-    z.object({
-      type: z.string(),
-      count: z.number().int().nonnegative(),
-      pages: z.array(pageReferenceSchema)
-    })
-  )
-});
-// Export inferred type for use in actions if needed elsewhere, though maybe not strictly necessary if actions re-define
-export type ContentTypeAnalysisJson = z.infer<
-  typeof contentTypeAnalysisJsonSchema
->;
-
-const userIntentAnalysisJsonSchema = z.object({
-  analysisTitle: z.string(),
-  reportDescription: z.string(),
-  usageHint: z.string(),
-  intents: z.array(
-    z.object({
-      category: z.enum([
-        'Navigational',
-        'Informational',
-        'Commercial',
-        'Transactional'
-      ]),
-      specificIntent: z.string(),
-      count: z.number().int().nonnegative(),
-      pages: z.array(pageReferenceSchema)
-    })
-  ),
-  relatedKeywords: z
-    .array(
-      z.object({
-        keyword: z.string(),
-        searchVolume: z.number().nullable()
-      })
-    )
-    .optional()
-});
-// Export inferred type for use in actions if needed elsewhere
-export type UserIntentAnalysisJson = z.infer<
-  typeof userIntentAnalysisJsonSchema
->;
-
-// Schema for Title Analysis JSON structure (No rename needed)
-const titleAnalysisOutputSchema = z.object({
-  title: z.string(),
-  analysis: z.string(),
-  recommendations: z.array(z.string())
-});
-export type TitleAnalysisJson = z.infer<typeof titleAnalysisOutputSchema>; // Export inferred type
-
-// --- Main Document Schema (REVERTED) ---
-const serpAnalysisSchema = z.object({
-  originalKeyword: z.string().min(1),
-  normalizedKeyword: z.string().min(1),
-  timestamp: z.instanceof(Timestamp),
-
-  // Added top-level fields from Apify response
-  searchQuery: searchQuerySchema,
-  resultsTotal: z.number().int().optional().nullable(),
-  relatedQueries: z.array(relatedQuerySchema).optional().nullable(),
-  aiOverview: aiOverviewSchema,
-  paidResults: z.array(paidResultSchema).optional().nullable(),
-  paidProducts: z.array(paidProductSchema).optional().nullable(),
-  peopleAlsoAsk: z.array(peopleAlsoAskSchema).optional().nullable(),
-
-  // Renamed field to use the expanded organic result schema
-  organicResults: z.array(organicResultSchema).optional().nullable(),
-
-  // --- REVERTED: Keep both Text and JSON analysis fields ---
-  contentTypeAnalysis: contentTypeAnalysisJsonSchema.optional().nullable(),
-  userIntentAnalysis: userIntentAnalysisJsonSchema.optional().nullable(),
-  titleAnalysis: titleAnalysisOutputSchema.optional().nullable(),
-  // --- RE-ADD Text fields ---
-  contentTypeAnalysisText: z.string().optional().nullable(),
-  userIntentAnalysisText: z.string().optional().nullable()
-});
-
-// Type for data stored in Firestore (without id)
-// --- UPDATED: Type reflects schema changes ---
-export type FirebaseSerpAnalysisDoc = z.infer<typeof serpAnalysisSchema>;
-// Type for data returned from functions (including id)
-export type SerpAnalysisData = FirebaseSerpAnalysisDoc & { id: string };
-
-// --- Firestore Converter (REVERTED) ---
-const serpAnalysisConverter: FirestoreDataConverter<SerpAnalysisData> = {
-  toFirestore(
-    data: FirebaseFirestore.WithFieldValue<Partial<FirebaseSerpAnalysisDoc>> // Use Partial for updates
-  ): FirebaseFirestore.DocumentData {
-    const dataToSave: FirebaseFirestore.DocumentData = {
-      ...data, // Spread the partial data
-      timestamp: FieldValue.serverTimestamp() // Always set/update timestamp
-    };
-
-    // --- UPDATED: Handle optional fields (both JSON and Text) ---
-    if (data.contentTypeAnalysis !== undefined) {
-      dataToSave.contentTypeAnalysis = data.contentTypeAnalysis;
-    }
-    if (data.userIntentAnalysis !== undefined) {
-      dataToSave.userIntentAnalysis = data.userIntentAnalysis;
-    }
-    if (data.titleAnalysis !== undefined) {
-      dataToSave.titleAnalysis = data.titleAnalysis;
-    }
-    if (data.contentTypeAnalysisText !== undefined) {
-      dataToSave.contentTypeAnalysisText = data.contentTypeAnalysisText;
-    }
-    if (data.userIntentAnalysisText !== undefined) {
-      dataToSave.userIntentAnalysisText = data.userIntentAnalysisText;
-    }
-    // Keep existing conditional logic for other fields
-    if (data.relatedQueries !== undefined)
-      dataToSave.relatedQueries = data.relatedQueries;
-    if (data.aiOverview !== undefined) dataToSave.aiOverview = data.aiOverview;
-    if (data.paidResults !== undefined)
-      dataToSave.paidResults = data.paidResults;
-    if (data.paidProducts !== undefined)
-      dataToSave.paidProducts = data.paidProducts;
-    if (data.peopleAlsoAsk !== undefined)
-      dataToSave.peopleAlsoAsk = data.peopleAlsoAsk;
-    if (data.organicResults !== undefined)
-      dataToSave.organicResults = data.organicResults;
-    if (data.searchQuery !== undefined)
-      dataToSave.searchQuery = data.searchQuery;
-    if (data.resultsTotal !== undefined)
-      dataToSave.resultsTotal = data.resultsTotal;
-    // --- End Update ---
-
-    // Remove undefined properties
-    Object.keys(dataToSave).forEach(
-      key => dataToSave[key] === undefined && delete dataToSave[key]
-    );
-    return dataToSave;
-  },
-  fromFirestore(
-    snapshot: FirebaseFirestore.QueryDocumentSnapshot
-  ): SerpAnalysisData {
-    const data = snapshot.data();
-    const getOptionalField = (
-      obj: any,
-      fieldName: string,
-      defaultValue: any = null
-    ) => (obj?.[fieldName] === undefined ? defaultValue : obj[fieldName]);
-
-    // --- UPDATED: Map all fields (Text and JSON) ---
-    const returnData: SerpAnalysisData = {
-      id: snapshot.id,
-      originalKeyword: data.originalKeyword,
-      normalizedKeyword: data.normalizedKeyword,
-      timestamp: data.timestamp,
-
-      // Map top-level fields
-      searchQuery: getOptionalField(data, 'searchQuery'),
-      resultsTotal: getOptionalField(data, 'resultsTotal'),
-      relatedQueries: getOptionalField(data, 'relatedQueries', []),
-      aiOverview: getOptionalField(data, 'aiOverview'),
-      paidResults: getOptionalField(data, 'paidResults', []),
-      paidProducts: getOptionalField(data, 'paidProducts', []),
-      peopleAlsoAsk: getOptionalField(data, 'peopleAlsoAsk', []),
-
-      // Map organic results
-      organicResults: getOptionalField(data, 'organicResults', []).map(
-        (res: any) => ({
-          position: getOptionalField(res, 'position', 0),
-          title: getOptionalField(res, 'title', ''),
-          url: getOptionalField(res, 'url', ''),
-          description: getOptionalField(res, 'description'),
-          displayedUrl: getOptionalField(res, 'displayedUrl'),
-          emphasizedKeywords: getOptionalField(res, 'emphasizedKeywords', []),
-          siteLinks: getOptionalField(res, 'siteLinks', []),
-          productInfo: getOptionalField(res, 'productInfo', {}),
-          type: getOptionalField(res, 'type'),
-          date: getOptionalField(res, 'date'),
-          views: getOptionalField(res, 'views'),
-          lastUpdated: getOptionalField(res, 'lastUpdated'),
-          commentsAmount: getOptionalField(res, 'commentsAmount'),
-          followersAmount: getOptionalField(res, 'followersAmount'),
-          likes: getOptionalField(res, 'likes'),
-          channelName: getOptionalField(res, 'channelName')
-        })
-      ),
-
-      // Map analysis fields (JSON and Text)
-      contentTypeAnalysis: getOptionalField(data, 'contentTypeAnalysis'),
-      userIntentAnalysis: getOptionalField(data, 'userIntentAnalysis'),
-      titleAnalysis: getOptionalField(data, 'titleAnalysis'),
-      contentTypeAnalysisText: getOptionalField(
-        data,
-        'contentTypeAnalysisText'
-      ),
-      userIntentAnalysisText: getOptionalField(data, 'userIntentAnalysisText')
-    };
-
-    return returnData;
-  }
-};
-
-// --- Firestore Collection Reference (REVERTED) ---
-// Remove getSerpCollectionRef
-const getSerpCollection = () => {
-  if (!db) throw new Error('Firestore is not initialized.');
-  // Use converter directly
-  return (
-    db
-      // Use the correct collection name
-      .collection(COLLECTIONS.SERP_RESULT)
-      .withConverter(serpAnalysisConverter)
-  );
-};
-
-// --- Modified saveSerpAnalysis (REVERTED) ---
 /**
- * Saves or updates SERP analysis data.
- * Handles partial updates with merge.
- * Initializes new documents with null analysis fields.
- * @param data Partial data matching FirebaseSerpAnalysisDoc structure.
- * @param docId Optional Firestore document ID for updates.
- * @returns The document ID (either new or existing).
+ * Finds an existing SERP data document based on keyword, region, and language.
+ * @returns The document data (including ID) or null if not found.
  */
-export async function saveSerpAnalysis(
-  data: Partial<FirebaseSerpAnalysisDoc> & { originalKeyword?: string },
-  docId?: string
-): Promise<string> {
-  const collectionRef = getSerpCollection(); // Use the direct converted ref
+export const findSerpResultObjects = unstable_cache(
+  async ({
+    query,
+    region,
+    language
+  }: {
+    query: string;
+    region: string;
+    language: string;
+  }): Promise<FirebaseSerpResultObject | null> => {
+    if (!db) throw new Error('Firestore is not initialized.');
 
-  try {
-    if (docId) {
-      // --- Update existing document ---
-      console.log(`[Firestore] Updating SERP analysis (ID: ${docId})`);
-      const docRef = collectionRef.doc(docId);
-      const updateData: FirebaseFirestore.WithFieldValue<
-        Partial<FirebaseSerpAnalysisDoc>
-      > = {
-        ...data
-        // Timestamp handled by converter on update
-      };
-      await docRef.set(updateData, { merge: true });
-      console.log(
-        `[Firestore] Successfully updated SERP analysis (ID: ${docId})`
-      );
-      return docId;
-    } else {
-      // --- Create new document ---
-      if (!data.originalKeyword) {
-        throw new Error(
-          'Original keyword is required to create a new SERP analysis.'
-        );
-      }
-      const normalizedKeyword = normalizeKeyword(data.originalKeyword);
-      console.log(
-        `[Firestore] Creating new SERP analysis for keyword: ${data.originalKeyword} (Normalized: ${normalizedKeyword})`
-      );
-
-      // --- REVERTED: Initialize Text and JSON fields to null ---
-      const dataToCreate: FirebaseSerpAnalysisDoc = {
-        originalKeyword: data.originalKeyword,
-        normalizedKeyword: normalizedKeyword,
-        timestamp: Timestamp.now(), // Placeholder, converter handles final timestamp
-
-        // Map Apify fields
-        searchQuery: data.searchQuery ?? null,
-        resultsTotal: data.resultsTotal ?? null,
-        relatedQueries: data.relatedQueries ?? [],
-        aiOverview: data.aiOverview ?? null,
-        paidResults: data.paidResults ?? [],
-        paidProducts: data.paidProducts ?? [],
-        peopleAlsoAsk: data.peopleAlsoAsk ?? [],
-        organicResults: data.organicResults ?? [],
-
-        // Initialize ALL analysis fields to null
-        contentTypeAnalysis: null,
-        userIntentAnalysis: null,
-        titleAnalysis: null,
-        contentTypeAnalysisText: null,
-        userIntentAnalysisText: null
-      };
-
-      // Merge any analysis data provided in the input (e.g., if fetched data included it)
-      // This allows initiating with fetched Apify data AND potentially pre-existing analysis
-      Object.assign(dataToCreate, data);
-
-      // Validate the final structure for creation
-      const validationResult = serpAnalysisSchema.safeParse(dataToCreate);
-      if (!validationResult.success) {
-        console.error(
-          `[Firestore] Zod validation failed before creating SERP data:`,
-          validationResult.error.flatten()
-        );
-        throw new Error(
-          `Invalid data format for creating SERP analysis: ${validationResult.error.message}`
-        );
-      }
-
-      // --- REVERTED: Use collectionRef.add directly, converter handles types/timestamp ---
-      // Type assertion might be needed if TS inference struggles
-      const docRef = await collectionRef.add(validationResult.data as any);
-      console.log(
-        `[Firestore] Successfully created SERP analysis (ID: ${docRef.id})`
-      );
-      return docRef.id;
-    }
-  } catch (error) {
-    console.error(
-      `[Firestore] Error saving SERP analysis (ID: ${docId || 'New'}):`,
-      error
-    );
-    throw new Error(
-      `Failed to save SERP analysis data: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
-
-// --- Find by Keyword (Reverted to use getSerpCollection) ---
-export async function findSerpAnalysisByKeyword(
-  originalKeyword: string
-): Promise<SerpAnalysisData | null> {
-  const normalizedKeyword = normalizeKeyword(originalKeyword);
-  console.log(
-    `[Firestore] Querying for normalized keyword: ${normalizedKeyword}`
-  );
-  try {
-    const querySnapshot = await getSerpCollection() // Use reverted function
-      .where('normalizedKeyword', '==', normalizedKeyword)
-      .limit(1)
-      .get();
-
-    if (querySnapshot.empty) {
-      console.log(
-        `[Firestore] No analysis found for normalized keyword: ${normalizedKeyword}`
-      );
-      return null;
-    }
-
-    const docSnap = querySnapshot.docs[0];
     console.log(
-      `[Firestore] Found analysis ID: ${docSnap.id} for normalized keyword: ${normalizedKeyword}`
+      `[Firestore CACHED] Querying for SERP data: K=${query}, R=${region}, L=${language}`
     );
-    return docSnap.data(); // Converter adds the id and handles mapping
-  } catch (error) {
-    console.error(
-      `[Firestore] Error finding SERP analysis by keyword ${normalizedKeyword}:`,
-      error
-    );
-    throw error;
-  }
-}
+    try {
+      const collectionRef = db.collection(SERP_COLLECTION);
 
-// --- Get by ID (Reverted to use getSerpCollection) ---
-export async function getSerpAnalysisById(
+      const querySnapshot = await collectionRef
+        .where('originalKeyword', '==', query)
+        .where('region', '==', region)
+        .where('language', '==', language)
+        .orderBy('updatedAt', 'desc')
+        .limit(1)
+        .get();
+
+      if (querySnapshot.empty) {
+        console.log(
+          `[Firestore CACHED] No analysis found for K: ${query}, R: ${region}, L: ${language}`
+        );
+        return null;
+      }
+
+      const docSnap = querySnapshot.docs[0];
+      console.log(
+        `[Firestore CACHED] Found analysis ID: ${docSnap.id} for K: ${query}, R: ${region}, L: ${language}`
+      );
+
+      const data = {
+        ...docSnap.data(),
+        id: docSnap.id
+      };
+      // Basic validation before returning from cache if needed, or rely on schema parsing on use
+      return data as FirebaseSerpResultObject;
+    } catch (error) {
+      console.error(
+        `[Firestore CACHED] Error finding SERP data by keyword/region/language (${query}, ${region}, ${language}):`,
+        error
+      );
+      // Re-throw or return null based on desired cache behavior on error
+      throw error;
+    }
+  },
+  ['findSerpResultObjects'], // Base key segment
+  {
+    // Key parts ensure unique cache entry per query/region/lang combination
+    // Tags allow revalidation when lists change
+    tags: [SERP_DATA_LIST_TAG]
+    // Consider revalidate time if needed: revalidate: 3600 // e.g., 1 hour
+  }
+);
+
+/**
+ * Fetches a specific SERP data document by its Firestore ID.
+ * @param docId Firestore document ID.
+ * @returns The document data (including ID) or null if not found.
+ */
+export const getSerpResultById = async (
   docId: string
-): Promise<SerpAnalysisData | null> {
-  if (!docId) throw new Error('Document ID cannot be empty.');
-  console.log(`[Firestore] Fetching analysis by ID: ${docId}`);
+): Promise<FirebaseSerpResultObject | null> => {
+  if (!db) throw new Error('Firestore is not initialized.');
+  if (!docId) {
+    console.warn(
+      '[Firestore CACHED] getSerpResultById called with empty docId.'
+    );
+    return null; // Return null for empty ID
+  }
+
+  console.log(`[Firestore CACHED] Fetching SERP data by ID: ${docId}`);
   try {
-    const docRef = getSerpCollection().doc(docId); // Use reverted function
+    const docRef = db.collection(SERP_COLLECTION).doc(docId);
     const docSnap = await docRef.get();
 
-    if (docSnap.exists) {
-      console.log(`[Firestore] Found SERP analysis for ID: ${docId}`);
-      return docSnap.data() ?? null; // Converter handles mapping
-    } else {
-      console.log(`[Firestore] No SERP analysis found for ID: ${docId}`);
+    if (!docSnap.exists) {
+      console.log(`[Firestore CACHED] No SERP data found for ID: ${docId}`);
       return null;
     }
+    const data = {
+      ...docSnap.data(),
+      id: docSnap.id
+    };
+
+    const validatedData = FirebaseSerpResultObjectSchema.safeParse(data);
+    if (!validatedData.success) {
+      console.error(
+        `[Firestore CACHED] Invalid SERP data for ID ${docId}:`,
+        validatedData.error
+      );
+      // Decide how to handle invalid data in cache: return null or throw?
+      // Returning null might be safer for consumers.
+      return null;
+    }
+    return validatedData.data;
   } catch (error) {
     console.error(
-      `[Firestore] Error fetching SERP analysis for ID ${docId}:`,
+      `[Firestore CACHED] Error fetching SERP data for ID ${docId}:`,
       error
     );
-    throw error; // Re-throw or handle as needed
-  }
-}
-
-// --- Get List (Reverted to use getSerpCollection) ---
-export async function getSerpAnalysisList(): Promise<
-  { id: string; keyword: string }[]
-> {
-  console.log('[Firestore] Fetching SERP analysis list (ID and Keyword)...');
-  try {
-    const snapshot = await getSerpCollection() // Use reverted function
-      .orderBy('timestamp', 'desc')
-      .select('originalKeyword')
-      .get();
-
-    const list: { id: string; keyword: string }[] = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      if (data?.originalKeyword) {
-        // Ensure keyword exists
-        list.push({ id: doc.id, keyword: data.originalKeyword });
-      }
-    });
-    console.log(
-      `[Firestore] Fetched ${list.length} existing SERP analysis entries.`
-    );
-    return list;
-  } catch (error) {
-    console.error('[Firestore] Error fetching SERP analysis list:', error);
+    // Re-throw or return null based on desired cache behavior on error
     throw error;
   }
-}
+};
 
-// --- Delete by ID (Reverted to use getSerpCollection) ---
 /**
- * Deletes a SERP analysis document by its Firestore ID.
- * @param docId The Firestore document ID to delete.
- * @returns Promise<void>
+ * Fetches a list of SERP data entries (ID, keyword, region, lang, timestamp).
+ * @returns Array of list items.
  */
-export async function deleteSerpAnalysisById(docId: string): Promise<void> {
-  if (!docId) throw new Error('Document ID cannot be empty for deletion.');
-  console.log(`[Firestore] Attempting to delete analysis by ID: ${docId}`);
-  try {
-    const docRef = getSerpCollection().doc(docId); // Use reverted function
-    await docRef.delete();
+export const getSerpResultList = unstable_cache(
+  async (
+    limit = 50,
+    offset = 0
+  ): Promise<
+    {
+      id: string;
+      keyword: string;
+      region: string | null;
+      language: string | null;
+      timestamp: Timestamp;
+    }[]
+  > => {
+    if (!db) throw new Error('Firestore is not initialized.');
     console.log(
-      `[Firestore] Successfully deleted SERP analysis for ID: ${docId}`
+      `[Firestore CACHED] Fetching SERP data list (limit: ${limit}, offset: ${offset})...`
     );
-  } catch (error) {
-    console.error(
-      `[Firestore] Error deleting SERP analysis for ID ${docId}:`,
-      error
-    );
-    throw new Error(
-      `Failed to delete SERP analysis data: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
+    try {
+      const snapshot = await db
+        .collection(SERP_COLLECTION)
+        .orderBy('updatedAt', 'desc')
+        .select('originalKeyword', 'region', 'language', 'updatedAt')
+        .limit(limit)
+        .offset(offset)
+        .get();
 
-// --- NEW: Function to get total count ---
+      const list: {
+        id: string;
+        keyword: string;
+        region: string | null;
+        language: string | null;
+        timestamp: Timestamp;
+      }[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data?.originalKeyword && data?.updatedAt instanceof Timestamp) {
+          list.push({
+            id: doc.id,
+            keyword: data.originalKeyword,
+            region: data.region ?? null,
+            language: data.language ?? null,
+            timestamp: data.updatedAt
+          });
+        } else {
+          console.warn(
+            `[Firestore List CACHED] Skipping doc ${doc.id} due to missing fields or invalid timestamp`
+          );
+        }
+      });
+      console.log(
+        `[Firestore CACHED] Fetched ${list.length} SERP data list entries.`
+      );
+      return list;
+    } catch (error) {
+      console.error('[Firestore CACHED] Error fetching SERP data list:', error);
+      throw error;
+    }
+  },
+  ['getSerpResultList'], // Base key segment
+  {
+    // Key parts depend on limit and offset
+    tags: [SERP_DATA_LIST_TAG]
+    // revalidate: 3600 // Example revalidation time
+  }
+);
+
 /**
- * Gets the total count of SERP analysis documents in the database.
+ * Gets the total count of SERP data documents in the database.
  * @returns Promise<number> The total count.
  */
-export async function getTotalAnalyzedSerpsCount(): Promise<number> {
-  console.log('[Firestore] Getting total count of SERP analysis documents...');
-  try {
-    const collectionRef = getSerpCollection(); // Reuse existing collection logic
-    const snapshot = await collectionRef.count().get();
-    const count = snapshot.data().count;
-    console.log(`[Firestore] Total SERP documents count: ${count}`);
-    return count;
-  } catch (error) {
-    console.error('[Firestore] Error getting total SERP count:', error);
-    // Return 0 or throw, depending on desired error handling
-    // Returning 0 might be safer for display purposes
-    return 0;
+export const getTotalSerpDataCount = unstable_cache(
+  async (): Promise<number> => {
+    if (!db) throw new Error('Firestore is not initialized.');
+    console.log(
+      '[Firestore CACHED] Getting total count of SERP data documents...'
+    );
+    try {
+      const snapshot = await db.collection(SERP_COLLECTION).count().get();
+      const count = snapshot.data().count;
+      console.log(`[Firestore CACHED] Total SERP documents count: ${count}`);
+      return count;
+    } catch (error) {
+      console.error(
+        '[Firestore CACHED] Error getting total SERP count:',
+        error
+      );
+      // Return 0 or throw based on desired behavior on error
+      return 0;
+    }
+  },
+  ['getTotalSerpDataCount'], // Base key segment
+  {
+    tags: [SERP_DATA_LIST_TAG]
+    // revalidate: 3600 // Example revalidation time
   }
-}
+);
+
+// --- Prompt Generation Functions (Moved from serp-prompt-design.ts) ---
+
+export const getContentTypeAnalysisPrompt = (
+  keyword: string,
+  serpResults: string
+) =>
+  `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in Content Type analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword and SERP results (including titles, descriptions, and URLs). Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* in the format of a Markdown table as requested later in the prompt.\n4.  **Behavior:**\n    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.\n    *   Do NOT engage in conversation or ask clarifying questions.\n    *   Do NOT use markdown formatting (like \`\`\`.\`) around the final table output.\n    *   Adhere strictly to the 8 content types defined below.\n    *   **Crucially, consider both the TITLE and the DESCRIPTION of each result when determining its content type.**\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: Content Type Analysis for [${keyword}]\n\n**What this report does:** The Content Type Analysis report looks at the top webpages ranking in Google on the first page and tries to classify the content based on type.\n\n**When to use this report:** The Content Type Analysis report should be used when you want to figure out the type of content that is shown by Google to satisfy the search query. If Google always shows a particular type of content for this query, then you may want to create content of the same type.\n\nYou know that there are eight types of content as mentioned below\n\n1. How to guides\n2. Step by step tutorials\n3. List posts\n4. Opinion editorials\n5. Videos\n6. Product pages\n7. Category pages\n8. Landing pages for a service\n\nPlease create a markdown table with two columns "Content Type" and "Pages".\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, **descriptions** and URLs of the top pages. Can you analyze **both their titles and descriptions** and categorize them based on the 8 content types mentioned earlier? Once done, please collate all the content types together.\n\nI want you to ouput the content types, and the number of the pages that are categorized in that content type in the "Content Type" column. In the "Pages" column I want you to display links to the URLs of those pages. Then Anchor text of the links should be the position number - e.g. 1 or 2 or 3.\n\nThe positions, titles, descriptions and URLs are given below\n\n${serpResults}\n\nRespond ONLY with the markdown table. Do not include any other text, explanations, or formatting like \`\`\`.\n`;
+
+export const getUserIntentAnalysisPrompt = (
+  keyword: string,
+  serpResults: string,
+  relatedKeywordsRaw: string // Raw string with keywords and volumes
+) => {
+  // Process related keywords for potential inclusion in the prompt (AI will handle final formatting)
+  const keywordLines = relatedKeywordsRaw
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && line.includes(','));
+
+  const keywordsData = keywordLines.map(line => {
+    const parts = line.split(',');
+    const keywordName = parts.slice(0, -1).join(',').trim(); // Handle keywords with commas
+    const volumeStr = parts[parts.length - 1].trim();
+    const volume = parseInt(volumeStr, 10);
+    return {
+      keyword: keywordName,
+      volume: isNaN(volume) ? '?' : volume // Use '?' if volume is not a number
+    };
+  });
+
+  // Simplified instructions for related keywords - AI should create the tables.
+  const keywordSectionInstructions =
+    keywordsData.length > 0
+      ? `\n\n#### Related Keywords\n\nBelow is a list of related keywords and their search volume. Please analyze these keywords and group them under the most relevant user intent category identified from the SERP analysis. For each intent category, create a markdown table with two columns: "Keywords" and "Search Volume". If the search volume is unknown, use '?' and link it to https://keywordseverywhere.com/seo-reports.html#faq.\n\n**Provided Keywords Data:**\n${relatedKeywordsRaw}\n` // Provide raw data directly to AI
+      : `\n[No keywords with search volume were found](https://keywordseverywhere.com/seo-reports.html#faq).\n`;
+
+  return `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in User Intent analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword, SERP results, and related keywords data. Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* as Markdown content (User Intent table followed by Related Keyword tables, if applicable) as requested later.\n4.  **Behavior:**\n    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.\n    *   Do NOT engage in conversation or ask clarifying questions.\n    *   Do NOT use markdown formatting (like \`\`\`.\`) around the final output blocks.\n    *   Adhere strictly to the 4 user intent types defined below.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: User Intent Analysis for [${keyword}]\n\n**What this report does:** The User Intent Analysis report looks at the top webpages ranking in Google on the first page and tries to figure out the user intent that each satisfies. It then presents this data categorized in a table. It also gives you keywords relevant to each of the user intents it has found.\n\n**When to use this report:** The User Intent Analysis report should be used when you want to double check what the intent of the user is for the search query. Before you start creating content for this search query, you need to decide which user intent(s) you want your content to satisfy.\n\nYou know that there are four types of search intent - Navigational, Informational, Commercial & Transactional. You are able to figure out the exact search intent and then categorize it into one of the four types of search intent.\n\n#### User Intent Analysis\n\nPlease create a markdown table with three columns "Search Intent Category", "Actual Intent", and "Pages".\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, descriptions and URLs of the top pages. Can you analyze them and figure out the user intent that each page is written for? Collate the results by intent.\n\nIn the "Search Intent Category" column, list the type (Navigational, Informational, Commercial, Transactional). In the "Actual Intent" column, describe the specific intent and include the count of pages matching this intent. In the "Pages" column, display links to the URLs of those pages, using the position number as the anchor text (e.g., [1](URL), [2](URL)).\n\nThe positions, titles, descriptions and URLs are given below:\n\n${serpResults}\n\nIdeally your content should target one of the above user intents. However, it's fine to target one or more of them.\n\n${keywordSectionInstructions}\n\n| Warning                                                                                                                                                           |\n| :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| Please ensure that your Keywords Everywhere Settings for [Credit Usages for Widgets] are all enabled. If not, then LLM will hallucinate the search volume data in this report. |\n\nRespond ONLY with the markdown content described above (User Intent table followed by Related Keyword tables). Do not include any other text, explanations, or formatting like \`\`\`.\n`;
+};
+
+export const getSerpTitleAnalysisPrompt = (
+  keyword: string,
+  serpResults: string
+) => `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in SERP Title analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword and SERP results. Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* as a valid JSON object matching the structure specified later.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object itself.\n    *   Do NOT engage in conversation or ask clarifying questions.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: Analyze SERP Titles for [${keyword}]\n\n**What this report does:** The Analyze SERP Titles report looks at the top webpages ranking in Google on the first page for the search query and tries to find patterns in them. It explains what it finds and gives recommendations for the title and also suggests a title for your content.\n\n**When to use this report:** The Analyze SERP Titles report should be used before you start writing content, by creating the page title. Read the recommendations and feel free to ask for more suggested page titles.\n\nYou know that there are four types of search intent - Navigational, Informational, Commercial & Transactional. You are able to figure out the exact search intent and then categorize it into one of the four types of search intent.\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, descriptions and URLs of the top pages. Can you analyze the titles and find what is common among all of them. Finally, also create a new title that has the best of everything that is common.\n\nThe positions, titles, descriptions and URLs are given below:\n\n${serpResults}\n\nWhen you mention any position, display the link of the URL and use the number of the position as the anchor text.\n\nRespond with a JSON object with the following structure:\n{
+  "title": "Your suggested optimized title",
+  "analysis": "Your detailed analysis of the SERP titles",
+  "recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"]
+}\n\nDo not include any text outside of this JSON structure. Return valid JSON only.\n`;
+
+export const getContentTypeConversionPrompt = (
+  markdownText: string,
+  keyword: string // Include keyword for context if needed in JSON
+) =>
+  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text and the keyword for context.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.\n    *   Ensure all extracted data (URLs, positions) is valid according to the schema.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown text, which represents a Content Type Analysis report, into a structured JSON object.\n\nThe Markdown text contains a table listing content types and associated page links (with position numbers as anchor text).\n\nInput Markdown Text:\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. Extract the content type, count (number of pages listed), and an array of page objects (position and URL) for each row in the table.\n\n{\n  "analysisTitle": "Content Type Analysis for [${keyword}]", // Generate title using the provided keyword\n  "reportDescription": "The Content Type Analysis report looks at the top webpages ranking in Google on the first page and tries to classify the content based on type.", // Standard description\n  "usageHint": "The Content Type Analysis report should be used when you want to figure out the type of content that is shown by Google to satisfy the search query. If Google always shows a particular type of content for this query, then you may want to create content of the same type.", // Standard hint\n  "contentTypes": [\n    {\n      "type": "string (e.g., Product pages)", // Extracted from the first column\n      "count": number, // Calculated count of pages in the second column\n      "pages": [\n        { "position": number, "url": "string" }, // Extracted from links in the second column\n        ...\n      ]\n    },\n    ...\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting. Ensure all URLs are valid and positions are positive integers.\n`;
+
+export const getUserIntentConversionPrompt = (
+  markdownText: string,
+  keyword: string // Include keyword for context
+) =>
+  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text and the keyword for context.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.\n    *   Handle keyword search volume '?' as null in the JSON.\n    *   Ensure all extracted data (URLs, positions, categories) is valid according to the schema.\n    *   **Crucially, ensure EVERY item inside the 'intents' array is a complete JSON object with the fields 'category', 'specificIntent', 'count', and 'pages'. Do not output plain strings within this array.**\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown text, which represents a User Intent Analysis report, into a structured JSON object.\n\nThe Markdown text contains:\n1. A table listing user intent categories, specific intents (including page counts), and associated page links (position as anchor text).\n2. Potentially following the first table, markdown tables for related keywords grouped by intent category.\n\nInput Markdown Text:\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. Extract the intent category, specific intent description, page count, and page details from the first table. Extract related keywords and their search volumes (handle '?' as null) from the subsequent keyword tables.\n\n{\n  "analysisTitle": "User Intent Analysis for [${keyword}]", // Generate title\n  "reportDescription": "The User Intent Analysis report looks at the top webpages ranking in Google on the first page and tries to figure out the user intent that each satisfies. It then presents this data categorized.", // Standard description\n  "usageHint": "The User Intent Analysis report should be used when you want to double check what the intent of the user is for the search query. Before you start creating content for this search query, you need to decide which user intent(s) you want your content to satisfy.", // Standard hint\n  "intents": [\n    {\n      "category": "string (Navigational | Informational | Commercial | Transactional)", // Extracted from the first column\n      "specificIntent": "string (e.g., Find official website, Learn about X)", // Extracted from the second column (description part)\n      "count": number, // Extracted from the second column (count part)\n      "pages": [\n        { "position": number, "url": "string" }, // Extracted from links in the third column\n        ...\n      ]\n    },\n    // Example of another intent object (ensure ALL items follow this structure):
+    // { \n    //   "category": "Informational", \n    //   "specificIntent": "Compare product features", \n    //   "count": 3, \n    //   "pages": [ { "position": 4, "url": "..." }, ... ] \n    // }, 
+    ... // MORE FULL OBJECTS HERE, NOT STRINGS
+  ],\n  "relatedKeywords": [\n      { "keyword": "string", "searchVolume": number | null }, // Extracted from keyword tables. '?' volume becomes null.\n      ...\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting. Ensure categories match the four types, positions are positive integers, URLs are valid, and searchVolume is number or null. **Remember: Every item in the 'intents' array MUST be a complete JSON object.**\n`;
+
+export const getContentTypeRecommendationPrompt = (
+  markdownAnalysisText: string
+) =>
+  `You are an expert SEO analyst reviewing a Content Type Analysis report (in Markdown format). Based *only* on the provided report, generate a concise, actionable recommendation for the user on which content type(s) to focus on.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown report.
+2.  **Task:** Identify the dominant content type(s) suggested by the analysis.
+3.  **Output Format:** Respond *only* with a single sentence recommendation starting with "建議撰寫" (Suggest writing), followed by the most prominent content type, and a brief "因為" (because) justification based *directly* on the report's findings (e.g., highest frequency).
+    *   Example: 建議撰寫 How to guides content type 因為：這是 SERP 中最常見的類型。
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the single recommendation sentence.`;
+
+export const getUserIntentRecommendationPrompt = (
+  markdownAnalysisText: string,
+  keyword: string
+) =>
+  `You are an expert SEO analyst reviewing a User Intent Analysis report (in Markdown format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable recommendation for the user regarding matching user intent.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown report for the keyword "[${keyword}]".
+2.  **Task:** Identify the primary user intent category and the specific sub-intents mentioned.
+3.  **Output Format:** Respond *only* with a single sentence following this exact template: "建議要匹配用戶意圖，因為關鍵字 ${keyword} 的用戶意圖主要是 \${primary_intent_category}，推測可能包含幾種不同的子意圖包括 \${sub_intent_1}, \${sub_intent_2}, ..."
+    *   Replace \`\${keyword}\` with the actual keyword.
+    *   Replace \`\${primary_intent_category}\` with the most dominant category (Informational, Transactional, etc.) found in the report.
+    *   Replace \`\${sub_intent_1}, \${sub_intent_2}, ...\` with the specific "Actual Intent" descriptions listed for that primary category in the report. List at least one, and up to three if available.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the single recommendation sentence matching the template.`;
+
+export const getTitleRecommendationPrompt = (
+  suggestedTitle: string,
+  analysisText: string // The 'analysis' field from the TitleAnalysisJson
+) =>
+  `You are an expert SEO analyst reviewing a generated title and its analysis. Based *only* on the provided title and analysis, generate a concise, actionable recommendation for the user.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** The suggested title and the analysis explaining why it was suggested.
+2.  **Task:** Formulate a recommendation using the provided title and analysis.
+3.  **Output Format:** Respond *only* with a single sentence following this exact template: "建議使用的標題：${suggestedTitle} 因為：\${analysisSummary}"
+    *   Replace \`\${suggestedTitle}\` with the provided suggested title.
+    *   Replace \`\${analysisSummary}\` with a brief summary or the core reason derived *directly* from the provided analysis text. Keep it concise.
+4.  **Behavior:**
+    *   Do NOT add any introductory text, concluding remarks, or explanations beyond the single sentence.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input title and analysis text.
+
+**Suggested Title:**
+${suggestedTitle}
+
+**Analysis Text:**
+${analysisText}
+
+Respond ONLY with the single recommendation sentence matching the template.`;
+
+export const getBetterHaveInArticlePrompt = (
+  keyword: string,
+  serpString: string, // Formatted organic results (titles/descriptions)
+  paaString: string, // Formatted People Also Ask
+  relatedQueriesString: string, // Formatted Related Queries
+  aiOverviewString: string // Formatted AI Overview
+) =>
+  `You are an expert SEO Content Strategist analyzing SERP data for the keyword "[${keyword}]" to identify crucial elements for a high-quality, trustworthy article.
+
+**TASK:**
+Analyze the provided SERP data (Organic Results, People Also Ask, Related Queries, AI Overview) to identify 5-10 specific topics, questions, concepts, or phrases (beyond just the core keyword phrase itself) that are essential to include in an article about "[${keyword}]". The goal is to create content that comprehensively satisfies user intent, addresses related concerns apparent in the SERP, builds reader trust, and stands out from competitors.
+
+**INPUT DATA:**
+
+*   **Keyword:** ${keyword}
+*   **Organic Results (Top 15 Titles/Descriptions):**
+    ${serpString}
+*   **People Also Ask:**
+    ${paaString}
+*   **Related Queries:**
+    ${relatedQueriesString}
+*   **AI Overview (if available):**
+    ${aiOverviewString}
+
+**OUTPUT FORMAT:**
+Generate a Markdown bulleted list. Each bullet point should represent a distinct recommendation. For each recommendation, briefly explain *why* it's important based *only* on the provided SERP data (e.g., "Addresses a common PAA question", "Featured in multiple top-ranking descriptions", "Covers a related search query", "Key point from AI overview").
+
+Example:
+*   **Include a section comparing X and Y:** Justification: This comparison appears in several top descriptions and addresses a related query.
+*   **Answer the question "How to do Z?":** Justification: This is a direct question from People Also Ask.
+*   **Mention the importance of [Specific Concept]:** Justification: This concept was highlighted in the AI Overview and appears in titles.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Focus:** Identify elements that enhance comprehensiveness, user trust, and address related user needs shown in the SERP.
+2.  **Specificity:** Provide concrete topics, questions, or phrases. Avoid generic advice like "write high-quality content".
+3.  **Justification:** Link every recommendation back to specific evidence within the provided SERP data sections.
+4.  **Data Source:** Base your analysis *strictly* on the provided input data. Do not use external knowledge.
+5.  **Format:** Respond *only* with the Markdown bulleted list as described. Do not add introductions, summaries, or other text.
+
+Respond ONLY with the markdown bulleted list.`;
+
+export const getBetterHaveConversionPrompt = (
+  markdownText: string,
+  keyword: string // Include keyword for context if needed in JSON
+) =>
+  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown bullet list text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it. Extract the main recommended point/topic/question and its justification for each bullet point.\n    *   Attempt to infer the primary 'source' driving each recommendation (PAA, Organic Results, Related Queries, AI Overview, Multiple) based on the justification text, but it's okay if it's sometimes missing or inaccurate.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown bulleted list, representing a "Better Have In Article" analysis report for keyword "[${keyword}]", into a structured JSON object.\n\nInput Markdown Text (Bulleted List):\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. For each bullet point in the list, extract the core recommendation (the bolded part or main topic) into the 'point' field and the subsequent explanation into the 'justification' field. Attempt to categorize the 'source' based on keywords in the justification.\n\n{\n  "analysisTitle": "Better Have In Article Analysis for [${keyword}]",\n  "recommendations": [\n    {\n      "point": "string (e.g., Include a section comparing X and Y)", // Extracted main recommendation from bullet\n      "justification": "string (e.g., This comparison appears in several top descriptions and addresses a related query.)", // Extracted justification text\n      "source": "string (PAA | Organic Results | Related Queries | AI Overview | Multiple) | null" // Inferred source based on justification, null if unclear\n    },\n    // ... more items for each bullet point\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting.\n`;
+
+export const getBetterHaveRecommendationPrompt = (
+  markdownAnalysisText: string,
+  keyword: string
+) =>
+  `You are an expert SEO analyst reviewing a "Better Have In Article" analysis report (in Markdown bullet list format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable 1-2 sentence summary recommendation for the user.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Input:** Analyze the provided Markdown bullet list report.
+2.  **Task:** Summarize the most important themes or types of recommendations emerging from the list (e.g., addressing PAA, competitor features, related topics).
+3.  **Output Format:** Respond *only* with a 1-2 sentence recommendation focusing on the key takeaways.
+    *   Example: 建議文章中應重點處理 People Also Ask 的問題，並涵蓋 SERP 中常見的比較性內容，以建立信任感。 (Suggest the article should focus on addressing People Also Ask questions and cover comparative content common in the SERP to build trust.)
+4.  **Behavior:**
+    *   Do NOT simply repeat the bullet points. Synthesize the main ideas.
+    *   Do NOT add introductory text, concluding remarks, or explanations beyond the 1-2 sentences.
+    *   Do NOT refer to yourself or the process.
+    *   Base the recommendation solely on the input Markdown.
+
+**Input Markdown Report:**
+\`\`\`markdown
+${markdownAnalysisText}
+\`\`\`
+
+Respond ONLY with the 1-2 sentence recommendation summary.`;

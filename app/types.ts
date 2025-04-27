@@ -31,9 +31,7 @@ export interface KeywordResearchDetail {
 
 // Type definitions extracted from schema.ts
 
-// Types for KeywordResultPage component (page.tsx)
-// These are only used to build Props, so no need to export individually
-type Params = Promise<{ researchId: string }>;
+type Params = Promise<{ [key: string]: string | undefined }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 // Export only the combined Props type for the page component

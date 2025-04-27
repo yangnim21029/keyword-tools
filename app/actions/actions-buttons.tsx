@@ -55,7 +55,7 @@ export function ClusterAnalysisButton({
       } else {
         toast.error(
           `Keyword clustering failed for ${researchId}: ${
-            result.error || 'Unknown error'
+            result.error ?? 'Unknown error'
           }`
         );
       }
@@ -113,7 +113,7 @@ export function GeneratePersonaButton({
       } else {
         toast.error(
           `Failed to generate persona for "${clusterName}": ${
-            result.error || 'Unknown error'
+            result.error ?? 'Unknown error'
           }`
         );
       }
@@ -253,7 +253,7 @@ export function DeleteKeywordVolumeButton({
         toast.success(`Research ${researchId} deleted.`);
       } else {
         toast.error(
-          `Failed to delete ${researchId}: ${result.error || 'Unknown error'}`
+          `Failed to delete ${researchId}: ${result.error ?? 'Unknown error'}`
         );
       }
     });
@@ -274,6 +274,268 @@ export function DeleteKeywordVolumeButton({
       loadingIcon={<Loader2 className="h-4 w-4 animate-spin" />}
     >
       {!isPending && <Trash2 className="h-4 w-4" />}
+    </LoadingButton>
+  );
+}
+
+// === SERP Analysis Buttons ===
+
+import {
+  submitAiAnalysisSerpBetterHave,
+  submitAiAnalysisSerpContentType,
+  submitAiAnalysisSerpIntent,
+  submitAiAnalysisSerpTitle,
+  submitCreateSerp
+} from './actions-serp-result'; // Import the specific SERP analysis actions
+
+interface BaseAnalysisButtonProps {
+  docId: string;
+  variant?: React.ComponentProps<typeof LoadingButton>['variant'];
+  size?: React.ComponentProps<typeof LoadingButton>['size'];
+  className?: string;
+  disabled?: boolean;
+}
+
+// === Create New SERP Button ===
+export function CreateNewSerpButton({
+  query,
+  region,
+  language
+}: {
+  query: string;
+  region: string;
+  language: string;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleCreate = () => {
+    if (!query.trim() || isPending) {
+      if (!query.trim()) {
+        toast.warning('Please enter a search query.');
+      }
+      return;
+    }
+
+    startTransition(async () => {
+      toast.info(`Fetching SERP for "${query}"...`);
+      try {
+        const result = await submitCreateSerp({ query, region, language });
+
+        if (result.success) {
+          toast.success(`SERP data created/fetched successfully!`);
+          router.refresh(); // Refresh the list on the page
+          // Optionally clear the form state here if needed, though state is in the parent
+        } else {
+          // Use the specific error from the action
+          const errorMsg = result.error || 'Failed to fetch/create SERP data.';
+          toast.error(errorMsg);
+          console.error('[CreateNewSerpButton] Action failed:', errorMsg);
+        }
+      } catch (err) {
+        console.error(
+          '[CreateNewSerpButton] Error calling server action:',
+          err
+        );
+        const message =
+          err instanceof Error ? err.message : 'An unexpected error occurred.';
+        toast.error(`Error: ${message}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      // Use props or defaults for styling
+      variant="default" // Example: Use default variant
+      size="sm" // Example: Use small size
+      className="h-8 px-4" // Example custom class
+      onClick={handleCreate}
+      isLoading={isPending}
+      disabled={isPending || !query.trim()}
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+    >
+      {/* Keep icon if desired */}
+      <Sparkles className="h-4 w-4 mr-2" />
+      Fetch SERP
+    </LoadingButton>
+  );
+}
+
+// === Analyze Content Type Button ===
+export function AnalyzeContentTypeButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false
+}: BaseAnalysisButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await submitAiAnalysisSerpContentType({ docId });
+        if (result.success) {
+          toast.success(`Content Type analysis complete.`);
+        } else {
+          toast.error(
+            `Content Type analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Content Type analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText="Analyzing..."
+    >
+      Analyze Content Type
+    </LoadingButton>
+  );
+}
+
+// === User Intent Analysis Button ===
+export function AnalyzeUserIntentButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false
+}: BaseAnalysisButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await submitAiAnalysisSerpIntent({ docId });
+        if (result.success) {
+          toast.success(`User Intent analysis complete.`);
+        } else {
+          toast.error(
+            `User Intent analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`User Intent analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText="Analyzing..."
+    >
+      Analyze User Intent
+    </LoadingButton>
+  );
+}
+
+// === Title Analysis Button ===
+export function AnalyzeTitleButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false
+}: BaseAnalysisButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await submitAiAnalysisSerpTitle({ docId });
+        if (result.success) {
+          toast.success(`Title analysis complete.`);
+        } else {
+          toast.error(
+            `Title analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Title analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText="Analyzing..."
+    >
+      Analyze Title
+    </LoadingButton>
+  );
+}
+
+// === Better Have Analysis Button ===
+export function AnalyzeBetterHaveButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false
+}: BaseAnalysisButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await submitAiAnalysisSerpBetterHave({ docId });
+        if (result.success) {
+          toast.success(`Better Have analysis complete.`);
+        } else {
+          toast.error(
+            `Better Have analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Better Have analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText="Analyzing..."
+    >
+      Analyze Better Have
     </LoadingButton>
   );
 }

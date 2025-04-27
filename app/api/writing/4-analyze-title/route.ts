@@ -1,22 +1,19 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-// Import the specific step function from actions
-import { analyzeTitleStep } from '@/app/actions/writing-actions';
-import type { AiTitleAnalysisJson } from '@/app/services/firebase/schema'; // Import type for result
 
-// Input schema should match the expected input for analyzeTitleStep
+import { submitAiAnalysisSerpTitle } from '@/app/actions/actions-serp-result';
+
+// --- Define Input Schema ---
 const inputSchema = z.object({
-  serpDocId: z.string().min(1),
-  keyword: z.string().min(1),
-  organicResults: z.array(z.any()).optional().nullable()
+  serpDocId: z.string().min(1, 'serpDocId is required')
 });
 
 export async function POST(request: NextRequest) {
   console.log('[API /writing/4-analyze-title] Received request');
   try {
     const body = await request.json();
+    // --- Validate Input ---
     const validation = inputSchema.safeParse(body);
-
     if (!validation.success) {
       console.error(
         '[API /writing/4-analyze-title] Invalid input:',
@@ -27,22 +24,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    // --- End Validation ---
 
-    const inputData = validation.data;
-    console.log(
-      `[API /writing/4-analyze-title] Calling action step for Doc ID: ${inputData.serpDocId}`
-    );
-
-    // Call the imported action function
-    const result: {
-      analysisJson: AiTitleAnalysisJson;
-      recommendationText: string;
-    } = await analyzeTitleStep(inputData);
-
-    console.log(
-      `[API /writing/4-analyze-title] Action step complete for Doc ID: ${inputData.serpDocId}`
-    );
-    // Return the result from the action step { analysisJson: ..., recommendationText: ... }
+    const { serpDocId } = validation.data; // Get validated ID
+    const result = await submitAiAnalysisSerpTitle({ docId: serpDocId }); // Pass only ID
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error(

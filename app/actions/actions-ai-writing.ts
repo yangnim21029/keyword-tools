@@ -10,79 +10,12 @@ import {
   MEDIA_SITE_FINE_TUNE_DATA,
   THEME_FINE_TUNE_DATA
 } from '../prompt/fine-tune';
-import {
-  generateAnalysisJsonFromText,
-  getOrFetchSerpDataAction,
-  performBetterHaveInArticleAnalysis,
-  performContentTypeAnalysis,
-  performSerpTitleAnalysis,
-  performUserIntentAnalysis
-} from './serp-action'; // Assuming serp-action.ts is in the same dir
+
 // Import the necessary type
-import type {
-  AiSerpBetterHaveAnalysisJson,
-  AiTitleAnalysisJson
-} from '@/app/services/firebase/schema';
-import type { ClientSafeSerpDataDoc } from './serp-action'; // Import the client-safe type if needed
+
+import { getKeywordVolumeList } from '../services/firebase';
+import { KeywordVolumeListItem } from '../services/firebase/schema';
 import { generateContentSuggestionsAction } from './use-content-ai';
-
-// --- START: Helper Functions (Re-added temporarily) ---
-function formatSerpResults(organicResults: any[] | undefined | null): string {
-  if (!Array.isArray(organicResults) || organicResults.length === 0) {
-    return 'No organic results found.';
-  }
-  return organicResults
-    .map(
-      (result, index) =>
-        `Position ${result.position || index + 1}:\nTitle: ${
-          result.title || 'N/A'
-        }\nDescription: ${result.description || 'N/A'}\nURL: ${
-          result.url || 'N/A'
-        }\n---`
-    )
-    .join('\n\n');
-}
-
-function formatRelatedKeywords(
-  relatedQueries: any[] | undefined | null
-): string {
-  if (!Array.isArray(relatedQueries) || relatedQueries.length === 0) {
-    return 'No related keywords found.';
-  }
-  return relatedQueries
-    .map(q => `${q?.query || JSON.stringify(q)}`) // Handle missing query property
-    .join('\n');
-}
-
-function formatPAA(peopleAlsoAsk: any[] | undefined | null): string {
-  if (!Array.isArray(peopleAlsoAsk) || peopleAlsoAsk.length === 0) {
-    return 'No People Also Ask data found.';
-  }
-  return peopleAlsoAsk
-    .map(paa => {
-      const question = paa?.question || 'Unknown question';
-      const answerSnippet = paa?.answer
-        ? `\n  Answer Snippet: ${paa.answer.substring(0, 150)}...`
-        : '';
-      return `- ${question}${answerSnippet}`;
-    })
-    .join('\n');
-}
-
-function formatAIOverview(aiOverview: string | undefined | null): string {
-  if (
-    !aiOverview ||
-    typeof aiOverview !== 'string' ||
-    aiOverview.trim().length === 0
-  ) {
-    return 'No AI Overview data found.';
-  }
-  const maxLength = 1500;
-  return (
-    aiOverview.substring(0, maxLength) +
-    (aiOverview.length > maxLength ? '...' : '')
-  );
-}
 
 function getFineTuneDataStrings(names?: string[]): string {
   if (!names || names.length === 0) return '';
@@ -253,262 +186,14 @@ function formatKeywordReportForPrompt(
 }
 // --- END: Helper Functions ---
 
-// === Step 1: Fetch SERP Data ===
-const fetchSerpStepInputSchema = z.object({
-  keyword: z.string().min(1),
-  mediaSiteName: z.string().min(1)
-});
-type FetchSerpStepInput = z.infer<typeof fetchSerpStepInputSchema>;
-
-export async function fetchSerpStep(
-  input: FetchSerpStepInput
-): Promise<ClientSafeSerpDataDoc> {
-  const validation = fetchSerpStepInputSchema.safeParse(input);
-  if (!validation.success)
-    throw new Error(
-      `Invalid input for fetchSerpStep: ${validation.error.format()}`
-    );
-  const { keyword, mediaSiteName } = validation.data;
-
-  console.log(
-    `[Action Step 1] Fetching SERP for keyword: "${keyword}", site: "${mediaSiteName}"`
-  );
-  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-  if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
-
-  const serpResult = await getOrFetchSerpDataAction({
-    query: keyword,
-    region: mediaSite.region,
-    language: mediaSite.language
-  });
-  if (!serpResult)
-    throw new Error(`Failed to get or fetch SERP data for ${keyword}`);
-
-  console.log(`[Action Step 1] SERP data obtained. Doc ID: ${serpResult.id}`);
-
-  // Return client-safe version, ensuring all required fields are present
-  const clientSafeResult: ClientSafeSerpDataDoc = {
-    id: serpResult.id,
-    query: serpResult.query,
-    region: serpResult.region,
-    language: serpResult.language,
-    organicResults: serpResult.organicResults?.slice(0, 15) || [],
-    peopleAlsoAsk: serpResult.peopleAlsoAsk || [],
-    relatedQueries: serpResult.relatedQueries || [],
-    aiOverview: serpResult.aiOverview,
-    contentTypeAnalysisText: serpResult.contentTypeAnalysisText,
-    userIntentAnalysisText: serpResult.userIntentAnalysisText,
-    titleAnalysis: serpResult.titleAnalysis,
-    betterHaveAnalysis: serpResult.betterHaveAnalysis,
-    // Add missing required fields
-    createdAt: serpResult.createdAt || null, // Add createdAt, handle potential undefined
-    updatedAt: serpResult.updatedAt || null // Ensure updatedAt is also handled (already present but ensure null fallback)
-  };
-  return clientSafeResult;
-}
-
-// === Step 2: Analyze Content Type ===
-const analyzeContentTypeStepInputSchema = z.object({
-  serpDocId: z.string().min(1),
-  keyword: z.string().min(1),
-  organicResults: z.array(z.any()).optional().nullable() // Use z.any() for simplicity, refine if needed
-});
-type AnalyzeContentTypeStepInput = z.infer<
-  typeof analyzeContentTypeStepInputSchema
->;
-
-export async function analyzeContentTypeStep(
-  input: AnalyzeContentTypeStepInput
-): Promise<{ recommendationText: string }> {
-  const validation = analyzeContentTypeStepInputSchema.safeParse(input);
-  if (!validation.success)
-    throw new Error(
-      `Invalid input for analyzeContentTypeStep: ${validation.error.format()}`
-    );
-  const { serpDocId, keyword, organicResults } = validation.data;
-
-  console.log(
-    `[Action Step 2a] Analyzing Content Type (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`
-  );
-  const serpString = formatSerpResults(organicResults);
-
-  // Get the raw analysis text first
-  const { analysisText } = await performContentTypeAnalysis({
-    docId: serpDocId,
-    keyword,
-    serpString
-  });
-  console.log(`[Action Step 2a] Content Type analysis (Text) complete.`);
-
-  // Now convert to JSON and get recommendation text
-  console.log(
-    `[Action Step 2b] Converting Content Type text and getting recommendation for Doc ID: ${serpDocId}`
-  );
-  const conversionResult = await generateAnalysisJsonFromText({
-    docId: serpDocId,
-    analysisType: 'contentType',
-    analysisText: analysisText,
-    keyword: keyword
-  });
-  console.log(`[Action Step 2b] Content Type recommendation text obtained.`);
-
-  // Return only the recommendation text
-  return { recommendationText: conversionResult.recommendationText };
-}
-
-// === Step 3: Analyze User Intent ===
-const analyzeUserIntentStepInputSchema = z.object({
-  serpDocId: z.string().min(1),
-  keyword: z.string().min(1),
-  organicResults: z.array(z.any()).optional().nullable(),
-  relatedQueries: z.array(z.any()).optional().nullable()
-});
-type AnalyzeUserIntentStepInput = z.infer<
-  typeof analyzeUserIntentStepInputSchema
->;
-
-export async function analyzeUserIntentStep(
-  input: AnalyzeUserIntentStepInput
-): Promise<{ recommendationText: string }> {
-  const validation = analyzeUserIntentStepInputSchema.safeParse(input);
-  if (!validation.success)
-    throw new Error(
-      `Invalid input for analyzeUserIntentStep: ${validation.error.format()}`
-    );
-  const { serpDocId, keyword, organicResults, relatedQueries } =
-    validation.data;
-
-  console.log(
-    `[Action Step 3a] Analyzing User Intent (Text) for Doc ID: ${serpDocId}, Keyword: ${keyword}`
-  );
-  const serpString = formatSerpResults(organicResults);
-  const relatedKeywordsRaw = formatRelatedKeywords(relatedQueries);
-
-  // Get the raw analysis text first
-  const { analysisText } = await performUserIntentAnalysis({
-    docId: serpDocId,
-    keyword,
-    serpString,
-    relatedKeywordsRaw
-  });
-  console.log(`[Action Step 3a] User Intent analysis (Text) complete.`);
-
-  // Now convert to JSON and get recommendation text
-  console.log(
-    `[Action Step 3b] Converting User Intent text and getting recommendation for Doc ID: ${serpDocId}`
-  );
-  const conversionResult = await generateAnalysisJsonFromText({
-    docId: serpDocId,
-    analysisType: 'userIntent',
-    analysisText: analysisText,
-    keyword: keyword
-  });
-  console.log(`[Action Step 3b] User Intent recommendation text obtained.`);
-
-  // Return only the recommendation text
-  return { recommendationText: conversionResult.recommendationText };
-}
-
-// === Step 4: Analyze Title ===
-const analyzeTitleStepInputSchema = z.object({
-  serpDocId: z.string().min(1),
-  keyword: z.string().min(1),
-  organicResults: z.array(z.any()).optional().nullable()
-});
-type AnalyzeTitleStepInput = z.infer<typeof analyzeTitleStepInputSchema>;
-
-export async function analyzeTitleStep(
-  input: AnalyzeTitleStepInput
-): Promise<{ analysisJson: AiTitleAnalysisJson; recommendationText: string }> {
-  const validation = analyzeTitleStepInputSchema.safeParse(input);
-  if (!validation.success)
-    throw new Error(
-      `Invalid input for analyzeTitleStep: ${validation.error.format()}`
-    );
-  const { serpDocId, keyword, organicResults } = validation.data;
-
-  console.log(
-    `[Action Step 4] Analyzing Title for Doc ID: ${serpDocId}, Keyword: ${keyword}`
-  );
-  const serpString = formatSerpResults(organicResults);
-
-  const result = await performSerpTitleAnalysis({
-    docId: serpDocId,
-    keyword,
-    serpString
-  });
-  console.log(`[Action Step 4] Title analysis complete.`);
-  return result; // Contains analysisJson and recommendationText
-}
-
-// === Step 5: Analyze Better Have ===
-const analyzeBetterHaveStepInputSchema = z.object({
-  serpDocId: z.string().min(1),
-  keyword: z.string().min(1),
-  organicResults: z.array(z.any()).optional().nullable(),
-  peopleAlsoAsk: z.array(z.any()).optional().nullable(),
-  relatedQueries: z.array(z.any()).optional().nullable(),
-  aiOverview: z.string().optional().nullable()
-});
-type AnalyzeBetterHaveStepInput = z.infer<
-  typeof analyzeBetterHaveStepInputSchema
->;
-
-export async function analyzeBetterHaveStep(
-  input: AnalyzeBetterHaveStepInput
-): Promise<{
-  analysisJson: AiSerpBetterHaveAnalysisJson;
-  recommendationText: string;
-}> {
-  const validation = analyzeBetterHaveStepInputSchema.safeParse(input);
-  if (!validation.success)
-    throw new Error(
-      `Invalid input for analyzeBetterHaveStep: ${validation.error.format()}`
-    );
-  const {
-    serpDocId,
-    keyword,
-    organicResults,
-    peopleAlsoAsk,
-    relatedQueries,
-    aiOverview
-  } = validation.data;
-
-  console.log(
-    `[Action Step 5] Analyzing Better Have for Doc ID: ${serpDocId}, Keyword: ${keyword}`
-  );
-  const serpString = formatSerpResults(organicResults);
-  const paaString = formatPAA(peopleAlsoAsk);
-  const relatedQueriesString = formatRelatedKeywords(relatedQueries);
-  const aiOverviewString = formatAIOverview(aiOverview);
-
-  // Call the underlying action (which now returns analysisText)
-  const result = await performBetterHaveInArticleAnalysis({
-    docId: serpDocId,
-    keyword,
-    serpString,
-    paaString,
-    relatedQueriesString,
-    aiOverviewString
-  });
-
-  // Log length of recommendationText instead
-  console.log(
-    `[Action Step 5] Better Have analysis complete. Recommendation Length: ${
-      result.recommendationText?.length || 0
-    }`
-  );
-  return result; // Return the full result object { analysisJson, recommendationText }
-}
-
 // === Step 6: Generate Action Plan ===
 const generateActionPlanStepInputSchema = z.object({
   keyword: z.string().min(1),
   mediaSiteName: z.string().min(1), // Need site name to get data string
-  contentTypeReportText: z.string(), // Now receives recommendationText from analyzeContentTypeStep
-  userIntentReportText: z.string(), // Now receives recommendationText from analyzeUserIntentStep
-  titleRecommendationText: z.string(),
-  betterHaveRecommendationText: z.string(),
+  contentTypeReportText: z.string().optional().nullable(), // Make optional/nullable
+  userIntentReportText: z.string().optional().nullable(), // Make optional/nullable
+  titleRecommendationText: z.string().optional().nullable(), // Make optional/nullable
+  betterHaveRecommendationText: z.string().optional().nullable(), // Make optional/nullable
   keywordReport: z.any().optional().nullable(), // Add keywordReport
   selectedClusterName: z.string().optional().nullable() // Add selectedClusterName
 });
@@ -553,10 +238,12 @@ You are an SEO Project Manager with knowledge in consumer behavior theory, tradi
 # Steps
 
 1. **Accroding and Read the SEO Analysis Results to write a detailed SEO action plan**:
-    - Include Key Topics/Trust Factors ('Better Have'): ${betterHaveRecommendationText}
-    - choose Content Type Analysis: ${contentTypeReportText} 
-    - choose User Intent Analysis: ${userIntentReportText}
-    - choose Title Analysis: ${titleRecommendationText}
+    - Include Key Topics/Trust Factors ('Better Have'): ${
+      betterHaveRecommendationText ?? 'N/A'
+    }
+    - choose Content Type Analysis: ${contentTypeReportText ?? 'N/A'} 
+    - choose User Intent Analysis: ${userIntentReportText ?? 'N/A'}
+    - choose Title Analysis: ${titleRecommendationText ?? 'N/A'}
 2. **Identify Theme**:
     - Analyze the keyword to discern the main theme
 3. **Create Action Plan**:
@@ -807,4 +494,15 @@ function getOutlineFromReference(refName: string) {
     };
   }
   return reference; // Return the object { name: '...', reference: '...' }
+}
+
+export async function submitGetKeywordVolumeList({
+  limit,
+  offset
+}: {
+  limit: number;
+  offset: number;
+}): Promise<KeywordVolumeListItem[]> {
+  const keywordVolumeList = await getKeywordVolumeList({ limit, offset });
+  return keywordVolumeList || [];
 }

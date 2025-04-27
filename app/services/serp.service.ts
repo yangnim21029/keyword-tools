@@ -1,99 +1,20 @@
 import { z } from 'zod';
-// Import the detailed schemas from db-serp if possible, or redefine necessary parts here
-// Assuming schemas like organicResultSchema, searchQuerySchema, etc. are available or defined
-// For simplicity here, we might redefine or import them.
-// Let's assume FirebaseSerpAnalysisDoc is importable or we define a similar structure.
+// Import the main schema from schema.ts
+import { FirebaseSerpResultObjectSchema } from './firebase/schema';
 
-// --- Re-defining necessary Zod schemas based on db-serp.ts structure ---
-// (Ideally, export these from db-serp.ts and import here)
-
-const searchQuerySchema = z
-  .object({
-    term: z.string().optional().nullable(),
-    url: z.string().url().optional().nullable(),
-    device: z.string().optional().nullable(),
-    page: z.number().int().optional().nullable(),
-    type: z.string().optional().nullable(),
-    domain: z.string().optional().nullable(),
-    countryCode: z.string().optional().nullable(),
-    languageCode: z.string().optional().nullable(),
-    locationUule: z.string().optional().nullable(),
-    resultsPerPage: z.string().optional().nullable()
-  })
-  .optional()
-  .nullable();
-
-const relatedQuerySchema = z.object({
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
-});
-
-const aiOverviewSourceSchema = z.object({
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
-});
-
-const aiOverviewSchema = z
-  .object({
-    type: z.string().optional().nullable(),
-    content: z.string().optional().nullable(),
-    sources: z.array(aiOverviewSourceSchema).optional().nullable()
-  })
-  .optional()
-  .nullable();
-
-const paidResultSchema = z.record(z.any()).optional().nullable();
-const paidProductSchema = z.record(z.any()).optional().nullable();
-const peopleAlsoAskSchema = z.record(z.any()).optional().nullable();
-
-const siteLinkSchema = z.object({
-  title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable(),
-  description: z.string().optional().nullable()
-});
-
-const productInfoSchema = z.record(z.any()).optional().nullable();
-
-const organicResultSchema = z.object({
-  position: z.number().int().positive(),
-  title: z.string().min(1),
-  url: z.string().url(),
-  description: z.string().optional().nullable(),
-  displayedUrl: z.string().optional().nullable(),
-  emphasizedKeywords: z.array(z.string()).optional().nullable(),
-  siteLinks: z.array(siteLinkSchema).optional().nullable(),
-  productInfo: productInfoSchema,
-  type: z.string().optional().nullable(),
-  date: z.string().optional().nullable(),
-  views: z.string().optional().nullable(),
-  lastUpdated: z.string().optional().nullable(),
-  commentsAmount: z.string().optional().nullable(),
-  followersAmount: z.string().optional().nullable(),
-  likes: z.string().optional().nullable(),
-  channelName: z.string().optional().nullable()
-});
-
-// --- Updated Zod schema for the full Apify API response structure ---
+// --- Zod schema for the API response structure ---
 // Apify returns an array, usually with one item for a single query run
-const fullApiResponseItemSchema = z.object({
-  searchQuery: searchQuerySchema,
-  resultsTotal: z.number().int().optional().nullable(),
-  relatedQueries: z.array(relatedQuerySchema).optional().nullable(),
-  aiOverview: aiOverviewSchema,
-  paidResults: z.array(paidResultSchema).optional().nullable(),
-  paidProducts: z.array(paidProductSchema).optional().nullable(),
-  peopleAlsoAsk: z.array(peopleAlsoAskSchema).optional().nullable(),
-  organicResults: z.array(organicResultSchema).optional().nullable()
-  // Include other potential top-level fields if known
-});
+const apiResponseSchema = z.array(FirebaseSerpResultObjectSchema).min(1);
 
-const apiResponseSchema = z.array(fullApiResponseItemSchema).min(1);
+// --- Define the return type for the fetch function ---
+// Use Partial because not all fields are guaranteed in every API response,
+// although FirebaseSerpResultObjectSchema now reflects API optionality better.
+// Using Partial adds an extra layer of safety.
+type FullSerpApiResponse = Partial<
+  z.infer<typeof FirebaseSerpResultObjectSchema>
+>;
 
-// Define the return type based on the expected structure (similar to FirebaseSerpAnalysisDoc but without timestamp etc.)
-// Using Partial because not all fields are guaranteed in every response.
-type FullSerpApiResponse = Partial<z.infer<typeof fullApiResponseItemSchema>>;
-
-// --- Apify payload schema (no change needed) ---
+// --- Apify payload schema (Remains the same) ---
 const apifyPayloadSchema = z.object({
   countryCode: z
     .string()
@@ -193,7 +114,7 @@ export async function fetchSerpByKeyword(
       payload
     );
     const errorMessages = validatedPayload.error.errors
-      .map(e => `${e.path.join('.')}: ${e.message}`)
+      .map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`)
       .join(', ');
     throw new Error(`內部 Payload 格式無效: ${errorMessages}`);
   }
@@ -220,6 +141,7 @@ export async function fetchSerpByKeyword(
     }
 
     const rawData = await response.json();
+    // --- Validate the raw API response using the imported schema ---
     const validationResult = apiResponseSchema.safeParse(rawData);
 
     if (!validationResult.success) {
@@ -230,11 +152,12 @@ export async function fetchSerpByKeyword(
         rawData // Log raw data on validation failure
       );
       const errorMessages = validationResult.error.errors
-        .map(e => `${e.path.join('.')}: ${e.message}`)
+        .map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`)
         .join(', ');
       throw new Error(`無法驗證 API 回應格式: ${errorMessages}`);
     }
 
+    // Return the first item from the validated array
     const validatedData = validationResult.data[0];
     return validatedData;
   } catch (error) {

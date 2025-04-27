@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase-admin/firestore'; // Import admin Timestamp
 import { z } from 'zod';
 
 // Define a robust Firestore Timestamp schema that outputs a Date object
+// THIS SCHEMA IS FOR VALIDATING FIRESTORE DATA, NOT API RESPONSE
 const FirestoreTimestampSchema = z
   .custom<
     | Timestamp
@@ -114,11 +115,6 @@ export const keywordSuggestionResultSchema = z.object({
   error: z.string().optional(),
   sourceInfo: z.string().optional()
 });
-
-// Export the inferred type
-export type KeywordSuggestionResult = z.infer<
-  typeof keywordSuggestionResultSchema
->;
 
 /**
  * 搜索量結果 Schema
@@ -234,7 +230,7 @@ export const AiUserIntentAnalysisJsonSchema = z.object({
 export const AiTitleAnalysisJsonSchema = z.object({
   title: z.string().optional().nullable(),
   analysis: z.string().optional().nullable(),
-  recommendations: z.array(z.string()).optional().nullable()
+  recommendationText: z.string().optional().nullable()
 });
 
 // --- NEW: Schema for Better Have Analysis JSON Structure ---
@@ -271,92 +267,107 @@ export const AiSerpBetterHaveJsonSchema = z.object({
     .describe('List of recommended points to include')
 });
 
-// Schema for the COMBINED SERP document stored in Firestore
-// Renamed from FirebaseSerpRawDocSchema
-export const FirebaseSerpResultObjectSchema = z.object({
-  query: z.string().describe('The original search query keyword'),
-  region: z.string().describe('Search region code (e.g., hk, tw)'),
-  language: z.string().describe('Search language code (e.g., zh-TW, en)'),
-  createdAt: FirestoreTimestampSchema.describe(
-    'Timestamp when the document was created'
-  ),
-  updatedAt: FirestoreTimestampSchema.describe(
-    'Timestamp when the document was last updated'
-  ),
+// --- Schemas based on API Response (serp.service.ts definitions) ---
 
-  // Fields directly from the SERP fetch service (e.g., Apify)
-  searchQuery: z
-    .string()
-    .optional()
-    .nullable()
-    .describe('The query structure used by the service'),
-  resultsTotal: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .nullable()
-    .describe('Total number of results reported'),
-  relatedQueries: z
-    .array(SerpRelatedQuerySchema)
-    .optional()
-    .nullable()
-    .describe('Related search queries'),
-  aiOverview: z
-    .string()
-    .optional()
-    .nullable()
-    .describe('AI-generated overview if present'), // Assuming string, adjust if object
-  paidResults: z
-    .array(z.any())
-    .optional()
-    .nullable()
-    .describe('Paid search results (structure varies)'), // Use z.any() or define specific schema if needed
-  paidProducts: z
-    .array(z.any())
-    .optional()
-    .nullable()
-    .describe('Paid product results (structure varies)'), // Use z.any() or define specific schema if needed
-  peopleAlsoAsk: z
-    .array(SerpPeopleAlsoAskSchema)
-    .optional()
-    .nullable()
-    .describe('People Also Ask questions'),
-  organicResults: z
-    .array(OrganicResultSchema)
-    .optional()
-    .nullable()
-    .describe('Organic search results'),
-  // Scraped outlines field
+const ApiSearchQuerySchema = z
+  .object({
+    term: z.string().optional().nullable(),
+    url: z.string().url().optional().nullable(),
+    device: z.string().optional().nullable(),
+    page: z.number().int().optional().nullable(),
+    type: z.string().optional().nullable(),
+    domain: z.string().optional().nullable(),
+    countryCode: z.string().optional().nullable(),
+    languageCode: z.string().optional().nullable(),
+    locationUule: z.string().optional().nullable(),
+    resultsPerPage: z.string().optional().nullable() // API returns string here
+  })
+  .optional()
+  .nullable();
+
+const ApiRelatedQuerySchema = z.object({
+  // API uses 'title', not 'query'
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable()
+});
+
+const ApiAiOverviewSourceSchema = z.object({
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable()
+});
+
+const ApiAiOverviewSchema = z
+  .object({
+    type: z.string().optional().nullable(),
+    content: z.string().optional().nullable(),
+    sources: z.array(ApiAiOverviewSourceSchema).optional().nullable()
+  })
+  .optional()
+  .nullable();
+
+const ApiPaidResultSchema = z.record(z.any()).optional().nullable();
+const ApiPaidProductSchema = z.record(z.any()).optional().nullable();
+const ApiPeopleAlsoAskSchema = z.record(z.any()).optional().nullable(); // Keep as any for flexibility
+
+const ApiSiteLinkSchema = z.object({
+  title: z.string().optional().nullable(),
+  url: z.string().url().optional().nullable(),
+  description: z.string().optional().nullable()
+});
+
+const ApiProductInfoSchema = z.record(z.any()).optional().nullable();
+
+const ApiOrganicResultSchema = z.object({
+  position: z.number().int().positive().optional().nullable(), // Optional from API sometimes
+  title: z.string().optional().nullable(), // Optional from API sometimes
+  url: z.string().url().optional().nullable(), // Optional from API sometimes
+  description: z.string().optional().nullable(),
+  displayedUrl: z.string().optional().nullable(),
+  emphasizedKeywords: z.array(z.string()).optional().nullable(),
+  siteLinks: z.array(ApiSiteLinkSchema).optional().nullable(),
+  productInfo: ApiProductInfoSchema,
+  type: z.string().optional().nullable(),
+  date: z.string().optional().nullable(), // API returns string date
+  views: z.string().optional().nullable(), // API returns string
+  lastUpdated: z.string().optional().nullable(), // API returns string
+  commentsAmount: z.string().optional().nullable(), // API returns string
+  followersAmount: z.string().optional().nullable(), // API returns string
+  likes: z.string().optional().nullable(), // API returns string
+  channelName: z.string().optional().nullable()
+});
+
+export const FirebaseSerpResultObjectSchema = z.object({
+  originalKeyword: z.string().optional(),
+  normalizedKeyword: z.string().optional(),
+  region: z.string().optional(),
+  language: z.string().optional(),
+  searchQuery: ApiSearchQuerySchema,
+  resultsTotal: z.number().int().optional().nullable(),
+  relatedQueries: z.array(ApiRelatedQuerySchema).optional().nullable(),
+  aiOverview: ApiAiOverviewSchema,
+  paidResults: z.array(ApiPaidResultSchema).optional().nullable(),
+  paidProducts: z.array(ApiPaidProductSchema).optional().nullable(),
+  peopleAlsoAsk: z.array(ApiPeopleAlsoAskSchema).optional().nullable(),
+  organicResults: z.array(ApiOrganicResultSchema).optional().nullable(),
+  id: z.string().optional().describe('Firestore document ID (added on read)'),
+  createdAt: FirestoreTimestampSchema.optional().nullable(), // Added on write
+  updatedAt: FirestoreTimestampSchema.optional().nullable(), // Added on write/update
   urlOutline: z
     .string()
     .nullable()
     .optional()
-    .describe('Scraped H2/H3 headings from top organic URLs'),
+    .describe('Scraped H2/H3 headings (added later potentially)'),
 
-  // --- Analysis Fields (Now included here) ---
-  contentTypeAnalysisText: z
-    .string()
-    .nullable()
-    .optional()
-    .describe('Raw text output of content type analysis'),
-  userIntentAnalysisText: z
-    .string()
-    .nullable()
-    .optional()
-    .describe('Raw text output of user intent analysis'),
-  contentTypeAnalysis: AiContentTypeAnalysisJsonSchema.nullable()
-    .optional()
-    .describe('Structured JSON output of content type analysis'),
-  userIntentAnalysis: AiUserIntentAnalysisJsonSchema.nullable()
-    .optional()
-    .describe('Structured JSON output of user intent analysis'),
-  titleAnalysis: AiTitleAnalysisJsonSchema.nullable()
-    .optional()
-    .describe('Structured JSON output of title analysis'),
-  betterHaveAnalysis: AiSerpBetterHaveJsonSchema.nullable()
-    .optional()
-    .describe('Structured JSON output of Better Have analysis') // New JSON field
+  contentTypeAnalysisText: z.string().nullable().optional(),
+  userIntentAnalysisText: z.string().nullable().optional(),
+  contentTypeAnalysis: AiContentTypeAnalysisJsonSchema.nullable().optional(),
+  userIntentAnalysis: AiUserIntentAnalysisJsonSchema.nullable().optional(),
+  titleAnalysis: AiTitleAnalysisJsonSchema.nullable().optional(),
+  betterHaveAnalysis: AiSerpBetterHaveJsonSchema.nullable().optional(),
+  betterHaveAnalysisText: z.string().nullable().optional(),
+  contentTypeRecommendationText: z.string().nullable().optional(),
+  userIntentRecommendationText: z.string().nullable().optional(),
+  betterHaveRecommendationText: z.string().nullable().optional()
 });
 
 export type KeywordVolumeItem = z.infer<typeof KeywordVolumeItemSchema>;
@@ -376,3 +387,7 @@ export type FirebaseSerpResultObject = z.infer<
 >;
 export type KeywordVolumeObject = z.infer<typeof KeywordVolumeObjectSchema>;
 export type KeywordVolumeListItem = z.infer<typeof KeywordVolumeListItemSchema>;
+
+export type KeywordSuggestionResult = z.infer<
+  typeof keywordSuggestionResultSchema
+>;

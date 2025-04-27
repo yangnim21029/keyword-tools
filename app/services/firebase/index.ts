@@ -17,23 +17,15 @@ export type { FirebaseSerpResultObject as FirebaseSerpDataDoc } from './schema';
 
 // Export functions from data-serp-result
 export {
-  deleteSerpAnalysisById, // Correct function name
-  findSerpAnalysisByKeyword, // Correct function name
-  getSerpAnalysisById,
-  getSerpAnalysisList, // Correct function name
-  getTotalAnalyzedSerpsCount, // Correct function name // Correct function name
-  saveSerpAnalysis
+  // deleteSerpAnalysisById, // Assuming delete function is named differently or not exported? Check data-serp-result.ts
+  findSerpResultObjects as findSerpAnalysisByKeyword, // Corrected: Use findSerpResultObjects, alias remains findSerpAnalysisByKeyword
+  getSerpResultById as getSerpAnalysisById, // Corrected: Use getSerpResultById, alias remains getSerpAnalysisById
+  getSerpResultList as getSerpAnalysisList, // Corrected: Use getSerpResultList, alias remains getSerpAnalysisList
+  getTotalSerpDataCount as getTotalAnalyzedSerpsCount
 } from './data-serp-result';
 
 // Export types from data-serp-result
-export type {
-  // Also export the specific analysis types defined within data-serp-result if needed elsewhere
-  ContentTypeAnalysisJson as DataSerpContentTypeAnalysisJson, // Alias to avoid name clash
-  TitleAnalysisJson as DataSerpTitleAnalysisJson, // Alias to avoid name clash // Alias to avoid name clash
-  UserIntentAnalysisJson as DataSerpUserIntentAnalysisJson, // Correct type name
-  FirebaseSerpAnalysisDoc,
-  SerpAnalysisData
-} from './data-serp-result';
+export type {} from './data-serp-result'; // Keep this line if other types ARE exported and needed
 
 // 導出通用 Schema 定義 (如果需要在外部使用)
 // This re-exports AiContentTypeAnalysisJson, AiUserIntentAnalysisJson etc. from schema.ts

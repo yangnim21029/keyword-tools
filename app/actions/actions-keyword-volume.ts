@@ -17,6 +17,7 @@ import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import { Timestamp } from 'firebase-admin/firestore';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod';
+import { getKeywordVolumeObj } from '../services/firebase/data-keyword-volume';
 
 interface ProcessQueryInput {
   query: string;
@@ -306,4 +307,13 @@ export async function submitUpdateKeywordVolumeObj(
       }`
     );
   }
+}
+
+export async function submitGetKeywordVolumeObj({
+  researchId
+}: {
+  researchId: string;
+}): Promise<KeywordVolumeObject | null> {
+  const keywordVolumeObj = await getKeywordVolumeObj({ researchId });
+  return keywordVolumeObj;
 }

@@ -65,6 +65,14 @@ export const HIGH_VOLUME_THRESHOLD = 400; // >= 400 is High
 export const MEDIUM_VOLUME_THRESHOLD = 100; // 100-399 is Medium
 // Low is implicitly < 100
 
+// --- SERP Analysis Configuration --- //
+
+/** Number of organic results to include in analysis prompts */
+export const SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT = 15;
+
+/** Default AI model for SERP analysis actions */
+export const DEFAULT_SERP_ANALYSIS_MODEL = 'gpt-4.1-mini';
+
 // --- Media Site Data --- //
 
 // Website data in JSON format
