@@ -6,10 +6,6 @@ import {
   AnalyzeTitleButton,
   AnalyzeUserIntentButton
 } from '@/app/actions/actions-buttons'; // Import action buttons
-import type {
-  AiSerpBetterHaveAnalysisJson,
-  AiTitleAnalysisJson
-} from '@/app/services/firebase/schema';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Card,
@@ -21,6 +17,9 @@ import {
 import { Terminal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import {
+  FirebaseSerpResultObject
+} from '@/app/services/firebase/schema';
 
 // --- Define a minimal client-safe type for AI Overview ---
 type ClientAiOverview = {
@@ -36,14 +35,12 @@ type ClientSafeSerpData = {
   language?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  organicResults?: any[] | null;
+  organicResults?: FirebaseSerpResultObject['organicResults'];
   relatedQueries?: any[] | null;
-  peopleAlsoAsk?: any[] | null;
+  peopleAlsoAsk?: FirebaseSerpResultObject['peopleAlsoAsk'];
   aiOverview?: ClientAiOverview | null;
   contentTypeAnalysisText?: string | null;
   userIntentAnalysisText?: string | null;
-  titleAnalysis?: AiTitleAnalysisJson | null;
-  betterHaveAnalysis?: AiSerpBetterHaveAnalysisJson | null;
   betterHaveAnalysisText?: string | null;
   // Add other fields from FirebaseSerpResultObject if needed client-side
 
@@ -52,6 +49,8 @@ type ClientSafeSerpData = {
   userIntentRecommendationText?: string | null;
   // titleRecommendationText is accessed via titleAnalysis.recommendationText
   betterHaveRecommendationText?: string | null;
+  titleAnalysisText?: string | null;
+  titleRecommendationText?: string | null;
 };
 
 // --- Helper Functions (Copied from use-serp-ai.tsx) ---
@@ -331,26 +330,24 @@ export default function SerpAiDisplay({
             )}
 
             {/* Title Analysis */}
-            {serpData.titleAnalysis ? (
+            {serpData.titleAnalysisText ? (
               <div>
                 <h3 className="text-lg font-semibold mb-2">Title Analysis</h3>
                 {/* Display formatted title suggestions or raw JSON */}
                 <pre className="text-xs p-3 bg-muted rounded-md overflow-x-auto max-h-96">
-                  {JSON.stringify(serpData.titleAnalysis, null, 2)}
+                  {serpData.titleAnalysisText}
                 </pre>
-                {/* Display Recommendation from nested object */}
-                {serpData.titleAnalysis?.recommendationText && (
+                {/* Display Recommendation from the separate top-level field */}
+                {serpData.titleRecommendationText && (
                   <div className="mt-3 pt-3 border-t">
                     <h4 className="text-md font-semibold mb-1">
                       Recommendation:
                     </h4>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {serpData.titleAnalysis.recommendationText}
+                      {serpData.titleRecommendationText}
                     </p>
                   </div>
                 )}
-                {/* Example: Displaying suggestions if they exist */}
-                {/* {serpData.titleAnalysis.suggestions && (\n                  <ul>\n                    {serpData.titleAnalysis.suggestions.map((s, i) => <li key={i}>{s.title} - {s.reason}</li>)}\n                  </ul>\n                )} */}
               </div>
             ) : (
               <div>
@@ -362,23 +359,15 @@ export default function SerpAiDisplay({
             )}
 
             {/* Better Have Analysis */}
-            {serpData.betterHaveAnalysisText || serpData.betterHaveAnalysis ? (
+            {serpData.betterHaveAnalysisText ? (
               <div>
                 <h3 className="text-lg font-semibold mb-2">
                   Better Have Analysis
                 </h3>
                 {/* Display text or formatted JSON */}
-                {serpData.betterHaveAnalysisText && (
-                  <pre className="text-sm p-3 bg-muted rounded-md overflow-x-auto whitespace-pre-wrap">
-                    {serpData.betterHaveAnalysisText}
-                  </pre>
-                )}
-                {serpData.betterHaveAnalysis &&
-                  !serpData.betterHaveAnalysisText && (
-                    <pre className="text-xs p-3 bg-muted rounded-md overflow-x-auto max-h-96">
-                      {JSON.stringify(serpData.betterHaveAnalysis, null, 2)}
-                    </pre>
-                  )}
+                <pre className="text-sm p-3 bg-muted rounded-md overflow-x-auto whitespace-pre-wrap">
+                  {serpData.betterHaveAnalysisText}
+                </pre>
                 {/* Display Recommendation */}
                 {serpData.betterHaveRecommendationText && (
                   <div className="mt-3 pt-3 border-t">
@@ -405,8 +394,7 @@ export default function SerpAiDisplay({
             {/* Message if no analysis data is present at all */}
             {!serpData.contentTypeAnalysisText &&
               !serpData.userIntentAnalysisText &&
-              !serpData.titleAnalysis &&
-              !serpData.betterHaveAnalysis &&
+              !serpData.titleAnalysisText &&
               !serpData.betterHaveAnalysisText && (
                 <Alert>
                   <Terminal className="h-4 w-4" />

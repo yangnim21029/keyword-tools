@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 
-import { submitAiAnalysisSerpTitle } from '@/app/actions/actions-serp-result';
+import { submitAiAnalysisSerpTitle } from '@/app/actions/actions-ai-serp-result';
 
 // --- Define Input Schema ---
 const inputSchema = z.object({

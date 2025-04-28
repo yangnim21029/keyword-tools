@@ -1,4 +1,4 @@
-import { submitAiAnalysisSerpContentType } from '@/app/actions/actions-serp-result';
+import { submitAiAnalysisSerpContentType } from '@/app/actions/actions-ai-serp-result';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 // Import the specific step function from actions
-import { submitAiAnalysisSerpBetterHave } from '@/app/actions/actions-serp-result';
+import { submitAiAnalysisSerpBetterHave } from '@/app/actions/actions-ai-serp-result';
 import { z } from 'zod'; // Import Zod
 
 // --- Define Input Schema ---

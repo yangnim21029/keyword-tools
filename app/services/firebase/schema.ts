@@ -176,96 +176,23 @@ const PageReferenceSchema = z.object({
   url: z.string().url()
 });
 
-// Schema for Content Type JSON structure
-export const AiContentTypeAnalysisJsonSchema = z.object({
-  analysisTitle: z.string().optional().nullable(), // Made optional/nullable for flexibility
-  reportDescription: z.string().optional().nullable(),
-  usageHint: z.string().optional().nullable(),
-  contentTypes: z
-    .array(
-      z.object({
-        type: z.string(),
-        count: z.number().int().nonnegative(),
-        pages: z.array(PageReferenceSchema)
-      })
-    )
-    .optional()
-    .nullable() // Made optional/nullable
-});
+// Schema for Content Type JSON structure - REMOVING
+// export const AiContentTypeAnalysisJsonSchema = ... (Removed)
 
-// Schema for User Intent JSON structure
-export const AiUserIntentAnalysisJsonSchema = z.object({
-  analysisTitle: z.string().optional().nullable(),
-  reportDescription: z.string().optional().nullable(),
-  usageHint: z.string().optional().nullable(),
-  intents: z
-    .array(
-      z.object({
-        category: z.enum([
-          'Navigational',
-          'Informational',
-          'Commercial',
-          'Transactional',
-          'Unknown' // Added Unknown for robustness
-        ]),
-        specificIntent: z.string(),
-        count: z.number().int().nonnegative(),
-        pages: z.array(PageReferenceSchema)
-      })
-    )
-    .optional()
-    .nullable(),
-  relatedKeywords: z
-    .array(
-      z.object({
-        keyword: z.string(),
-        searchVolume: z.number().nullable()
-      })
-    )
-    .optional()
-    .nullable()
-});
+// Schema for User Intent JSON structure - REMOVING
+// export const AiUserIntentAnalysisJsonSchema = ... (Removed)
 
-// Schema for Title Analysis JSON structure
-export const AiTitleAnalysisJsonSchema = z.object({
-  title: z.string().optional().nullable(),
-  analysis: z.string().optional().nullable(),
-  recommendationText: z.string().optional().nullable()
-});
+// Schema for Title Analysis JSON structure - REMOVING
+// export const AiTitleAnalysisJsonSchema = z.object({
+//   title: z.string().optional().nullable(),
+//   analysis: z.string().optional().nullable(),
+//   recommendationText: z.string().optional().nullable()
+// });
 
-// --- NEW: Schema for Better Have Analysis JSON Structure ---
-export const AiSerpBetterHaveItemSchema = z.object({
-  point: z
-    .string()
-    .describe('The specific topic, question, or concept recommended'),
-  justification: z
-    .string()
-    .describe('Explanation why this point is important based on SERP data'),
-  source: z
-    .enum([
-      'PAA',
-      'Organic Results',
-      'Related Queries',
-      'AI Overview',
-      'Multiple'
-    ])
-    .optional()
-    .nullable()
-    .describe('Primary source driving the recommendation')
-});
+// --- NEW: Schema for Better Have Analysis JSON Structure --- - REMOVING ITEM
+// export const AiSerpBetterHaveItemSchema = ... (Removed)
 
-export const AiSerpBetterHaveJsonSchema = z.object({
-  analysisTitle: z
-    .string()
-    .optional()
-    .nullable()
-    .default('Better Have In Article Analysis'),
-  recommendations: z
-    .array(AiSerpBetterHaveItemSchema)
-    .optional()
-    .nullable()
-    .describe('List of recommended points to include')
-});
+// export const AiSerpBetterHaveJsonSchema = ... (Removed)
 
 // --- Schemas based on API Response (serp.service.ts definitions) ---
 
@@ -360,28 +287,21 @@ export const FirebaseSerpResultObjectSchema = z.object({
 
   contentTypeAnalysisText: z.string().nullable().optional(),
   userIntentAnalysisText: z.string().nullable().optional(),
-  contentTypeAnalysis: AiContentTypeAnalysisJsonSchema.nullable().optional(),
-  userIntentAnalysis: AiUserIntentAnalysisJsonSchema.nullable().optional(),
-  titleAnalysis: AiTitleAnalysisJsonSchema.nullable().optional(),
-  betterHaveAnalysis: AiSerpBetterHaveJsonSchema.nullable().optional(),
+  // titleAnalysis: AiTitleAnalysisJsonSchema.nullable().optional(), // REMOVING FIEL
+  titleAnalysisText: z.string().nullable().optional(), // ADDING FIELD
   betterHaveAnalysisText: z.string().nullable().optional(),
   contentTypeRecommendationText: z.string().nullable().optional(),
   userIntentRecommendationText: z.string().nullable().optional(),
+  titleRecommendationText: z.string().nullable().optional(), // ADDING FIELD
   betterHaveRecommendationText: z.string().nullable().optional()
 });
 
 export type KeywordVolumeItem = z.infer<typeof KeywordVolumeItemSchema>;
 export type AiClusterItem = z.infer<typeof AiClusterItemSchema>;
-export type AiContentTypeAnalysisJson = z.infer<
-  typeof AiContentTypeAnalysisJsonSchema
->;
-export type AiUserIntentAnalysisJson = z.infer<
-  typeof AiUserIntentAnalysisJsonSchema
->;
-export type AiTitleAnalysisJson = z.infer<typeof AiTitleAnalysisJsonSchema>;
-export type AiSerpBetterHaveAnalysisJson = z.infer<
-  typeof AiSerpBetterHaveJsonSchema
->;
+// Removed AiContentTypeAnalysisJson type
+// Removed AiUserIntentAnalysisJson type
+// export type AiTitleAnalysisJson = z.infer<typeof AiTitleAnalysisJsonSchema>;
+// Removed AiSerpBetterHaveAnalysisJson type
 export type FirebaseSerpResultObject = z.infer<
   typeof FirebaseSerpResultObjectSchema
 >;

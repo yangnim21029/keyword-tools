@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 // Import the specific step function from actions
-import { submitCreateSerp } from '@/app/actions/actions-serp-result';
+import { submitCreateSerp } from '@/app/actions/actions-ai-serp-result';
 import { MEDIASITE_DATA } from '@/app/global-config';
 // Input schema should match the expected input for fetchSerpStep
 const inputSchema = z.object({

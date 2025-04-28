@@ -49,14 +49,12 @@ import { ResultDisplay } from './components/result-display';
 
 // --- Import Corrected Types from Schema ---
 import type {
-  AiSerpBetterHaveAnalysisJson,
-  AiTitleAnalysisJson,
   KeywordVolumeListItem, // Renamed from KeywordResearchSummaryItem
   KeywordVolumeObject // Renamed from ProcessedKeywordResearchData
 } from '@/app/services/firebase/schema';
 // --- Import Server Actions ---
 import { submitGetKeywordVolumeObj } from '@/app/actions/actions-keyword-volume';
-import { getSerpDataAction } from '@/app/actions/actions-serp-result'; // SERP actions
+import { getSerpDataAction } from '@/app/actions/actions-ai-serp-result'; // SERP actions
 // --- End Import ---
 
 // --- Define New API Endpoints ---
@@ -436,14 +434,10 @@ export default function WritingPage() {
   };
 
   // 4. Analyze Title (Now only needs serpId)
-  type AnalyzeTitleResult = {
-    analysisJson: AiTitleAnalysisJson;
-    recommendationText: string;
-  };
   const callAnalyzeTitleApi = async (
     serpDocId: string
-  ): Promise<AnalyzeTitleResult> => {
-    return await callApi<AnalyzeTitleResult>(
+  ): Promise<{ recommendationText: string }> => {
+    return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_TITLE,
       API_STEP4_ANALYZE_TITLE_URL,
       { serpDocId }
@@ -451,14 +445,10 @@ export default function WritingPage() {
   };
 
   // 5. Analyze Better Have (Now only needs serpId)
-  type AnalyzeBetterHaveResult = {
-    analysisJson: AiSerpBetterHaveAnalysisJson;
-    recommendationText: string;
-  };
   const callAnalyzeBetterHaveApi = async (
     serpDocId: string
-  ): Promise<AnalyzeBetterHaveResult> => {
-    return await callApi<AnalyzeBetterHaveResult>(
+  ): Promise<{ recommendationText: string }> => {
+    return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_BETTER_HAVE,
       API_STEP5_ANALYZE_BETTER_HAVE_URL,
       { serpDocId }
@@ -505,7 +495,6 @@ export default function WritingPage() {
     articleTemplate: string,
     contentMarketingSuggestion: string | null, // Assuming it might be null
     fineTuneNames: string[],
-    betterHaveAnalysisJson: AiSerpBetterHaveAnalysisJson | null
   ): Promise<{ finalPrompt: string }> => {
     return await callApi<{ finalPrompt: string }>(
       STEP_ID_GENERATE_FINAL_PROMPT,
@@ -522,7 +511,6 @@ export default function WritingPage() {
         articleTemplate,
         contentMarketingSuggestion: contentMarketingSuggestion || '', // Ensure default empty string if null
         fineTuneNames,
-        betterHaveAnalysisJson
       }
     );
   };
@@ -648,12 +636,10 @@ export default function WritingPage() {
         mediaSiteName,
         updatedSerpData.contentTypeRecommendationText ?? '', // <-- Use fetched data
         updatedSerpData.userIntentRecommendationText ?? '', // <-- Use fetched data
-        updatedSerpData.titleAnalysis?.recommendationText ?? '', // <-- Use fetched data (nested)
+        updatedSerpData.titleRecommendationText ?? '', // <-- Use fetched top-level recommendation text
         updatedSerpData.betterHaveRecommendationText ?? '', // <-- Use fetched data
         reportForStep6,
-        currentSelectedCluster === '__ALL_CLUSTERS__'
-          ? null
-          : currentSelectedCluster
+        currentSelectedCluster === '__ALL_CLUSTERS__' ? null : currentSelectedCluster // Corrected ternary again
       );
 
       // Step 7: Generate Final Prompt (Use data from updatedSerpData)
@@ -671,7 +657,6 @@ export default function WritingPage() {
         generatedOutlineText || '<!-- Default Outline -->',
         null, // contentMarketingSuggestion
         selectedFineTunes,
-        updatedSerpData.betterHaveAnalysis ?? null // <-- Use fetched data
       );
 
       // --- Process Complete ---

@@ -70,8 +70,16 @@ export const MEDIUM_VOLUME_THRESHOLD = 100; // 100-399 is Medium
 /** Number of organic results to include in analysis prompts */
 export const SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT = 15;
 
-/** Default AI model for SERP analysis actions */
-export const DEFAULT_SERP_ANALYSIS_MODEL = 'gpt-4.1-mini';
+// AI models for SERP analysis
+export const SERP_ANALYSIS_MODELS = {
+  /** Standard model for primary analysis steps */
+  BASE: 'gpt-4.1-mini',
+  /** Faster model for simpler conversion/recommendation steps */
+  FAST: 'gpt-4.1-nano'
+};
+
+/** Default Firebase Function Region */
+export const DEFAULT_FUNCTION_REGION = 'us-central1';
 
 // --- Media Site Data --- //
 

@@ -21,17 +21,31 @@ function makeSerpDataClientSafe(serverData: any): any {
     // Add any other necessary conversions here
     // Ensure the structure matches ClientSafeSerpData defined in serp-ai-client.tsx
 
-    // Include recommendation texts if they exist
+    // Include text fields if they exist
     if (data.contentTypeRecommendationText) {
       data.contentTypeRecommendationText = data.contentTypeRecommendationText;
+    }
+    if (data.contentTypeAnalysisText) {
+      data.contentTypeAnalysisText = data.contentTypeAnalysisText;
     }
     if (data.userIntentRecommendationText) {
       data.userIntentRecommendationText = data.userIntentRecommendationText;
     }
+    if (data.userIntentAnalysisText) {
+      data.userIntentAnalysisText = data.userIntentAnalysisText;
+    }
     if (data.betterHaveRecommendationText) {
       data.betterHaveRecommendationText = data.betterHaveRecommendationText;
     }
-    // titleRecommendationText is nested within titleAnalysis, which is already stringified/parsed
+    if (data.betterHaveAnalysisText) {
+      data.betterHaveAnalysisText = data.betterHaveAnalysisText;
+    }
+    if (data.titleAnalysisText) {
+      data.titleAnalysisText = data.titleAnalysisText;
+    }
+    if (data.titleRecommendationText) {
+      data.titleRecommendationText = data.titleRecommendationText;
+    }
 
     return JSON.parse(JSON.stringify(data)); // Simple deep clone for safety
   } catch (error) {

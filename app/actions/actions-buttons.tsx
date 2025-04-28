@@ -286,7 +286,7 @@ import {
   submitAiAnalysisSerpIntent,
   submitAiAnalysisSerpTitle,
   submitCreateSerp
-} from './actions-serp-result'; // Import the specific SERP analysis actions
+} from './actions-ai-serp-result'; // Import the specific SERP analysis actions
 
 interface BaseAnalysisButtonProps {
   docId: string;

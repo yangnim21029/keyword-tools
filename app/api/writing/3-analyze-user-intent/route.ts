@@ -1,4 +1,4 @@
-import { submitAiAnalysisSerpIntent } from '@/app/actions/actions-serp-result';
+import { submitAiAnalysisSerpIntent } from '@/app/actions/actions-ai-serp-result';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 
