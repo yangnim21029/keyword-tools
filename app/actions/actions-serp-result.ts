@@ -49,7 +49,7 @@ export async function submitCreateSerp({
   query: string;
   region: string;
   language: string;
-}): Promise<{ success: boolean; error?: string; id?: string }> {
+}): Promise<{ success: boolean; error?: string; id?: string; originalKeyword?: string }> {
   if (!db) {
     return { success: false, error: 'Database not initialized' };
   }
@@ -66,8 +66,11 @@ export async function submitCreateSerp({
       console.log(
         `[Action: Create/Fetch] Found existing SERP data in DB: ${existingData.id}`
       );
-      // Return type matches ActionResponse<FirebaseSerpResultObject>
-      return { success: true };
+      if (!existingData.id || typeof existingData.originalKeyword !== 'string') {
+         console.error('[Action: Create/Fetch] Existing data is missing ID or originalKeyword', existingData);
+         return { success: false, error: 'Found existing SERP data but it is missing required fields (id or originalKeyword).' };
+      }
+      return { success: true, id: existingData.id, originalKeyword: existingData.originalKeyword };
     }
 
     // 2. Not found, fetch from external service
@@ -195,39 +198,11 @@ export async function submitCreateSerp({
     // 5. Revalidate cache
     revalidateTag(SERP_DATA_LIST_TAG);
 
-    // 6. Fetch the newly saved doc using the read function
+    // 6. Return success with new ID and the original query used
     console.log(
-      `[Action: Create/Fetch] Verifying saved document for ${query} (ID: ${newDocId})...`
+      `[Action: Create/Fetch] Returning success for newly created doc ID: ${newDocId}, Keyword: ${query}.`
     );
-    let savedDoc;
-    try {
-      savedDoc = await getSerpResultById(newDocId);
-    } catch (verifyError) {
-      console.error(
-        `[Action: Create/Fetch] Error fetching newly saved doc ${newDocId} for ${query}:`,
-        verifyError
-      );
-      throw new Error(
-        `Failed to verify saved document after creation: ${
-          verifyError instanceof Error
-            ? verifyError.message
-            : String(verifyError)
-        }`
-      ); // Re-throw
-    }
-
-    if (!savedDoc) {
-      console.error(
-        `[Action: Create/Fetch] Failed to retrieve newly saved doc: ${newDocId} (Query: ${query})`
-      );
-      // Throw error instead of returning to ensure it's caught by the main catch block
-      throw new Error('Failed to retrieve saved document after creation.');
-    }
-
-    console.log(
-      `[Action: Create/Fetch] Successfully retrieved newly saved doc for ${query}.`
-    );
-    return { success: true, id: newDocId };
+    return { success: true, id: newDocId, originalKeyword: query };
   } catch (error) {
     // Log the specific error message generated within the try block
     const errorMessage = error instanceof Error ? error.message : String(error);

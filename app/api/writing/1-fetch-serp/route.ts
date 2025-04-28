@@ -3,7 +3,6 @@ import { z } from 'zod';
 // Import the specific step function from actions
 import { submitCreateSerp } from '@/app/actions/actions-serp-result';
 import { MEDIASITE_DATA } from '@/app/global-config';
-import { findSerpResultObjects } from '@/app/services/firebase/data-serp-result';
 // Input schema should match the expected input for fetchSerpStep
 const inputSchema = z.object({
   keyword: z.string().min(1, 'Keyword is required'),
@@ -28,74 +27,54 @@ export async function POST(request: NextRequest) {
     }
 
     const inputData = validation.data;
-    console.log(
-      `[API /writing/1-fetch-serp] Calling action step for Keyword: "${inputData.keyword}", Site: "${inputData.mediaSiteName}"`
-    );
 
     // Call the imported action function
     // 取得 MEDIATSITE 的語言和地區
     const selectedSite = MEDIASITE_DATA.find(
       site => site.name === inputData.mediaSiteName
     );
+    // --- Validate Media Site --- START ---
     const language = selectedSite?.language;
     const region = selectedSite?.region;
     if (!language || !region) {
-      throw new Error('Language or region not found');
-    }
-    let result = null;
-    result = await findSerpResultObjects({
-      language,
-      region,
-      query: inputData.keyword
-    });
-
-    if (result) {
-      console.log(
-        `[API /writing/1-fetch-serp] Found existing SERP. Doc ID: ${result.id}`
-      );
-      // --- Return minimal data ---
-      if (!result.id || !result.originalKeyword) {
-        console.error(
-          '[API /writing/1-fetch-serp] Found SERP missing id or originalKeyword',
-          result
-        );
-        throw new Error('Found SERP document is missing required fields.');
-      }
+      console.error('[API /writing/1-fetch-serp] Language or region not found for site:', inputData.mediaSiteName);
       return NextResponse.json(
-        { id: result.id, originalKeyword: result.originalKeyword },
-        { status: 200 }
+        { error: 'Invalid input', details: `Configuration error: Language or region not found for media site '${inputData.mediaSiteName}'.` },
+        { status: 400 }
       );
-      // --- End Return minimal ---
     }
+    // --- Validate Media Site --- END ---
 
-    // If not found, create a new one
+    // --- Directly call the updated submitCreateSerp action --- START ---
     console.log(
-      `[API /writing/1-fetch-serp] No existing SERP found. Creating new one...`
+      `[API /writing/1-fetch-serp] Calling submitCreateSerp for Keyword: "${inputData.keyword}", Site: "${inputData.mediaSiteName}" (Lang: ${language}, Region: ${region})`
     );
-    const createResult = await submitCreateSerp({
+    const createOrFindResult = await submitCreateSerp({
       query: inputData.keyword,
       region,
       language
     });
 
-    if (createResult.success && createResult.id) {
+    if (createOrFindResult.success && createOrFindResult.id && createOrFindResult.originalKeyword) {
       console.log(
-        `[API /writing/1-fetch-serp] Successfully created SERP. New Doc ID: ${createResult.id}.`
+        `[API /writing/1-fetch-serp] Successfully found/created SERP. Doc ID: ${createOrFindResult.id}, Keyword: ${createOrFindResult.originalKeyword}`
       );
-      // --- Return minimal data ---
       return NextResponse.json(
-        { id: createResult.id, originalKeyword: inputData.keyword },
+        { id: createOrFindResult.id, originalKeyword: createOrFindResult.originalKeyword },
         { status: 200 }
       );
-      // --- End Return minimal ---
     } else {
-      // Handle case where creation succeeded according to the action but ID is missing, or creation failed
       console.error(
-        '[API /writing/1-fetch-serp] Failed to create SERP',
-        createResult
+        '[API /writing/1-fetch-serp] Failed to find or create SERP via action',
+        createOrFindResult
       );
-      throw new Error('Failed to create SERP');
+      // Return a 500 error with details from the action
+      return NextResponse.json(
+        { error: 'Failed to find or create SERP', details: createOrFindResult.error || 'Action failed without specific error message.' },
+        { status: 500 }
+      );
     }
+    // --- Directly call the updated submitCreateSerp action --- END ---
   } catch (error) {
     console.error(
       '[API /writing/1-fetch-serp] Error calling action step:',
