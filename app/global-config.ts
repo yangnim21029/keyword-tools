@@ -76,7 +76,8 @@ export const MEDIUM_VOLUME_THRESHOLD = 100; // 100-399 is Medium
 export const SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT = 15;
 
 // AI models for SERP analysis
-export const SERP_ANALYSIS_MODELS: { [key: string]: LanguageModel } = {
+export const AI_MODELS: { [key: string]: LanguageModel } = {
+  ADVANCED: google('gemini-2.5-flash-preview-04-17'),
   /** Standard model for primary analysis steps */
   // BASE: google('gemini-2.5-flash-preview-04-17'),
   BASE: google('gemini-2.0-flash-lite'),
@@ -252,6 +253,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/keyword-mapping',
     label: '關鍵字工具',
     icon: 'search',
+    isPrimary: true
+  },
+  {
+    href: '/paragraph-rephrase',
+    label: 'Paragraph Rephrase',
+    icon: 'pen',
     isPrimary: true
   },
   { href: '/writing', label: 'Writing', icon: 'pen', isPrimary: true },

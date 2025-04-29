@@ -13,8 +13,6 @@ import {
 import { useRouter } from 'next/navigation'; // Import useRouter
 import { useTransition } from 'react';
 import { toast } from 'sonner';
-import { revalidateTag } from 'next/cache';
-import { unstable_cache } from 'next/cache';
 
 import { submitGeneratePersonaForCluster } from '@/app/actions/actions-ai-persona'; // Action for persona
 import {
@@ -25,6 +23,7 @@ import { submitClustering } from '@/app/actions/actions-semantic-clustering'; //
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { cn } from '@/lib/utils';
 import { revalidateKeywordVolumeList, testAiLifecycle } from '@/app/actions/actions-revalidate';
+import { analyzeParagraphs, rephraseParagraph } from './actions-paragraph-rephrase';
 
 // === Cluster Analysis Button ===
 
@@ -634,6 +633,116 @@ export function TestAiButton({
     >
       {!isPending && <TerminalSquare className="h-4 w-4 mr-2" />}
       Test AI Life
+    </LoadingButton>
+  );
+}
+
+// === Paragraph Rephrase Buttons ===
+
+interface ParagraphRephraseButtonProps {
+  aSections: string[];
+  bSection: string;
+  onResult: (result: string) => void;
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+  disabled?: boolean;
+}
+
+export function AnalyzeParagraphsButton({
+  aSections,
+  bSection,
+  onResult,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false
+}: ParagraphRephraseButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await analyzeParagraphs(aSections, bSection);
+        if (result.success) {
+          onResult(result.result);
+          toast.success('Paragraph analysis complete.');
+        } else {
+          toast.error(`Analysis failed: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending || !aSections || !bSection}
+      loadingText="Analyzing..."
+    >
+      Analyze (Step 1)
+    </LoadingButton>
+  );
+}
+
+interface RephraseButtonProps {
+  step1Result: string;
+  aSections: string[];
+  bSection: string;
+  onResult: (result: string) => void;
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+  disabled?: boolean;
+}
+
+export function RephraseButton({
+  step1Result,
+  aSections,
+  bSection,
+  onResult,
+  variant = 'secondary',
+  size = 'default',
+  className = '',
+  disabled = false
+}: RephraseButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleRephrase = () => {
+    startTransition(async () => {
+      try {
+        const result = await rephraseParagraph(step1Result, aSections, bSection);
+        if (result.success) {
+          onResult(result.result);
+          toast.success('Paragraph rephrased successfully.');
+        } else {
+          toast.error(`Rephrase failed: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Rephrase error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleRephrase}
+      isLoading={isPending}
+      disabled={disabled || isPending || !step1Result || !bSection}
+      loadingText="Rephrasing..."
+    >
+      Rephrase (Step 2)
     </LoadingButton>
   );
 }

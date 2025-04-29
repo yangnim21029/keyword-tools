@@ -2,7 +2,7 @@
 
 import { openai } from '@ai-sdk/openai'; // Vercel AI SDK - OpenAI Provider
 import { generateText } from 'ai'; // Vercel AI SDK - Core
-import { SERP_ANALYSIS_MODELS } from '../global-config';
+import { AI_MODELS } from '../global-config';
 
 // Check for OpenAI API Key
 if (!process.env.OPENAI_API_KEY) {
@@ -49,7 +49,7 @@ export async function generateContentSuggestionsAction(
   try {
     // --- Actual AI Call --- 
     const { text } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: prompt
     });
     console.log("Raw AI Response Text (Expected List):", text);

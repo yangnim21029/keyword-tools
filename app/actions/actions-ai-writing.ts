@@ -3,7 +3,7 @@
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai'; // Removed generateObject for now
 import { MEDIASITE_DATA } from '../global-config';
-import { SERP_ANALYSIS_MODELS } from '../global-config';
+import { AI_MODELS } from '../global-config';
 // Import fine-tune data
 import { z } from 'zod';
 import {
@@ -281,7 +281,7 @@ h2 Keyword need to cover in article
 `;
 
   const { text: actionPlanText } = await generateText({
-    model: SERP_ANALYSIS_MODELS.BASE,
+    model: AI_MODELS.BASE,
     prompt: prompt
   });
   console.log('[generateActionPlanInternal] Generated Action Plan.');

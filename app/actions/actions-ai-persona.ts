@@ -6,7 +6,7 @@ import { revalidateTag } from 'next/cache';
 import { z } from 'zod';
 import { COLLECTIONS, db, getKeywordVolumeObj } from '../services/firebase';
 import { AiClusterItem } from '../services/firebase/schema';
-import { SERP_ANALYSIS_MODELS } from '../global-config';
+import { AI_MODELS } from '../global-config';
 
 // --- DB IMPORTS ---
 
@@ -67,7 +67,7 @@ async function _genreatePersonaText({
   });
 
   const { text: rawPersonaText } = await generateText({
-    model: SERP_ANALYSIS_MODELS.BASE,
+    model: AI_MODELS.BASE,
     prompt: textPrompt
   });
 

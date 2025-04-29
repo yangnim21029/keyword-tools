@@ -3,7 +3,7 @@
 import { COLLECTIONS, db } from '@/app/services/firebase/db-config'; // <--
 // --- Import new constants from global-config ---
 import {
-  SERP_ANALYSIS_MODELS,
+  AI_MODELS,
   SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT
 } from '@/app/global-config';
 
@@ -539,7 +539,7 @@ export async function submitAiAnalysisSerpContentType({
     );
     const textPrompt = await getContentTypeAnalysisPrompt(keyword, serpString);
     const { text: rawAnalysisText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze Content Type] Text Analysis successful.`);
@@ -553,7 +553,7 @@ export async function submitAiAnalysisSerpContentType({
       keyword
     );
     const { text: rawConversionText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze Content Type] Text Conversion successful.`);
@@ -566,7 +566,7 @@ export async function submitAiAnalysisSerpContentType({
       rawAnalysisText
     );
     const { text: rawRecommendationText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: recommendationPrompt
     });
     console.log(`[Action: Analyze Content Type] Recommendation generated.`);
@@ -662,7 +662,7 @@ export async function submitAiAnalysisSerpIntent({
       relatedKeywordsRaw
     );
     const { text: rawAnalysisText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze User Intent] Text Analysis successful.`);
@@ -676,7 +676,7 @@ export async function submitAiAnalysisSerpIntent({
       keyword
     );
     const { text: rawConversionText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze User Intent] Text Conversion successful.`);
@@ -690,7 +690,7 @@ export async function submitAiAnalysisSerpIntent({
       keyword
     );
     const { text: rawRecommendationText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: recommendationPrompt
     });
     console.log(`[Action: Analyze User Intent] Recommendation generated.`);
@@ -778,7 +778,7 @@ export async function submitAiAnalysisSerpTitle({
     console.log(`[Action: Analyze Title] Calling AI for Text Analysis...`);
     const analysisPrompt = await getSerpTitleAnalysisPrompt(keyword, serpString);
     const { text: rawAnalysisText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: analysisPrompt
     });
     console.log(`[Action: Analyze Title] Text Analysis successful.`);
@@ -787,7 +787,7 @@ export async function submitAiAnalysisSerpTitle({
     console.log(`[Action: Analyze Title] Calling AI for Recommendation...`);
     const titleRecommendationPrompt = await getTitleRecommendationPrompt(rawAnalysisText);
     const { text: rawRecommendationText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: titleRecommendationPrompt
     });
     console.log(`[Action: Analyze Title] Recommendation generated.`);
@@ -890,7 +890,7 @@ export async function submitAiAnalysisSerpBetterHave({
       aiOverviewString
     );
     const { text: rawAnalysisText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze Better Have] Text Analysis successful.`);
@@ -904,7 +904,7 @@ export async function submitAiAnalysisSerpBetterHave({
       keyword
     );
     const { text: rawConversionText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze Better Have] Text Conversion successful.`);
@@ -918,7 +918,7 @@ export async function submitAiAnalysisSerpBetterHave({
       keyword
     );
     const { text: rawRecommendationText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.FAST,
+      model: AI_MODELS.FAST,
       prompt: betterHaveRecommendationPrompt
     });
     console.log(`[Action: Analyze Better Have] Recommendation generated.`);

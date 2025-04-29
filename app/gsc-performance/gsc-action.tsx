@@ -4,7 +4,7 @@ import { z } from "zod";
 import { unstable_cache } from "next/cache";
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
-import { SERP_ANALYSIS_MODELS } from "../global-config";
+import { AI_MODELS } from "../global-config";
 
 export async function fetchGscData(queries: string[], minImpressions: number = 1): Promise<GscData[]> {
     if (queries.length === 0) return [];
@@ -611,7 +611,7 @@ ${keywordDataValue}
   console.log(`[Action] Calling AI for GSC Analysis TEXT using ${model} with ${itemCount} raw items...`);
   try {
     const { text: analysisResultText } = await generateText({
-      model: SERP_ANALYSIS_MODELS.BASE,
+      model: AI_MODELS.BASE,
       prompt: prompt
     });
     
