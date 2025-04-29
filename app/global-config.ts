@@ -78,9 +78,11 @@ export const SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT = 15;
 // AI models for SERP analysis
 export const SERP_ANALYSIS_MODELS: { [key: string]: LanguageModel } = {
   /** Standard model for primary analysis steps */
-  BASE: google('gemini-2.5-flash-preview-04-17'),
+  // BASE: google('gemini-2.5-flash-preview-04-17'),
+  BASE: google('gemini-2.0-flash-lite'),
   /** Faster model for simpler conversion/recommendation steps */
-  FAST: google('gemini-2.5-flash-preview-04-17')
+  // FAST: google('gemini-2.5-flash-preview-04-17')
+  FAST: google('gemini-2.0-flash-lite')
 };
 
 /** Default Firebase Function Region */
