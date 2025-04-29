@@ -21,49 +21,6 @@ import { revalidateTag } from 'next/cache';
 
 const SERP_DATA_LIST_TAG = 'serpDataList';
 
-// Helper function for text generation with fallback
-async function generateTextWithFallback({
-  model,
-  prompt,
-  maxRetries = 3
-}: {
-  model: LanguageModel;
-  prompt: string;
-  maxRetries?: number;
-}): Promise<{ text: string; usedFallback: boolean }> {
-  let retries = 0;
-  let lastError: Error | null = null;
-
-  while (retries < maxRetries) {
-    try {
-      const { text } = await generateText({ model, prompt });
-      return { text, usedFallback: false };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      // Check if it's a quota error
-      if (error instanceof Error && error.message.includes('quota')) {
-        console.warn(`[AI] Quota exceeded for ${model}, trying fallback model...`);
-        try {
-          const { text } = await generateText({
-            model: SERP_ANALYSIS_MODELS.FALLBACK,
-            prompt
-          });
-          return { text, usedFallback: true };
-        } catch (fallbackError) {
-          console.error('[AI] Fallback model also failed:', fallbackError);
-          lastError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
-        }
-      }
-      retries++;
-      if (retries < maxRetries) {
-        console.warn(`[AI] Retry ${retries}/${maxRetries} after error:`, error);
-        await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // Exponential backoff
-      }
-    }
-  }
-
-  throw lastError || new Error('Failed to generate text after all retries');
-}
 
 // --- Prompt Generation Functions (Moved from serp-prompt-design.ts) ---
 

@@ -221,26 +221,6 @@ async function fetchKeywordIdeas(
   }
 }
 
-// Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
-const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
-
-// Helper function to generate spaced variations for CJK keywords
-// (Made private - only used internally)
-function generateSpacedVariations(uniqueBaseKeywords: string[]): string[] {
-  const spacedVariations: string[] = [];
-  for (const keyword of uniqueBaseKeywords) {
-    if (
-      onlyCjkRegex.test(keyword) &&
-      keyword.length > 1 &&
-      keyword.length <= 10 &&
-      !keyword.includes(' ')
-    ) {
-      spacedVariations.push(keyword.split('').join(' '));
-    }
-  }
-  return spacedVariations;
-}
-
 // --- Exported Main Function ---
 
 interface GetSearchVolumeParams {
@@ -312,20 +292,33 @@ export async function getSearchVolume({
             languageId
           });
           const keywordIdeas = response.results || [];
+          console.log(`[getSearchVolume] Raw API response for batch ${batchNum}:`, JSON.stringify(keywordIdeas, null, 2));
 
           // --- Inlined processing logic ---
           for (const idea of keywordIdeas) {
             const originalText = idea.text || '';
-            if (!originalText) continue;
+            console.log(`[getSearchVolume] Processing keyword: "${originalText}"`);
+            
+            if (!originalText) {
+              console.log(`[getSearchVolume] Skipping empty keyword`);
+              continue;
+            }
 
             // Normalize text for duplicate checking
             const normalizedText = originalText.toLowerCase().trim();
+            console.log(`[getSearchVolume] Normalized keyword: "${normalizedText}"`);
 
             // Check against map using normalized text
-            if (processedKeywords.has(normalizedText)) continue;
+            if (processedKeywords.has(normalizedText)) {
+              console.log(`[getSearchVolume] Skipping duplicate keyword: "${normalizedText}"`);
+              continue;
+            }
 
             if (apiLanguageCode !== 'zh_CN') {
-              if (hasSimplifiedChinese(originalText)) continue;
+              if (hasSimplifiedChinese(originalText)) {
+                console.log(`[getSearchVolume] Skipping simplified Chinese keyword: "${originalText}"`);
+                continue;
+              }
             }
 
             const metrics = idea.keywordIdeaMetrics || {};

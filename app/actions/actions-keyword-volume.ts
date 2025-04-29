@@ -68,10 +68,6 @@ const KeywordVolumeObjectSchema = z.object({
   isFavorite: z.boolean().optional().default(false)
 });
 
-// Create a derived schema for cleanup that includes the ID
-const CleanupObjectSchema = KeywordVolumeObjectSchema.extend({
-  id: z.string()
-});
 
 type FirestoreKeywordVolumeObject = Omit<
   z.infer<typeof KeywordVolumeObjectSchema>,
@@ -80,6 +76,28 @@ type FirestoreKeywordVolumeObject = Omit<
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
+
+
+// Regex to check if the string consists *only* of CJK characters (and potentially spaces, handled later)
+const onlyCjkRegex = /^[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+$/;
+
+// Helper function to generate spaced variations for CJK keywords
+// (Made private - only used internally)
+function generateSpacedVariations(uniqueBaseKeywords: string[]): string[] {
+  const spacedVariations: string[] = [];
+  for (const keyword of uniqueBaseKeywords) {
+    if (
+      onlyCjkRegex.test(keyword) &&
+      keyword.length > 1 &&
+      keyword.length <= 10 &&
+      !keyword.includes(' ')
+    ) {
+      spacedVariations.push(keyword.split('').join(' '));
+    }
+  }
+  return spacedVariations;
+}
+
 
 function validatedDataToFirestore(
   data: z.infer<typeof KeywordVolumeObjectSchema>
@@ -197,7 +215,7 @@ export async function submitCreateKeywordVolumeObj({
 
   // 合併關鍵字 獲取關鍵字數據
   const keywordsForVolumeCheck = [
-    ...new Set([query.trim(), ...aiSuggestList, ...googleSuggestList])
+    ...new Set([...generateSpacedVariations([query.trim()]), ...aiSuggestList, ...googleSuggestList])
   ].slice(0, MAX_VOLUME_CHECK_KEYWORDS);
 
   const volumeResult = await getSearchVolume({

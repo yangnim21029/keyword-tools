@@ -3,7 +3,7 @@
  */
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
-
+import { SERP_ANALYSIS_MODELS } from '../global-config';
 const RELATED_KEYWORDS_MODEL = 'gpt-4.1-mini';
 
 // 定義 AI 服務的輸入類型 (保持泛用性)
@@ -91,7 +91,7 @@ export async function aiGetDifferenceEntityName(
 
   try {
     const { text } = await generateText({
-      model: openai(RELATED_KEYWORDS_MODEL),
+      model: SERP_ANALYSIS_MODELS.BASE,
       messages: [{ role: 'user', content: prompt }]
     });
 
