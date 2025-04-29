@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 import { ErrorDisplay } from './components/error-display';
 import { ProgressChecklistDisplay } from './components/progress-checklist-display';
 import { ResultDisplay } from './components/result-display';
+import { RevalidateButton } from '@/app/actions/actions-buttons';
 
 // --- Import Corrected Types from Schema ---
 import type {
@@ -720,9 +721,6 @@ export default function WritingPage() {
               </div>
               {/* Right side controls */}
               <div className="flex items-center gap-4">
-                {' '}
-                {/* Increased gap */}
-                {/* Fine-tune Toggle Button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -733,6 +731,7 @@ export default function WritingPage() {
                   <Settings2 className="h-3.5 w-3.5 mr-1" />
                   Fine-Tune ({isMounted ? selectedFineTunes.length : 0})
                 </Button>
+                <RevalidateButton size="sm" variant="ghost" />
               </div>
             </div>
             {/* Form Content Area */}

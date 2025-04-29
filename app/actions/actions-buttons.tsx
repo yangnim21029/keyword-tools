@@ -6,11 +6,15 @@ import {
   Loader2,
   LucideIcon,
   Sparkles,
-  Trash2
+  Trash2,
+  RefreshCw,
+  TerminalSquare
 } from 'lucide-react'; // Add ArrowUp, Trash2, and ShieldAlert
 import { useRouter } from 'next/navigation'; // Import useRouter
 import { useTransition } from 'react';
 import { toast } from 'sonner';
+import { revalidateTag } from 'next/cache';
+import { unstable_cache } from 'next/cache';
 
 import { submitGeneratePersonaForCluster } from '@/app/actions/actions-ai-persona'; // Action for persona
 import {
@@ -20,6 +24,7 @@ import {
 import { submitClustering } from '@/app/actions/actions-semantic-clustering'; // Action for clustering
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { cn } from '@/lib/utils';
+import { revalidateKeywordVolumeList, testAiLifecycle } from '@/app/actions/actions-revalidate';
 
 // === Cluster Analysis Button ===
 
@@ -536,6 +541,99 @@ export function AnalyzeBetterHaveButton({
       loadingText="Analyzing..."
     >
       Analyze Better Have
+    </LoadingButton>
+  );
+}
+
+// === Revalidate Button ===
+interface RevalidateButtonProps {
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+}
+
+export function RevalidateButton({
+  variant = 'outline',
+  size = 'sm',
+  className = ''
+}: RevalidateButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleRevalidate = () => {
+    startTransition(async () => {
+      try {
+        const result = await revalidateKeywordVolumeList();
+        if (result.success) {
+          toast.success('Keyword volume list cache revalidated successfully!');
+        } else {
+          toast.error('Failed to revalidate cache');
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Failed to revalidate cache: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleRevalidate}
+      isLoading={isPending}
+      disabled={isPending}
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+    >
+      {!isPending && <RefreshCw className="h-4 w-4 mr-2" />}
+      Revalidate Cache
+    </LoadingButton>
+  );
+}
+
+// === Test AI Button ===
+interface TestAiButtonProps {
+  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'primary';
+  size?: 'default' | 'sm' | 'lg';
+  className?: string;
+}
+
+export function TestAiButton({
+  variant = 'outline',
+  size = 'sm',
+  className = ''
+}: TestAiButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleTest = () => {
+    startTransition(async () => {
+      try {
+        const result = await testAiLifecycle();
+        if (result.success) {
+          toast.success(result.message);
+          console.log('AI Response:', result.response);
+        } else {
+          toast.error(result.message);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`AI test failed: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleTest}
+      isLoading={isPending}
+      disabled={isPending}
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+    >
+      {!isPending && <TerminalSquare className="h-4 w-4 mr-2" />}
+      Test AI Life
     </LoadingButton>
   );
 }

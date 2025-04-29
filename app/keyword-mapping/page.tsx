@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { COLLECTIONS, db, getKeywordVolumeList } from '../services/firebase';
 import KeywordVolumeObjectList from './components/keyword-obj-list';
 import KeywordSearchForm from './components/keyword-search-form';
+import { RevalidateButton } from '../actions/actions-buttons';
 
 export default async function KeywordToolPage() {
   if (!db) return notFound();
@@ -41,7 +42,10 @@ export default async function KeywordToolPage() {
         </div>
 
         <div className="w-full md:w-[350px] lg:w-[400px] mt-10 md:mt-0 flex-shrink-0">
-          <h2 className="text-xl font-semibold mb-4 text-left">研究記錄</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-left">研究記錄</h2>
+            <RevalidateButton size="sm" variant="ghost" />
+          </div>
           <KeywordVolumeObjectList
             keywordVolumeObjectList={keywordVolumeList ?? []}
           />

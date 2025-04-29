@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import { Info } from 'lucide-react';
 import CreateNewSerpForm from './create-new-serp-form';
+import { TestAiButton } from '@/app/actions/actions-buttons';
 // --- End Shadcn UI Imports ---
 
 // import { CreateNewSerpButton } from '../actions/actions-buttons'; // Assuming this button allows setting params later
@@ -47,7 +48,10 @@ export default async function SerpAnalysisListPage() {
         </AlertDescription>
       </Alert>
 
-      <CreateNewSerpForm />
+      <div className="flex items-center gap-4">
+        <TestAiButton size="sm" variant="ghost" />
+        <CreateNewSerpForm />
+      </div>
 
       {/* List of SERP Results */}
       <Card>
