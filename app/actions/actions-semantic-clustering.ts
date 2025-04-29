@@ -4,6 +4,7 @@ import { openai } from '@ai-sdk/openai';
 import { generateObject, generateText } from 'ai';
 import { revalidateTag } from 'next/cache';
 import { z } from 'zod';
+import { SERP_ANALYSIS_MODELS } from '../global-config';
 
 // Import necessary actions and types from keyword-research
 // Note: Ensure these are exported from keyword-research.ts
@@ -238,7 +239,7 @@ async function _performAiClusteringSteps({
   const textPrompt = getClusteringTextPrompt(keywordsToCluster);
   console.log('[AI Call] Calling AI for Clustering Text Generation...');
   const { text: rawMarkdown } = await generateText({
-    model: openai(model),
+    model: SERP_ANALYSIS_MODELS.BASE,
     prompt: textPrompt
   });
 
@@ -252,8 +253,8 @@ async function _performAiClusteringSteps({
   console.log('[AI Call] Clustering AI for JSON Conversion...');
   const conversionPrompt = getClusteringConversionPrompt(trimmedMarkdown);
   const { object: jsonResult } = await generateObject({
-    model: openai(model),
-    schema: AiClusterListSchema, // Use the new schema name here
+    model: SERP_ANALYSIS_MODELS.FAST,
+    schema: AiClusterListSchema,
     prompt: conversionPrompt,
     mode: 'json'
   });

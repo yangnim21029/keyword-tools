@@ -539,8 +539,8 @@ export async function submitAiAnalysisSerpContentType({
       `[Action: Analyze Content Type] Calling AI for Text Analysis...`
     );
     const textPrompt = await getContentTypeAnalysisPrompt(keyword, serpString);
-    const { text: analysisResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.BASE),
+    const { text: rawAnalysisText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze Content Type] Text Analysis successful.`);
@@ -550,11 +550,11 @@ export async function submitAiAnalysisSerpContentType({
       `[Action: Analyze Content Type] Calling AI for Text Conversion...`
     );
     const conversionPrompt = await getContentTypeConversionPrompt(
-      analysisResultText,
+      rawAnalysisText,
       keyword
     );
-    const { text: convertedContentTypeText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawConversionText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze Content Type] Text Conversion successful.`);
@@ -564,10 +564,10 @@ export async function submitAiAnalysisSerpContentType({
       `[Action: Analyze Content Type] Calling AI for Recommendation...`
     );
     const recommendationPrompt = await getContentTypeRecommendationPrompt(
-      analysisResultText
+      rawAnalysisText
     );
-    const { text: recommendationResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawRecommendationText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: recommendationPrompt
     });
     console.log(`[Action: Analyze Content Type] Recommendation generated.`);
@@ -577,8 +577,8 @@ export async function submitAiAnalysisSerpContentType({
       `[Action: Analyze Content Type] Updating Firestore directly...`
     );
     await docRef.update({
-      contentTypeRecommendationText: recommendationResultText,
-      contentTypeAnalysisText: convertedContentTypeText,
+      contentTypeRecommendationText: rawRecommendationText,
+      contentTypeAnalysisText: rawConversionText,
       updatedAt: FieldValue.serverTimestamp()
     });
     console.log(`[Action: Analyze Content Type] Firestore updated.`);
@@ -662,8 +662,8 @@ export async function submitAiAnalysisSerpIntent({
       serpString,
       relatedKeywordsRaw
     );
-    const { text: analysisResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.BASE),
+    const { text: rawAnalysisText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze User Intent] Text Analysis successful.`);
@@ -673,11 +673,11 @@ export async function submitAiAnalysisSerpIntent({
       `[Action: Analyze User Intent] Calling AI for Text Conversion...`
     );
     const conversionPrompt = await getUserIntentConversionPrompt(
-      analysisResultText,
+      rawAnalysisText,
       keyword
     );
-    const { text: convertedUserIntentText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawConversionText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze User Intent] Text Conversion successful.`);
@@ -687,11 +687,11 @@ export async function submitAiAnalysisSerpIntent({
       `[Action: Analyze User Intent] Calling AI for Recommendation...`
     );
     const recommendationPrompt = await getUserIntentRecommendationPrompt(
-      analysisResultText,
+      rawAnalysisText,
       keyword
     );
-    const { text: recommendationResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawRecommendationText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: recommendationPrompt
     });
     console.log(`[Action: Analyze User Intent] Recommendation generated.`);
@@ -700,8 +700,8 @@ export async function submitAiAnalysisSerpIntent({
     console.log(`[Action: Analyze User Intent] Updating Firestore directly...`);
     const docRef = db.collection(COLLECTIONS.SERP_RESULT).doc(docId);
     await docRef.update({
-      userIntentRecommendationText: recommendationResultText,
-      userIntentAnalysisText: convertedUserIntentText,
+      userIntentRecommendationText: rawRecommendationText,
+      userIntentAnalysisText: rawConversionText,
       updatedAt: FieldValue.serverTimestamp()
     });
     console.log(`[Action: Analyze User Intent] Firestore updated.`);
@@ -778,17 +778,17 @@ export async function submitAiAnalysisSerpTitle({
     // 1. Generate JSON Analysis directly -> CHANGED to Generate Text
     console.log(`[Action: Analyze Title] Calling AI for Text Analysis...`);
     const analysisPrompt = await getSerpTitleAnalysisPrompt(keyword, serpString);
-    const { text: titleAnalysisText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.BASE),
+    const { text: rawAnalysisText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.BASE,
       prompt: analysisPrompt
     });
     console.log(`[Action: Analyze Title] Text Analysis successful.`);
 
     // 2. Generate Recommendation from JSON -> CHANGED to generate from Text
     console.log(`[Action: Analyze Title] Calling AI for Recommendation...`);
-    const titleRecommendationPrompt = await getTitleRecommendationPrompt(titleAnalysisText);
-    const { text: recommendationResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const titleRecommendationPrompt = await getTitleRecommendationPrompt(rawAnalysisText);
+    const { text: rawRecommendationText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: titleRecommendationPrompt
     });
     console.log(`[Action: Analyze Title] Recommendation generated.`);
@@ -797,8 +797,8 @@ export async function submitAiAnalysisSerpTitle({
     console.log(`[Action: Analyze Title] Updating Firestore directly...`);
     const docRef = db.collection(COLLECTIONS.SERP_RESULT).doc(docId);
     await docRef.update({
-      titleAnalysisText: titleAnalysisText, // Store raw analysis text
-      titleRecommendationText: recommendationResultText, // Need to add this field to schema if required
+      titleAnalysisText: rawAnalysisText, // Store raw analysis text
+      titleRecommendationText: rawRecommendationText, // Need to add this field to schema if required
       updatedAt: FieldValue.serverTimestamp()
     });
     console.log(`[Action: Analyze Title] Firestore updated.`);
@@ -890,8 +890,8 @@ export async function submitAiAnalysisSerpBetterHave({
       relatedQueriesString,
       aiOverviewString
     );
-    const { text: markdownAnalysisResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.BASE),
+    const { text: rawAnalysisText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.BASE,
       prompt: textPrompt
     });
     console.log(`[Action: Analyze Better Have] Text Analysis successful.`);
@@ -901,11 +901,11 @@ export async function submitAiAnalysisSerpBetterHave({
       `[Action: Analyze Better Have] Calling AI for Text Conversion...`
     );
     const conversionPrompt = await getBetterHaveConversionPrompt(
-      markdownAnalysisResultText,
+      rawAnalysisText,
       keyword
     );
-    const { text: convertedBetterHaveText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawConversionText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: conversionPrompt
     });
     console.log(`[Action: Analyze Better Have] Text Conversion successful.`);
@@ -915,11 +915,11 @@ export async function submitAiAnalysisSerpBetterHave({
       `[Action: Analyze Better Have] Calling AI for Recommendation...`
     );
     const betterHaveRecommendationPrompt = await getBetterHaveRecommendationPrompt(
-      markdownAnalysisResultText,
+      rawAnalysisText,
       keyword
     );
-    const { text: recommendationResultText } = await generateText({
-      model: openai(SERP_ANALYSIS_MODELS.FAST),
+    const { text: rawRecommendationText } = await generateText({
+      model: SERP_ANALYSIS_MODELS.FAST,
       prompt: betterHaveRecommendationPrompt
     });
     console.log(`[Action: Analyze Better Have] Recommendation generated.`);
@@ -928,8 +928,8 @@ export async function submitAiAnalysisSerpBetterHave({
     console.log(`[Action: Analyze Better Have] Updating Firestore directly...`);
     const docRef = db.collection(COLLECTIONS.SERP_RESULT).doc(docId);
     await docRef.update({
-      betterHaveRecommendationText: recommendationResultText,
-      betterHaveAnalysisText: convertedBetterHaveText,
+      betterHaveRecommendationText: rawRecommendationText,
+      betterHaveAnalysisText: rawConversionText,
       updatedAt: FieldValue.serverTimestamp()
     });
     console.log(`[Action: Analyze Better Have] Firestore updated.`);

@@ -1,3 +1,8 @@
+import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
+import { LanguageModel } from 'ai';
+
+
 /**
  * 地區映射常量
  * 使用索引簽名來允許字符串索引
@@ -71,11 +76,11 @@ export const MEDIUM_VOLUME_THRESHOLD = 100; // 100-399 is Medium
 export const SERP_ANALYSIS_ORGANIC_RESULTS_LIMIT = 15;
 
 // AI models for SERP analysis
-export const SERP_ANALYSIS_MODELS = {
+export const SERP_ANALYSIS_MODELS: { [key: string]: LanguageModel } = {
   /** Standard model for primary analysis steps */
-  BASE: 'gpt-4.1-mini',
+  BASE: google('gemini-2.5-flash-preview-04-17'),
   /** Faster model for simpler conversion/recommendation steps */
-  FAST: 'gpt-4.1-nano'
+  FAST: google('gemini-2.5-flash-preview-04-17')
 };
 
 /** Default Firebase Function Region */
