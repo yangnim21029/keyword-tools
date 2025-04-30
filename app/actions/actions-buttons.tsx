@@ -24,6 +24,18 @@ import { LoadingButton } from '@/components/ui/LoadingButton';
 import { cn } from '@/lib/utils';
 import { revalidateKeywordVolumeList, testAiLifecycle } from '@/app/actions/actions-revalidate';
 import { analyzeParagraphs, rephraseParagraph } from './actions-paragraph-rephrase';
+import {
+  submitAiAnalysisSerpBetterHave,
+  submitAiAnalysisSerpContentType,
+  submitAiAnalysisSerpIntent,
+  submitAiAnalysisSerpTitle,
+  submitCreateSerp
+} from './actions-ai-serp-result'; // Import the specific SERP analysis actions
+import { 
+    submitAiAnalysisOnPageSummary, 
+    submitAiAnalysisOnPageRankingFactorV2,
+    submitAiAnalysisOnPageRankingFactorRecommendation
+} from './actions-ai-onpage-result';
 
 // === Cluster Analysis Button ===
 
@@ -284,20 +296,14 @@ export function DeleteKeywordVolumeButton({
 
 // === SERP Analysis Buttons ===
 
-import {
-  submitAiAnalysisSerpBetterHave,
-  submitAiAnalysisSerpContentType,
-  submitAiAnalysisSerpIntent,
-  submitAiAnalysisSerpTitle,
-  submitCreateSerp
-} from './actions-ai-serp-result'; // Import the specific SERP analysis actions
-
 interface BaseAnalysisButtonProps {
   docId: string;
   variant?: React.ComponentProps<typeof LoadingButton>['variant'];
   size?: React.ComponentProps<typeof LoadingButton>['size'];
   className?: string;
   disabled?: boolean;
+  loadingText?: string;
+  reAnalyzeLoadingText?: string;
 }
 
 // === Create New SERP Button ===
@@ -540,6 +546,171 @@ export function AnalyzeBetterHaveButton({
       loadingText="Analyzing..."
     >
       Analyze Better Have
+    </LoadingButton>
+  );
+}
+
+// === On-Page Analysis Buttons ===
+
+// --- Analyze Content Summary Button ---
+interface AnalyzeContentSummaryButtonProps extends BaseAnalysisButtonProps {
+  hasExistingResult?: boolean;
+}
+
+export function AnalyzeContentSummaryButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false,
+  hasExistingResult = false
+}: AnalyzeContentSummaryButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      try {
+        const result = await submitAiAnalysisOnPageSummary({ docId });
+        if (result.success) {
+          toast.success(`On-Page Content Summary analysis complete.`);
+        } else {
+          toast.error(
+            `On-Page Content Summary analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`On-Page Content Summary analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  const currentLoadingText = isPending ? (hasExistingResult ? "Re-analyzing Summary..." : "Analyzing Summary...") : undefined;
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText={currentLoadingText}
+    >
+      {hasExistingResult ? 'Re-Analyze Summary' : 'Analyze Content Summary'}
+    </LoadingButton>
+  );
+}
+
+// === V2 Ranking Factor Analysis Button ===
+interface AnalyzeRankingFactorsV2ButtonProps extends BaseAnalysisButtonProps {
+  hasExistingResult?: boolean;
+}
+
+export function AnalyzeRankingFactorsV2Button({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false,
+  hasExistingResult = false
+}: AnalyzeRankingFactorsV2ButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      toast.info(hasExistingResult ? 'Re-running V2 Ranking Factor analysis...' : 'Starting V2 Ranking Factor analysis...');
+      try {
+        const result = await submitAiAnalysisOnPageRankingFactorV2({ docId }); // Call the V2 action
+        if (result.success) {
+          toast.success(`V2 Ranking Factor analysis complete.`);
+        } else {
+          toast.error(
+            `V2 Ranking Factor analysis failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`V2 Ranking Factor analysis error: ${errorMsg}`);
+      }
+    });
+  };
+
+  const currentLoadingText = isPending ? (hasExistingResult ? "Re-analyzing Factors (V2)..." : "Analyzing Factors (V2)...") : undefined;
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      disabled={disabled || isPending}
+      loadingText={currentLoadingText}
+    >
+      {hasExistingResult ? 'Re-Analyze Factors (V2)' : 'Analyze Ranking Factors (V2)'}
+    </LoadingButton>
+  );
+}
+
+// === Recommendation Button === 
+interface AnalyzeRankingFactorsRecommendationButtonProps extends BaseAnalysisButtonProps {
+  hasExistingResult?: boolean;
+  hasPrerequisite?: boolean; // To check if V2 analysis exists
+}
+
+export function AnalyzeRankingFactorsRecommendationButton({
+  docId,
+  variant = 'default',
+  size = 'default',
+  className = '',
+  disabled = false,
+  hasExistingResult = false,
+  hasPrerequisite = false // Default to false
+}: AnalyzeRankingFactorsRecommendationButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleAnalysis = () => {
+    startTransition(async () => {
+      toast.info(hasExistingResult ? 'Re-generating Recommendations...' : 'Generating Recommendations...');
+      try {
+        const result = await submitAiAnalysisOnPageRankingFactorRecommendation({ docId }); // Call the recommendation action
+        if (result.success) {
+          toast.success(`Recommendations generated successfully.`);
+        } else {
+          toast.error(
+            `Recommendations generation failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Recommendations generation error: ${errorMsg}`);
+      }
+    });
+  };
+
+  const currentLoadingText = isPending ? (hasExistingResult ? "Re-generating Recommendations..." : "Generating Recommendations...") : undefined;
+  const buttonText = hasExistingResult ? 'Re-generate Recommendations' : 'Generate Recommendations';
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleAnalysis}
+      isLoading={isPending}
+      // Disable if prerequisite (V2 analysis) is missing OR if already loading
+      disabled={disabled || isPending || !hasPrerequisite} 
+      loadingText={currentLoadingText}
+      title={!hasPrerequisite ? "Run V2 Ranking Factor Analysis first" : undefined} // Tooltip if disabled
+    >
+      {buttonText}
     </LoadingButton>
   );
 }

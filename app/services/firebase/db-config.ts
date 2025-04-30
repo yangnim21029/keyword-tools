@@ -72,7 +72,8 @@ if (!getApps().length) {
 
 export const COLLECTIONS = {
   KEYWORD_VOLUME: 'keyword_volume',
-  SERP_RESULT: 'serp_result'
+  SERP_RESULT: 'serp_result',
+  ONPAGE_RESULT: 'onPageResults'
 } as const;
 
 export { db };
