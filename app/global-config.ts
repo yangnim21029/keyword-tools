@@ -256,7 +256,16 @@ export const NAV_ITEMS: NavItem[] = [
     isPrimary: true
   },
   { href: '/writing', label: 'Writing', icon: 'pen', isPrimary: true },
-    {
+  { href: '/on-page-result', label: 'On-Page 分析', icon: 'bar-chart', isPrimary: true },
+  {
+    href: 'https://gsc-weekly-analyzer-241331030537.asia-east2.run.app', 
+    label: 'GSC Weekly API',
+    icon: 'bar-chart',
+    isPrimary: true
+  },
+  { href: '/serp-result', label: 'SERP 分析', icon: 'bar-chart', isPrimary: true },
+
+  {
     href: '/paragraph-rephrase',
     label: 'Paragraph Rephrase',
     icon: 'pen',
@@ -264,8 +273,6 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: '/help', label: '說明', icon: 'help', isPrimary: true },
   // Secondary Items (Less clicked - will be tagged)
-  { href: '/serp-result', label: 'SERP 分析', icon: 'bar-chart', isPrimary: true },
-  { href: '/on-page-result', label: 'On-Page 分析', icon: 'bar-chart', isPrimary: true },
   {
     href: '/demo-product-function',
     label: 'Demo 功能',
