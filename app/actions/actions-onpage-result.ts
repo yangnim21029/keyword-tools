@@ -1,7 +1,7 @@
 'use server';
 
 import { extractArticleContentFromUrl } from '@/app/services/scrape.service';
-import { addOnPageResult } from '@/app/services/firebase/data-on-page-result';
+import { addOnPageResult } from '@/app/services/firebase/data-onpage-result';
 import { revalidateTag } from 'next/cache';
 
 const ONPAGE_DATA_TAG = 'onPageData'; // Match tag used in data service

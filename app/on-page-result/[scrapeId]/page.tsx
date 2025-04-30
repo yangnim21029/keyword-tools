@@ -1,6 +1,6 @@
 "use server";
 
-import { getOnPageResultById, FirebaseOnPageResultObject } from '@/app/services/firebase/data-on-page-result';
+import { getOnPageResultById, FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result';
 import { notFound } from 'next/navigation';
 import ScrapeResultDisplay from './scrape-result-client';
 import { ClientSafeScrapeData } from './scrape-result-client';
