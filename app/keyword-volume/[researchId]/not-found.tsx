@@ -13,7 +13,7 @@ export default function NotFound() {
             無法找到指定的研究記錄，可能已被刪除。
           </p>
           <Button asChild variant="outline">
-            <Link href="/keyword-mapping">返回關鍵字研究列表</Link>
+            <Link href="/keyword-volume">返回關鍵字研究列表</Link>
           </Button>
         </div>
       </div>

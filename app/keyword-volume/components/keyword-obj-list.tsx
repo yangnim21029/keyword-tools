@@ -163,7 +163,7 @@ export default function KeywordVolumeObjectList({
                       return isCompleted ? (
                         <Link
                           key={research.id}
-                          href={`/keyword-mapping/${research.id}`}
+                          href={`/keyword-volume/${research.id}`}
                           className={cn(
                             `relative group flex items-center justify-between py-2.5 pb-3 px-3 max-w-full border-b border-border/40 last:border-b-0 rounded-sm transition-colors duration-150`,
                             'cursor-pointer hover:bg-accent/50'

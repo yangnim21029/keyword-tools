@@ -94,7 +94,7 @@ export function ClusterAnalysisButton({
   );
 }
 
-// === Generate Persona Button (Moved from keyword-mapping/components) ===
+// === Generate Persona Button (Moved from keyword-volume/components) ===
 
 interface GeneratePersonaButtonProps {
   researchId: string;
@@ -190,7 +190,7 @@ export function SubmitKeywordResearchButton({
 
         if (result.success && result.researchId) {
           toast.success(`研究記錄已創建 (ID: ${result.researchId})`);
-          router.push(`/keyword-mapping/${result.researchId}`);
+          router.push(`/keyword-volume/${result.researchId}`);
         } else {
           const errorMsg = result.error || '創建研究記錄失敗，請稍後再試。';
           toast.error(errorMsg);

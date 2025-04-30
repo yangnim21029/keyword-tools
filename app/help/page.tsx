@@ -8,7 +8,7 @@ export default function HelpPage() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">用這工具做關鍵字規劃？看這篇就懂 (FAQ)</h1>
       <p className="text-muted-foreground mb-8">
-        剛開始用<Link href="/keyword-mapping" className="underline text-primary hover:opacity-80">這個工具</Link>做關鍵字規劃 (Keyword Mapping) 嗎？這裡解答您可能會想知道的幾個問題。
+        剛開始用<Link href="/keyword-volume" className="underline text-primary hover:opacity-80">這個工具</Link>做關鍵字規劃 (Keyword Mapping) 嗎？這裡解答您可能會想知道的幾個問題。
       </p>
 
       <Accordion type="single" collapsible className="w-full space-y-4">

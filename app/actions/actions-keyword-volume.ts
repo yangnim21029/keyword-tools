@@ -282,7 +282,7 @@ export async function submitCreateKeywordVolumeObj({
       `[Action] Successfully created entry with ID: ${docRef.id}, Total Volume: ${validatedDataForFirestore.totalVolume}`
     );
     revalidateTag(KEYWORD_VOLUME_LIST_TAG);
-    revalidatePath('/keyword-mapping');
+    revalidatePath('/keyword-volume');
     return { success: true, researchId: docRef.id, error: null };
   } catch (error) {
     console.error('[Action] Error creating keyword research entry:', error);
