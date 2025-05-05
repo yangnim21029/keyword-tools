@@ -9,11 +9,6 @@ type ParagraphResponse = {
   error?: string;
 };
 
-type AnalysisResult = {
-  graph: string;
-  gaps: string;
-};
-
 export async function analyzeParagraphs(
   aSections: string[],
   bSection: string

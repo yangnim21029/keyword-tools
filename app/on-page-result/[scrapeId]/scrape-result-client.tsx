@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Clock, Lightbulb, Tags, ListChecks, FileCheck, Target } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, Lightbulb, Tags, ListChecks, FileCheck, Target, GitMerge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
@@ -12,7 +12,8 @@ import {
   AnalyzeContentSummaryButton,
   // AnalyzeRankingFactorsButton, // Removed V1
   AnalyzeRankingFactorsV2Button,
-  AnalyzeRankingFactorsRecommendationButton // Restore import
+  AnalyzeRankingFactorsRecommendationButton, // Restore import
+  GenerateGraphButton
 } from '@/app/actions/actions-buttons';
 
 // Define a type for the data expected by the client component
@@ -30,6 +31,8 @@ export type ClientSafeScrapeData = Omit<
   onPageRankingFactorAnalysisV2Text?: string | null;
   // --- Add the new recommendation field ---
   onPageRankingFactorRecommendationText?: string | null;
+  // --- Add the paragraph graph field ---
+  paragraphGraphText?: string | null;
 };
 
 interface ScrapeResultDisplayProps {
@@ -38,7 +41,6 @@ interface ScrapeResultDisplayProps {
 }
 
 export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResultDisplayProps) {
-
   if (!scrapeData) {
     return (
       <Card className="border-destructive">
@@ -264,6 +266,45 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
 
           {/* --- Placeholder for other analyses --- */}
           {/* Add sections for other on-page analyses here */}
+
+          <Separator />
+
+          {/* --- Paragraph Graph Generation --- */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-md mb-2 flex items-center"><GitMerge className="h-4 w-4 mr-2 text-indigo-600"/> Paragraph Structure Graph</h4>
+
+            {/* Display graph result if available */} 
+            {scrapeData?.paragraphGraphText ? (
+              <div className="space-y-3 p-4 border rounded-md bg-muted/30 mb-3">
+                <pre className="whitespace-pre-wrap text-sm font-mono">
+                  {scrapeData.paragraphGraphText}
+                </pre>
+              </div>
+            ) : (
+              // Show message if graph hasn't been generated 
+              scrapeData?.textContent && (
+                <p className="text-sm text-muted-foreground italic mb-3">
+                  Graph not yet generated. Click the button below.
+                </p>
+              )
+            )}
+
+            {/* Add the button to trigger the graph generation */} 
+            {scrapeData?.textContent && (
+              <GenerateGraphButton
+                docId={scrapeId}
+                textContent={scrapeData.textContent}
+                hasExistingResult={!!scrapeData?.paragraphGraphText}
+                variant="outline"
+                size="sm"
+                disabled={!scrapeData?.textContent}
+                className="text-xs"
+              />
+            )}
+            {!scrapeData?.textContent && (
+              <p className="text-xs text-destructive mt-1">Cannot generate graph: No text content available.</p>
+            )}
+          </div>
 
         </CardContent>
       </Card>

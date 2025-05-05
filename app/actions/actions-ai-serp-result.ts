@@ -15,7 +15,7 @@ import {
   FirebaseSerpResultObject
 } from '@/app/services/firebase/schema';
 import { fetchSerpByKeyword } from '@/app/services/serp.service';
-import { generateText, LanguageModel } from 'ai';
+import { generateText } from 'ai';
 import { FieldValue } from 'firebase-admin/firestore'; // Import Timestamp
 import { revalidateTag } from 'next/cache';
 

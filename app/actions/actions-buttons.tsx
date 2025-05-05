@@ -34,7 +34,8 @@ import {
 import { 
     submitAiAnalysisOnPageSummary, 
     submitAiAnalysisOnPageRankingFactorV2,
-    submitAiAnalysisOnPageRankingFactorRecommendation
+    submitAiAnalysisOnPageRankingFactorRecommendation,
+    generateSingleParagraphGraph
 } from './actions-ai-onpage-result';
 
 // === Cluster Analysis Button ===
@@ -914,6 +915,75 @@ export function RephraseButton({
       loadingText="Rephrasing..."
     >
       Rephrase (Step 2)
+    </LoadingButton>
+  );
+}
+
+// === Generate Paragraph Graph Button ===
+
+interface GenerateGraphButtonProps {
+  docId: string;
+  textContent: string | null | undefined; // Allow null/undefined
+  hasExistingResult?: boolean;
+  variant?: React.ComponentProps<typeof LoadingButton>['variant'];
+  size?: React.ComponentProps<typeof LoadingButton>['size'];
+  className?: string;
+  disabled?: boolean;
+}
+
+export function GenerateGraphButton({
+  docId,
+  textContent,
+  hasExistingResult = false,
+  variant = 'outline',
+  size = 'sm',
+  className = '',
+  disabled = false
+}: GenerateGraphButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleGenerate = () => {
+    if (!textContent || !docId || isPending) {
+      if (!textContent) {
+        toast.warning('No text content available to generate graph.');
+      } else if (!docId) {
+        toast.warning('Document ID is missing.');
+      }
+      return;
+    }
+
+    startTransition(async () => {
+      toast.info(hasExistingResult ? 'Re-generating paragraph graph...' : 'Generating paragraph graph...');
+      try {
+        const result = await generateSingleParagraphGraph({ docId, textContent });
+        if (result.success) {
+          toast.success('Paragraph graph generated.');
+          router.refresh();
+        } else {
+          toast.error(`Graph generation failed: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Graph generation error: ${errorMsg}`);
+      }
+    });
+  };
+
+  const currentLoadingText = isPending ? (hasExistingResult ? "Re-generating Graph..." : "Generating Graph...") : undefined;
+  const buttonText = hasExistingResult ? 'Re-generate Paragraph Graph' : 'Generate Paragraph Graph';
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleGenerate}
+      isLoading={isPending}
+      disabled={disabled || isPending || !textContent || !docId}
+      loadingText={currentLoadingText}
+    >
+      {buttonText}
     </LoadingButton>
   );
 }

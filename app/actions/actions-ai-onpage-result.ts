@@ -438,4 +438,122 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
       error: `On-Page Recommendation Generation failed: ${errorMessage}`
     };
   }
+}
+
+// ==========================================================================
+// == Paragraph Graph Knowledge Visualization (Single Input)
+// ==========================================================================
+
+/**
+ * Interface for the graph generation response.
+ */
+interface ParagraphGraphResponse {
+  success: boolean;
+  result?: string;
+  error?: string;
+}
+
+/**
+ * Generates a prompt for creating a graph knowledge visualization for a single paragraph.
+ * Keeps the prompt in Chinese as requested.
+ */
+const getSingleParagraphGraphPrompt = (textContent: string): string => {
+  const prompt = `你將扮演 graph knowledge api，功能是將作者的寫作法，變成一個 graph knowledge 並可視化。請分析以下段落，不使用 python，不使用 mermaid 格式，直接寫出圖表出來，注意每一句的字詞距離。請確保完整輸出圖表結構。
+
+目標段落（請視為沒有換行的段落）：
+${textContent}
+
+請嚴格按照以下 H2 標題結構組織你的回覆：
+
+## Graph Knowledge Visualization
+[在這裡寫出目標段落的 graph 結構]
+
+---
+
+\n\n 示範（一篇文章，一個 母節點 graph 結構）：
+[葉海洋]──(身份)──>【中國網紅企業家】
+     └──(過去事件)──>【買上等精子、自己生混血寶寶】
+     └──(2024事件)──>【誕下雙胞胎男嬰】
+                              └──(結果)──>【組成五口之家】
+     └──(情感關係)──>【前女友】──(行為)──>【爆料】
+                              └──(影響)──>【形象翻車風波】
+     └──(目前反應)──>【尚未正面回應】
+     └──(引發)──>【社群熱議】
+                    └──(話題1)──>【家庭】
+                    └──(話題2)──>【國籍】
+                    └──(話題3)──>【情感】
+                    └──(話題4)──>【人設】`;
+  return prompt;
+};
+
+/**
+ * Action: Generate Graph Knowledge Visualization for a single paragraph.
+ * Saves the result to Firestore.
+ */
+export async function generateSingleParagraphGraph({
+  docId,
+  textContent
+}: {
+  docId: string;
+  textContent: string;
+}): Promise<ParagraphGraphResponse> {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  if (!docId) {
+    console.error('[Action: Single Paragraph Graph] Missing document ID.');
+    return { success: false, error: 'Document ID is required.' };
+  }
+
+  try {
+    if (!textContent || textContent.trim().length === 0) {
+      console.error('[Action: Single Paragraph Graph] Input text content is missing or empty.');
+      return { success: false, error: 'Input text content cannot be empty.' };
+    }
+
+    console.log('[Action: Single Paragraph Graph] Generating graph visualization...');
+    // Create the prompt
+    const prompt = getSingleParagraphGraphPrompt(textContent.substring(0, 30000)); // Apply truncation similar to other actions
+
+    // Call the AI model
+    const { text: graphText } = await generateText({
+      model: AI_MODELS.BASE, // Or potentially a more powerful model if needed
+      prompt: prompt,
+      // maxTokens: 30000 // Consider setting maxTokens if needed, but BASE model might handle length well
+    });
+
+    console.log('[Action: Single Paragraph Graph] Graph visualization generated successfully.');
+
+    // --- Update Firestore --- 
+    console.log(`[Action: Single Paragraph Graph] Updating Firestore for Doc ID: ${docId}...`);
+    const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+    await docRef.update({
+      paragraphGraphText: graphText || '', // Save the generated graph text
+      updatedAt: FieldValue.serverTimestamp()
+    });
+    console.log(`[Action: Single Paragraph Graph] Firestore updated for Doc ID: ${docId}.`);
+    // ------------------------
+
+    // Return the full text, assuming the AI follows the requested H2 structure
+    return { success: true, result: graphText || '' }; // Still return result for potential immediate use
+
+  } catch (error) {
+    console.error('[Action: Single Paragraph Graph] Error generating graph visualization:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during graph generation';
+
+    // Attempt to update timestamp even on error
+    try {
+      const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+      await docRef.update({ updatedAt: FieldValue.serverTimestamp() });
+    } catch (updateError) {
+      console.error(`[Action: Single Paragraph Graph] Failed to update timestamp on error for Doc ID ${docId}:`, updateError);
+    }
+
+    return {
+      success: false,
+      result: '',
+      error: errorMessage
+    };
+  }
 } 
