@@ -460,6 +460,8 @@ interface ParagraphGraphResponse {
 const getSingleParagraphGraphPrompt = (textContent: string): string => {
   const prompt = `你將扮演 graph knowledge api，功能是將作者的寫作法，變成一個 graph knowledge 並可視化。請分析以下段落，不使用 python，不使用 mermaid 格式，直接寫出圖表出來，注意每一句的字詞距離。請確保完整輸出圖表結構。
 
+不要多個 graph 結構，會從統一的一個母節點出發。
+
 目標段落（請視為沒有換行的段落）：
 ${textContent}
 
@@ -554,6 +556,117 @@ export async function generateSingleParagraphGraph({
       success: false,
       result: '',
       error: errorMessage
+    };
+  }
+}
+
+// ==========================================================================
+// == Text Content Organization (New Action)
+// ==========================================================================
+
+async function getOrganizeTextContentPrompt(rawTextContent: string): Promise<string> {
+  const promptLines = [
+    `You are an expert content extractor and formatter. Your task is to analyze the provided raw text content extracted from a webpage and extract ONLY the main article or core content.`,
+    ``,
+    `**INPUT TEXT CONTENT:**`,
+    `---`,
+    `${rawTextContent.substring(0, 30000)}`, // Apply truncation
+    `---`,
+    ``,
+    `**INSTRUCTIONS:**`,
+    `1.  Identify the primary article or main body of content.`,
+    `2.  Remove surrounding clutter: website headers, navigation, sidebars, footers, ads, promotional banners, social media widgets, comment sections, boilerplate text (copyrights, unrelated links).`,
+    `3.  Format the extracted content cleanly:`,
+    `    *   Preserve meaningful paragraph breaks.`,
+    `    *   Retain essential formatting (represent headings like ## Heading, lists like * item).`,
+    `    *   Output MUST be plain text. Do NOT include HTML tags.`,
+    `    *   Ensure the output is coherent and reads like a standalone article.`,
+    `4.  If no clear main content can be reliably extracted, output the text: "## No Main Content Found"`,
+    ``,
+    `**OUTPUT REQUIREMENTS:**`,
+    `*   Respond ONLY with the cleaned, extracted main content as plain text.`,
+    `*   Do NOT include explanations, introductions, or the "OUTPUT REQUIREMENTS" section in your response.`,
+  ];
+  return promptLines.join('\\n');
+}
+
+/**
+ * Action: Organize and clean the extracted text content using AI.
+ */
+export async function submitAiOrganizeTextContent({
+  docId,
+}: {
+  docId: string;
+}): Promise<{ success: boolean; error?: string; id?: string }> {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  console.log(`[Action: Organize Text] Starting for Doc ID: ${docId}`);
+
+  try {
+    // 0. Fetch OnPage data
+    const onPageData: FirebaseOnPageResultObject | null = await getOnPageResultById(docId);
+    if (!onPageData) {
+      console.error(`[Action: Organize Text] OnPage data not found for Doc ID: ${docId}`);
+      return { success: false, error: `OnPage data not found for ID: ${docId}` };
+    }
+
+    // Determine the source text: use original if available, otherwise current
+    const sourceText = onPageData.originalTextContent || onPageData.textContent;
+
+    // Check if source text exists
+    if (!sourceText || sourceText.trim().length === 0) {
+      console.error(`[Action: Organize Text] Source textContent (or originalTextContent) missing or empty for Doc ID: ${docId}`);
+      return { success: false, error: 'Source text content is missing or empty.' };
+    }
+
+    // 1. Generate Organized Text
+    console.log(`[Action: Organize Text] Calling AI for Text Organization...`);
+    const organizePrompt = await getOrganizeTextContentPrompt(sourceText);
+    const { text: organizedText } = await generateText({
+      model: AI_MODELS.BASE, // Or a more suitable model if needed
+      prompt: organizePrompt,
+    });
+    console.log(`[Action: Organize Text] Text Organization successful.`);
+
+    // 2. Prepare Firestore update data
+    const updateData: { [key: string]: any } = {
+      textContent: organizedText, // Update textContent with the organized version
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    // Backup original text ONLY if it hasn't been backed up before
+    if (!onPageData.originalTextContent && onPageData.textContent) {
+       updateData.originalTextContent = onPageData.textContent; // Backup the original
+    }
+
+
+    // 3. Update Firestore directly
+    console.log(`[Action: Organize Text] Updating Firestore...`);
+    const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+    await docRef.update(updateData);
+    console.log(`[Action: Organize Text] Firestore updated.`);
+
+    // 4. Return success
+    return {
+      success: true,
+      id: docId
+    };
+  } catch (error) {
+    console.error(`[Action: Organize Text] Failed for Doc ID ${docId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+     try {
+         const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+         await docRef.update({
+             updatedAt: FieldValue.serverTimestamp() // Still update timestamp on error
+         });
+     } catch (updateError) {
+         console.error(`[Action: Organize Text] Failed to update status on error for Doc ID ${docId}:`, updateError);
+     }
+    return {
+      success: false,
+      error: `Text Organization failed: ${errorMessage}`
     };
   }
 } 

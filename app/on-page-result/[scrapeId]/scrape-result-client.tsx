@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Clock, Lightbulb, Tags, ListChecks, FileCheck, Target, GitMerge } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, Lightbulb, Tags, ListChecks, FileCheck, Target, GitMerge, Sparkles as SparklesIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
@@ -13,7 +13,8 @@ import {
   // AnalyzeRankingFactorsButton, // Removed V1
   AnalyzeRankingFactorsV2Button,
   AnalyzeRankingFactorsRecommendationButton, // Restore import
-  GenerateGraphButton
+  GenerateGraphButton,
+  OrganizeTextContentButton // Import the new button
 } from '@/app/actions/actions-buttons';
 
 // Define a type for the data expected by the client component
@@ -24,6 +25,7 @@ export type ClientSafeScrapeData = Omit<
 > & {
   createdAt: string | null;
   updatedAt: string | null;
+  originalTextContent?: string | null; // Add the new field
   // --- Use the new text field name ---
   onPageContentAnalysisText?: string | null;
   // onPageRankingFactorAnalysisText?: string | null; // Removed V1 field
@@ -110,6 +112,17 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
           <pre className="whitespace-pre-wrap text-sm font-mono bg-gray-50 dark:bg-neutral-800 p-4 rounded border border-gray-200 dark:border-neutral-700 max-h-[60vh] overflow-y-auto">
             {scrapeData.textContent || 'No text content extracted.'}
           </pre>
+          {/* Add the Organize Text button below the content */}
+          <div className="mt-4">
+             <OrganizeTextContentButton
+               docId={scrapeId}
+               variant="outline"
+               size="sm"
+               hasTextContent={!!scrapeData?.textContent || !!scrapeData?.originalTextContent} // Enable if either current or original text exists
+               hasOriginalTextContent={!!scrapeData?.originalTextContent} // Base button text on whether original exists
+               className="text-xs"
+             />
+          </div>
         </CardContent>
       </Card>
 

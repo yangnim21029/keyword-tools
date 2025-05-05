@@ -27,6 +27,7 @@ export interface FirebaseOnPageResultObject extends ScrapedPageContent {
   status?: 'pending' | 'processing' | 'complete' | 'failed'; // Status of extraction/analysis
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  originalTextContent?: string | null | undefined; // Backup of the original text before AI organization
   // --- Add On-Page Analysis fields ---
   onPageContentAnalysisText?: string | null | undefined; // Stores raw text output of summary/keywords analysis
   onPageRankingFactorAnalysisV2Text?: string | null | undefined; // Stores raw text output of V2 ranking factor analysis

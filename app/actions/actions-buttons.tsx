@@ -35,7 +35,8 @@ import {
     submitAiAnalysisOnPageSummary, 
     submitAiAnalysisOnPageRankingFactorV2,
     submitAiAnalysisOnPageRankingFactorRecommendation,
-    generateSingleParagraphGraph
+    generateSingleParagraphGraph,
+    submitAiOrganizeTextContent
 } from './actions-ai-onpage-result';
 
 // === Cluster Analysis Button ===
@@ -983,6 +984,73 @@ export function GenerateGraphButton({
       disabled={disabled || isPending || !textContent || !docId}
       loadingText={currentLoadingText}
     >
+      {buttonText}
+    </LoadingButton>
+  );
+}
+
+// === Organize Text Content Button ===
+
+interface OrganizeTextContentButtonProps extends BaseAnalysisButtonProps {
+  hasTextContent?: boolean; // Check if there is text to organize
+  hasOriginalTextContent?: boolean; // Check if text has been organized before
+}
+
+export function OrganizeTextContentButton({
+  docId,
+  variant = 'outline',
+  size = 'sm',
+  className = '',
+  disabled = false,
+  hasTextContent = false,
+  hasOriginalTextContent = false,
+}: OrganizeTextContentButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleOrganize = () => {
+    if (!docId || isPending || !hasTextContent) {
+        if (!hasTextContent) {
+            toast.warning("No text content found to organize.");
+        }
+        return;
+    }
+
+    startTransition(async () => {
+      const toastMessage = hasOriginalTextContent ? 'Re-organizing text content...' : 'Organizing text content...';
+      toast.info(toastMessage);
+      try {
+        const result = await submitAiOrganizeTextContent({ docId });
+        if (result.success) {
+          toast.success(`Text content organized successfully.`);
+          router.refresh(); // Refresh data on the page
+        } else {
+          toast.error(
+            `Text content organization failed: ${result.error ?? 'Unknown error'}`
+          );
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Text content organization error: ${errorMsg}`);
+      }
+    });
+  };
+
+  const buttonText = hasOriginalTextContent ? 'Re-organize Text' : 'Organize Text Content';
+  const currentLoadingText = isPending ? (hasOriginalTextContent ? "Re-organizing..." : "Organizing...") : undefined;
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleOrganize}
+      isLoading={isPending}
+      disabled={disabled || isPending || !hasTextContent} // Disable if no text or pending
+      loadingText={currentLoadingText}
+      title={!hasTextContent ? "No text content available" : undefined}
+    >
+      {!isPending && <Sparkles className="h-4 w-4 mr-2" />} {/* Example icon */}
       {buttonText}
     </LoadingButton>
   );
