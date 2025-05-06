@@ -1,4 +1,4 @@
-import { submitAiAnalysisSerpIntent } from "@/app/actions/actions-ai-serp-result";
+import { submitAiAnalysisSerpUserIntent } from "@/app/actions/actions-ai-serp-result";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     // --- End Validation ---
 
     const { serpDocId } = validation.data; // Get validated ID
-    const result = await submitAiAnalysisSerpIntent({ docId: serpDocId }); // Pass only ID
+    const result = await submitAiAnalysisSerpUserIntent({ docId: serpDocId }); // Pass only ID
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error(

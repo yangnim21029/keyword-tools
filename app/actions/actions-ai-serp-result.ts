@@ -23,7 +23,7 @@ const SERP_DATA_LIST_TAG = "serpDataList";
 
 export const getContentTypeAnalysisPrompt = async (
   keyword: string,
-  serpResults: string,
+  serpResults: string
 ) =>
   `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in Content Type analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword and SERP results (including titles, descriptions, and URLs). Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* in the format of a Markdown table as requested later in the prompt.\n4.  **Behavior:**\n    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.\n    *   Do NOT engage in conversation or ask clarifying questions.\n    *   Do NOT use markdown formatting (like \`\`\`.\`) around the final table output.\n    *   Adhere strictly to the 8 content types defined below.\n    *   **Crucially, consider both the TITLE and the DESCRIPTION of each result when determining its content type.**\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: Content Type Analysis for [${keyword}]\n\n**What this report does:** The Content Type Analysis report looks at the top webpages ranking in Google on the first page and tries to classify the content based on type.\n\n**When to use this report:** The Content Type Analysis report should be used when you want to figure out the type of content that is shown by Google to satisfy the search query. If Google always shows a particular type of content for this query, then you may want to create content of the same type.\n\nYou know that there are eight types of content as mentioned below\n\n1. How to guides\n2. Step by step tutorials\n3. List posts\n4. Opinion editorials\n5. Videos\n6. Product pages\n7. Category pages\n8. Landing pages for a service\n\nPlease create a markdown table with two columns "Content Type" and "Pages".\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, **descriptions** and URLs of the top pages. Can you analyze **both their titles and descriptions** and categorize them based on the 8 content types mentioned earlier? Once done, please collate all the content types together.\n\nI want you to output the content types, and the number of the pages that are categorized in that content type in the "Content Type" column. In the "Pages" column, list ONLY the corresponding position numbers (e.g., 1, 2, 3) for the categorized pages. **DO NOT include URLs in the output table.**\n\nThe positions, titles, descriptions and URLs are given below\n\n${serpResults}\n\nRespond ONLY with the markdown table. Do not include any other text, explanations, or formatting like \\\`\\\`\\\`.\n\n---
 CRITICAL OUTPUT INSTRUCTIONS:
@@ -32,11 +32,15 @@ CRITICAL OUTPUT INSTRUCTIONS:
 ---
 `;
 
-export const getUserIntentAnalysisPrompt = async (
-  keyword: string,
-  serpResults: string,
-  relatedKeywordsRaw: string, // Raw string with keywords and volumes
-) => {
+export const getUserIntentAnalysisPrompt = async ({
+  query,
+  serpResults,
+  relatedKeywordsRaw, // Raw string with keywords and volumes
+}: {
+  query: string;
+  serpResults: string;
+  relatedKeywordsRaw: string;
+}) => {
   // Process related keywords for potential inclusion in the prompt (AI will handle final formatting)
   const keywordLines = relatedKeywordsRaw
     .split("\n")
@@ -57,12 +61,13 @@ export const getUserIntentAnalysisPrompt = async (
   // Simplified instructions for related keywords - AI should create the tables.
   const keywordSectionInstructions =
     keywordsData.length > 0
-      ? `\n\n#### Related Keywords\n\nBelow is a list of related keywords and their search volume. Please analyze these keywords and group them under the most relevant user intent category identified from the SERP analysis. For each intent category, create a markdown table with two columns: "Keywords" and "Search Volume". If the search volume is unknown, use '?' and link it to https://keywordseverywhere.com/seo-reports.html#faq.\n\n**Provided Keywords Data:**\n${relatedKeywordsRaw}\n` // Provide raw data directly to AI
+      ? `\n\n#### Related Keywords\n\nBelow is a list of related keywords and their search volume. These keywords illustrate the *variety* of potential user intentions related to the main query '${query}'. Please analyze these keywords and group them under the most relevant user intent category identified from the SERP analysis. For each intent category, create a markdown table with two columns: "Keywords" and "Search Volume". If the search volume is unknown, use '?' and link it to https://keywordseverywhere.com/seo-reports.html#faq.\n\n**Provided Keywords Data:**\n${relatedKeywordsRaw}\n` // Provide raw data directly to AI
       : `\n[No keywords with search volume were found](https://keywordseverywhere.com/seo-reports.html#faq).\n`;
 
-  return `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in User Intent analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword, SERP results, and related keywords data. Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* as Markdown content (User Intent table followed by Related Keyword tables, if applicable) as requested later.\n4.  **Behavior:**\n    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.\n    *   Do NOT engage in conversation or ask clarifying questions.\n    *   Do NOT use markdown formatting (like \`\`\`.\`) around the final output blocks.\n    *   Adhere strictly to the 4 user intent types defined below.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: User Intent Analysis for [${keyword}]\n\n**What this report does:** The User Intent Analysis report looks at the top webpages ranking in Google on the first page and tries to figure out the user intent that each satisfies. It then presents this data categorized in a table. It also gives you keywords relevant to each of the user intents it has found.\n\n**When to use this report:** The User Intent Analysis report should be used when you want to double check what the intent of the user is for the search query. Before you start creating content for this search query, you need to decide which user intent(s) you want your content to satisfy.\n\nYou know that there are four types of search intent - Navigational, Informational, Commercial & Transactional. You are able to figure out the exact search intent and then categorize it into one of the four types of search intent.\n\n#### User Intent Analysis\n\nPlease create a markdown table with three columns "Search Intent Category", "Actual Intent", and "Pages".\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, descriptions and URLs of the top pages. Can you analyze them and figure out the user intent that each page is written for? Collate the results by intent.\n\n-In the "Search Intent Category" column, list the type (Navigational, Informational, Commercial, Transactional). In the "Actual Intent" column, describe the specific intent and include the count of pages matching this intent. In the "Pages" column, display links to the URLs of those pages, using the position number as the anchor text (e.g., [1](URL), [2](URL)).\n\nIn the "Search Intent Category" column, list the type (Navigational, Informational, Commercial, Transactional). In the "Actual Intent" column, describe the specific intent and include the count of pages matching this intent. In the "Pages" column, list ONLY the corresponding position numbers (e.g., 1, 2, 3) for the categorized pages. **DO NOT include URLs in the output table.**\n\nThe positions, titles, descriptions and URLs are given below:\n\n${serpResults}\n\nIdeally your content should target one of the above user intents. However, it's fine to target one or more of them.\n\n${keywordSectionInstructions}\n\n| Warning                                                                                                                                                           |\n| :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| Please ensure that your Keywords Everywhere Settings for [Credit Usages for Widgets] are all enabled. If not, then LLM will hallucinate the search volume data in this report. |\n\nRespond ONLY with the markdown content described above (User Intent table followed by Related Keyword tables). Do not include any other text, explanations, or formatting like \`\`\`.\n\n---
+  return `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in User Intent analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided query, SERP results (titles and descriptions), and related keywords data. Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* as Markdown content (User Intent table followed by Related Keyword tables, if applicable) as requested later.\n4.  **Behavior:**\n    *   Do NOT add any introductory text, concluding remarks, summaries, explanations, or self-references.\n    *   Do NOT engage in conversation or ask clarifying questions.\n    *   Do NOT use markdown formatting (like \`\`\`.\`) around the final output blocks.\n    *   Adhere strictly to the 4 user intent types defined below.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: User Intent Analysis for [${query}]\n\n**What this report does:** The User Intent Analysis report looks at the top webpages ranking on the first page for the query '${query}'. It analyzes the **titles** to understand the user's primary **commitment** or goal, and the **descriptions** to infer the expected **website type or context** for fulfilling that commitment. It categorizes these findings by user intent and identifies relevant related keywords.\n\n**When to use this report:** Use this report to understand the core goal (commitment) users have for the query '${query}' and the type of site/information they expect. This helps align your content strategy before writing.\n\nYou know that there are four types of search intent - Navigational, Informational, Commercial & Transactional.\n
+#### User Intent Analysis\n\nPlease create a markdown table with three columns "Search Intent Category", "Actual Intent", and "Pages".\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${query}".\n\nI am listing below the positions, titles, descriptions and URLs of the top pages. Analyze them carefully:\n1.  Focus on the **Title** to determine the user's primary **commitment** or goal.\n2.  Examine the **Description** to understand the **context** or the expected **type of website/information** the user seeks to satisfy their commitment.\n3.  Figure out the user intent category (Navigational, Informational, Commercial, Transactional) that each page serves based on this analysis.\n4.  Collate the results by intent category.\n\n- In the "Search Intent Category" column, list the type (Navigational, Informational, Commercial, Transactional).\n- In the "Actual Intent" column, describe the specific **commitment/goal** inferred (e.g., "Find a step-by-step guide", "Compare product options", "Access official login page") and include the count of pages matching this specific intent. Use the description analysis for context.\n- In the "Pages" column, list ONLY the corresponding position numbers (e.g., 1, 2, 3) for the categorized pages. **DO NOT include URLs in the output table.**\n\nThe positions, titles, descriptions and URLs are given below:\n\n${serpResults}\n\nIdeally your content should target one of the primary user commitments identified. Targeting multiple is acceptable if relevant.\n\n${keywordSectionInstructions}\n\n| Warning                                                                                                                                                           |\n| :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| Please ensure that your Keywords Everywhere Settings for [Credit Usages for Widgets] are all enabled. If not, then LLM will hallucinate the search volume data in this report. |\n\nRespond ONLY with the markdown content described above (User Intent table followed by Related Keyword tables). Do not include any other text, explanations, or formatting like \`\`\`.\n\n---
 CRITICAL OUTPUT INSTRUCTIONS:
-- Keep descriptions and justifications within table cells brief and to the point.
+- Keep descriptions and justifications within table cells brief and focused on the user's core commitment/goal.
 - Ensure all generated markdown is essential for the report.
 ---
 `;
@@ -70,7 +75,7 @@ CRITICAL OUTPUT INSTRUCTIONS:
 
 export const getSerpTitleAnalysisPrompt = async (
   keyword: string,
-  serpResults: string,
+  serpResults: string
 ) => `You are a highly specialized AI assistant acting as an expert SEO analyst. Your sole task is to meticulously analyze the provided input data based *only* on the instructions that follow and generate output in the *exact* format specified.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Assume the persona of an SEO expert specializing in SERP Title analysis.\n2.  **Input Data:** Base your entire analysis strictly on the provided keyword and SERP results. Do NOT use external knowledge or assumptions.\n3.  **Output Format:** Generate your response *exclusively* as a valid JSON object matching the structure specified later.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object itself.\n    *   Do NOT engage in conversation or ask clarifying questions.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. Do not repeat yourself. Do not self reference. Do not explain what you are doing. Do not write any code. Do not analyze this. Do not explain.\n\n## SEO Report: Analyze SERP Titles for [${keyword}]\n\n**What this report does:** The Analyze SERP Titles report looks at the top webpages ranking in Google on the first page for the search query and tries to find patterns in them. It explains what it finds and gives recommendations for the title and also suggests a title for your content.\n\n**When to use this report:** The Analyze SERP Titles report should be used before you start writing content, by creating the page title. Read the recommendations and feel free to ask for more suggested page titles.\n\nYou know that there are four types of search intent - Navigational, Informational, Commercial & Transactional. You are able to figure out the exact search intent and then categorize it into one of the four types of search intent.\n\nI have obtained data for the websites ranking for the first page of a top search engine for the search query "${keyword}".\n\nI am listing below the positions, titles, descriptions and URLs of the top pages. Can you analyze the titles and find what is common among all of them. Finally, also create a new title that has the best of everything that is common.\n\nThe positions, titles, descriptions and URLs are given below:\n\n${serpResults}\n\nWhen you mention any position, display the link of the URL and use the number of the position as the anchor text.\n\nRespond with a JSON object with the following structure:\n{
   "title": "Your suggested optimized title",
   "analysis": "Your detailed analysis of the SERP titles",
@@ -82,35 +87,8 @@ CRITICAL OUTPUT INSTRUCTIONS:
 ---
 `;
 
-export const getContentTypeConversionPrompt = async (
-  markdownText: string,
-  keyword: string, // Include keyword for context if needed in JSON
-) =>
-  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text and the keyword for context.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.\n    *   Ensure all extracted data (URLs, positions) is valid according to the schema.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown text, which represents a Content Type Analysis report, into a structured JSON object.\n\nThe Markdown text contains a table listing content types and associated page links (with position numbers as anchor text).\n\nInput Markdown Text:\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. Extract the content type, count (number of pages listed), and an array of page objects (position and URL) for each row in the table.\n\n{\n  "analysisTitle": "Content Type Analysis for [${keyword}]", // Generate title using the provided keyword\n  "reportDescription": "The Content Type Analysis report looks at the top webpages ranking in Google on the first page and tries to classify the content based on type.", // Standard description\n  "usageHint": "The Content Type Analysis report should be used when you want to figure out the type of content that is shown by Google to satisfy the search query. If Google always shows a particular type of content for this query, then you may want to create content of the same type.", // Standard hint\n  "contentTypes": [\n    {\n      "type": "string (e.g., Product pages)", // Extracted from the first column\n      "count": number, // Calculated count of pages in the second column\n      "pages": [\n        { "position": number, "url": "string" }, // Extracted from links in the second column\n        ...\n      ]\n    },\n    ...\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting. Ensure all URLs are valid and positions are positive integers.\n\n---
-CRITICAL OUTPUT INSTRUCTIONS:
-- Ensure the strings for "type" are exactly as extracted.
-- Keep the overall JSON structure lean.
----
-`;
-
-export const getUserIntentConversionPrompt = async (
-  markdownText: string,
-  keyword: string, // Include keyword for context
-) =>
-  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text and the keyword for context.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it into the JSON structure.\n    *   Handle keyword search volume '?' as null in the JSON.\n    *   Ensure all extracted data (URLs, positions, categories) is valid according to the schema.\n    *   **Crucially, ensure EVERY item inside the 'intents' array is a complete JSON object with the fields 'category', 'specificIntent', 'count', and 'pages'. Do not output plain strings within this array.**\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown text, which represents a User Intent Analysis report, into a structured JSON object.\n\nThe Markdown text contains:\n1. A table listing user intent categories, specific intents (including page counts), and associated page links (position as anchor text).\n2. Potentially following the first table, markdown tables for related keywords grouped by intent category.\n\nInput Markdown Text:\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. Extract the intent category, specific intent description, page count, and page details from the first table. Extract related keywords and their search volumes (handle '?' as null) from the subsequent keyword tables.\n\n{\n  "analysisTitle": "User Intent Analysis for [${keyword}]", // Generate title\n  "reportDescription": "The User Intent Analysis report looks at the top webpages ranking in Google on the first page and tries to figure out the user intent that each satisfies. It then presents this data categorized.", // Standard description\n  "usageHint": "The User Intent Analysis report should be used when you want to double check what the intent of the user is for the search query. Before you start creating content for this search query, you need to decide which user intent(s) you want your content to satisfy.", // Standard hint\n  "intents": [\n    {\n      "category": "string (Navigational | Informational | Commercial | Transactional)", // Extracted from the first column\n      "specificIntent": "string (e.g., Find official website, Learn about X)", // Extracted from the second column (description part)\n      "count": number, // Extracted from the second column (count part)\n      "pages": [\n        { "position": number, "url": "string" }, // Extracted from links in the third column\n        ...\n      ]\n    },\n    // Example of another intent object (ensure ALL items follow this structure):
-    // { \n    //   "category": "Informational", \n    //   "specificIntent": "Compare product features", \n    //   "count": 3, \n    //   "pages": [ { "position": 4, "url": "..." }, ... ] \n    // }, 
-    ... // MORE FULL OBJECTS HERE, NOT STRINGS
-  ],\n  "relatedKeywords": [\n      { "keyword": "string", "searchVolume": number | null }, // Extracted from keyword tables. '?' volume becomes null.\n      ...\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting. Ensure categories match the four types, positions are positive integers, URLs are valid, and searchVolume is number or null. **Remember: Every item in the 'intents' array MUST be a complete JSON object.**
-
----
-CRITICAL OUTPUT INSTRUCTIONS:
-- Ensure the string value for "specificIntent" is concise and accurately reflects the intent.
-- Keep all generated strings brief.
----
-`;
-
 export const getContentTypeRecommendationPrompt = async (
-  markdownAnalysisText: string,
+  markdownAnalysisText: string
 ) =>
   `You are an expert SEO analyst reviewing a Content Type Analysis report (in Markdown format). Based *only* on the provided report, generate a concise, actionable recommendation for the user on which content type(s) to focus on.
 
@@ -141,7 +119,7 @@ CRITICAL OUTPUT INSTRUCTIONS:
 
 export const getUserIntentRecommendationPrompt = async (
   markdownAnalysisText: string,
-  keyword: string,
+  keyword: string
 ) =>
   `You are an expert SEO analyst reviewing a User Intent Analysis report (in Markdown format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable recommendation for the user regarding matching user intent.
 
@@ -186,7 +164,7 @@ export const getBetterHaveInArticlePrompt = async (
   serpString: string, // Formatted organic results (titles/descriptions)
   paaString: string, // Formatted People Also Ask
   relatedQueriesString: string, // Formatted Related Queries
-  aiOverviewString: string, // Formatted AI Overview
+  aiOverviewString: string // Formatted AI Overview
 ) =>
   `You are an expert SEO Content Strategist analyzing SERP data for the keyword "[${keyword}]" to identify crucial elements for a high-quality, trustworthy article.
 
@@ -206,7 +184,7 @@ Analyze the provided SERP data (Organic Results, People Also Ask, Related Querie
     ${aiOverviewString}
 
 **OUTPUT FORMAT:**
-Generate a Markdown bulleted list. Each bullet point should represent a distinct recommendation. For each recommendation, briefly explain *why* it's important based *only* on the provided SERP data (e.g., "Addresses a common PAA question", "Featured in multiple top-ranking descriptions", "Covers a related search query", "Key point from AI overview").
+Generate a Markdown bulleted list. Each bullet point should represent a distinct recommendation. For each recommendation, briefly explain *why* it's important based *only* on the provided SERP data (e.g., "Addresses a common PAA question", "Featured in multiple top descriptions", "Covers a related search query", "Key point from AI overview").
 
 Example:
 *   **Include a section comparing X and Y:** Justification: This comparison appears in several top descriptions and addresses a related query.
@@ -230,21 +208,9 @@ CRITICAL OUTPUT INSTRUCTIONS:
 ---
 `;
 
-export const getBetterHaveConversionPrompt = async (
-  markdownText: string,
-  keyword: string, // Include keyword for context if needed in JSON
-) =>
-  `You are a highly specialized AI assistant acting as a data conversion expert. Your sole task is to convert the provided Markdown bullet list text into the *exact* JSON format specified, using *only* the information present in the input Markdown.\n\n**CRITICAL INSTRUCTIONS:**\n1.  **Role:** Act as a data conversion bot.\n2.  **Input Data:** Use *only* the provided Markdown text.\n3.  **Output Format:** Generate *only* a valid JSON object matching the structure specified below.\n4.  **Behavior:**\n    *   Do NOT add any text, explanations, or markdown formatting (like \`\`\`json) outside the JSON object.\n    *   Do NOT interpret or analyze the data beyond extracting it. Extract the main recommended point/topic/question and its justification for each bullet point.\n    *   Attempt to infer the primary 'source' driving each recommendation (PAA, Organic Results, Related Queries, AI Overview, Multiple) based on the justification text, but it's okay if it's sometimes missing or inaccurate.\n\n--- START OF TASK-SPECIFIC INSTRUCTIONS ---\n\nPlease ignore all previous instructions. You are a data conversion expert. Your task is to convert the provided Markdown bulleted list, representing a "Better Have In Article" analysis report for keyword "[${keyword}]", into a structured JSON object.\n\nInput Markdown Text (Bulleted List):\n\`\`\`markdown\n${markdownText}\n\`\`\`\n\nConvert this Markdown text into a JSON object with the following structure. For each bullet point in the list, extract the core recommendation (the bolded part or main topic) into the 'point' field and the subsequent explanation into the 'justification' field. Attempt to categorize the 'source' based on keywords in the justification.\n\n{\n  "analysisTitle": "Better Have In Article Analysis for [${keyword}]",\n  "recommendations": [\n    {\n      "point": "string (e.g., Include a section comparing X and Y)", // Extracted main recommendation from bullet\n      "justification": "string (e.g., This comparison appears in several top descriptions and addresses a related query.)", // Extracted justification text\n      "source": "string (PAA | Organic Results | Related Queries | AI Overview | Multiple) | null" // Inferred source based on justification, null if unclear\n    },\n    // ... more items for each bullet point\n  ]\n}\n\nRespond ONLY with the valid JSON object. Do not include explanations or markdown formatting.\n
----
-CRITICAL OUTPUT INSTRUCTIONS:
-- Ensure the string values for "point" and "justification" are concise and directly extracted.
-- Keep the overall JSON structure lean.
----
-`;
-
 export const getBetterHaveRecommendationPrompt = async (
   markdownAnalysisText: string,
-  keyword: string,
+  keyword: string
 ) =>
   `You are an expert SEO analyst reviewing a "Better Have In Article" analysis report (in Markdown bullet list format) for the keyword "[${keyword}]". Based *only* on the provided report, generate a concise, actionable 1-2 sentence summary recommendation for the user.
 
@@ -303,7 +269,7 @@ export async function submitCreateSerp({
     });
     if (existingData) {
       console.log(
-        `[Action: Create/Fetch] Found existing SERP data in DB: ${existingData.id}`,
+        `[Action: Create/Fetch] Found existing SERP data in DB: ${existingData.id}`
       );
       if (
         !existingData.id ||
@@ -311,7 +277,7 @@ export async function submitCreateSerp({
       ) {
         console.error(
           "[Action: Create/Fetch] Existing data is missing ID or originalKeyword",
-          existingData,
+          existingData
         );
         return {
           success: false,
@@ -328,7 +294,7 @@ export async function submitCreateSerp({
 
     // 2. Not found, fetch from external service
     console.log(
-      `[Action: Create/Fetch] Fetching from SERP service for ${query} (R: ${region}, L: ${language})...`,
+      `[Action: Create/Fetch] Fetching from SERP service for ${query} (R: ${region}, L: ${language})...`
     );
     let fetchedData;
     try {
@@ -336,24 +302,24 @@ export async function submitCreateSerp({
     } catch (fetchError) {
       console.error(
         `[Action: Create/Fetch] Error fetching from SERP service for ${query}:`,
-        fetchError,
+        fetchError
       );
       throw new Error(
         `Failed to fetch data from SERP service: ${
           fetchError instanceof Error ? fetchError.message : String(fetchError)
-        }`,
+        }`
       ); // Re-throw to be caught by outer catch
     }
 
     if (!fetchedData) {
       // This case handles if fetchSerpByKeyword resolves successfully but returns null/undefined
       console.error(
-        `[Action: Create/Fetch] SERP service returned no data for ${query}.`,
+        `[Action: Create/Fetch] SERP service returned no data for ${query}.`
       );
       throw new Error("SERP service returned no data.");
     }
     console.log(
-      `[Action: Create/Fetch] Successfully fetched data from SERP service for ${query}.`,
+      `[Action: Create/Fetch] Successfully fetched data from SERP service for ${query}.`
     );
 
     // 3. Prepare data for saving
@@ -382,7 +348,7 @@ export async function submitCreateSerp({
               org &&
               org.position != null &&
               org.title != null &&
-              org.url != null,
+              org.url != null
           )
           .map((org) => ({
             position: org!.position!,
@@ -420,7 +386,7 @@ export async function submitCreateSerp({
 
     // 4. Save directly using db access (no converter)
     console.log(
-      `[Action: Create/Fetch] Preparing to save data for ${query} to Firestore...`,
+      `[Action: Create/Fetch] Preparing to save data for ${query} to Firestore...`
     );
     const collectionRef = db.collection(COLLECTIONS.SERP_RESULT);
     const dataWithTimestamp = {
@@ -435,18 +401,18 @@ export async function submitCreateSerp({
     } catch (saveError) {
       console.error(
         `[Action: Create/Fetch] Error saving data to Firestore for ${query}:`,
-        saveError,
+        saveError
       );
       throw new Error(
         `Failed to save data to Firestore: ${
           saveError instanceof Error ? saveError.message : String(saveError)
-        }`,
+        }`
       ); // Re-throw
     }
 
     const newDocId = newDocRef.id;
     console.log(
-      `[Action: Create/Fetch] Successfully saved new SERP data for ${query} with ID: ${newDocId}`,
+      `[Action: Create/Fetch] Successfully saved new SERP data for ${query} with ID: ${newDocId}`
     );
 
     // 5. Revalidate cache
@@ -454,7 +420,7 @@ export async function submitCreateSerp({
 
     // 6. Return success with new ID and the original query used
     console.log(
-      `[Action: Create/Fetch] Returning success for newly created doc ID: ${newDocId}, Keyword: ${query}.`,
+      `[Action: Create/Fetch] Returning success for newly created doc ID: ${newDocId}, Keyword: ${query}.`
     );
     return { success: true, id: newDocId, originalKeyword: query };
   } catch (error) {
@@ -462,7 +428,7 @@ export async function submitCreateSerp({
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(
       `[Action: Create/Fetch] Final Catch Block - Failure for ${query} (R: ${region}, L: ${language}): ${errorMessage}`,
-      error, // Log the full error object as well for stack trace etc.
+      error // Log the full error object as well for stack trace etc.
     );
     // Return the specific error message
     return {
@@ -505,7 +471,7 @@ export async function submitAiAnalysisSerpContentType({
   // Check if analysis data exists AND if the 'contentTypes' array has items
   if ((serpData as any)?.analysisContentType?.contentTypes?.length > 0) {
     console.log(
-      `[Action Skip] Content type analysis already exists for docId: ${docId}`,
+      `[Action Skip] Content type analysis already exists for docId: ${docId}`
     );
     return { success: true, id: docId }; // Analysis already done
   }
@@ -522,7 +488,7 @@ export async function submitAiAnalysisSerpContentType({
     const keyword = serpData.originalKeyword;
     if (!keyword) {
       console.error(
-        `[Action: Analyze Content Type] Original keyword missing for Doc ID: ${docId}`,
+        `[Action: Analyze Content Type] Original keyword missing for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -540,17 +506,17 @@ export async function submitAiAnalysisSerpContentType({
             url?: string | null | undefined;
             description?: string | null | undefined;
           },
-          index: number,
+          index: number
         ) =>
           `${index + 1}. ${r.title ?? ""} (${r.url ?? ""})${
             r.description ? "\\n   " + r.description : ""
-          }`,
+          }`
       )
       .join("\\n\\n");
 
     // 1. Generate Text Analysis
     console.log(
-      `[Action: Analyze Content Type] Calling AI for Text Analysis...`,
+      `[Action: Analyze Content Type] Calling AI for Text Analysis...`
     );
     const textPrompt = await getContentTypeAnalysisPrompt(keyword, serpString);
     const { text: rawAnalysisText } = await generateText({
@@ -561,21 +527,12 @@ export async function submitAiAnalysisSerpContentType({
 
     // 2. Generate JSON Analysis from Text -> CHANGED to Generate Text
     console.log(
-      `[Action: Analyze Content Type] Calling AI for Text Conversion...`,
+      `[Action: Analyze Content Type] Calling AI for Text Conversion...`
     );
-    const conversionPrompt = await getContentTypeConversionPrompt(
-      rawAnalysisText,
-      keyword,
-    );
-    const { text: rawConversionText } = await generateText({
-      model: AI_MODELS.FAST,
-      prompt: conversionPrompt,
-    });
-    console.log(`[Action: Analyze Content Type] Text Conversion successful.`);
 
     // 3. Generate Recommendation from Text
     console.log(
-      `[Action: Analyze Content Type] Calling AI for Recommendation...`,
+      `[Action: Analyze Content Type] Calling AI for Recommendation...`
     );
     const recommendationPrompt =
       await getContentTypeRecommendationPrompt(rawAnalysisText);
@@ -587,11 +544,11 @@ export async function submitAiAnalysisSerpContentType({
 
     // 4. Update Firestore directly
     console.log(
-      `[Action: Analyze Content Type] Updating Firestore directly...`,
+      `[Action: Analyze Content Type] Updating Firestore directly...`
     );
     await docRef.update({
       contentTypeRecommendationText: rawRecommendationText,
-      contentTypeAnalysisText: rawConversionText,
+      contentTypeAnalysisText: rawAnalysisText,
       updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: Analyze Content Type] Firestore updated.`);
@@ -604,7 +561,7 @@ export async function submitAiAnalysisSerpContentType({
   } catch (error) {
     console.error(
       `[Action: Analyze Content Type] Failed for Doc ID ${docId}:`,
-      error,
+      error
     );
     return {
       success: false,
@@ -618,7 +575,7 @@ export async function submitAiAnalysisSerpContentType({
 /**
  * Action: Perform User Intent Analysis (Generates Text & JSON, returns recommendation).
  */
-export async function submitAiAnalysisSerpIntent({
+export async function submitAiAnalysisSerpUserIntent({
   docId,
 }: {
   docId: string;
@@ -632,12 +589,12 @@ export async function submitAiAnalysisSerpIntent({
   try {
     // 0. Fetch SERP data directly
     console.log(
-      `[Action: Analyze User Intent] Fetching data for Doc ID: ${docId}`,
+      `[Action: Analyze User Intent] Fetching data for Doc ID: ${docId}`
     );
     const serpData = await getSerpResultById(docId);
     if (!serpData) {
       console.error(
-        `[Action: Analyze User Intent] SERP data not found for Doc ID: ${docId}`,
+        `[Action: Analyze User Intent] SERP data not found for Doc ID: ${docId}`
       );
       return { success: false, error: `SERP data not found for ID: ${docId}` };
     }
@@ -646,7 +603,7 @@ export async function submitAiAnalysisSerpIntent({
     const keyword = serpData.originalKeyword;
     if (!keyword) {
       console.error(
-        `[Action: Analyze User Intent] Original keyword missing for Doc ID: ${docId}`,
+        `[Action: Analyze User Intent] Original keyword missing for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -661,47 +618,33 @@ export async function submitAiAnalysisSerpIntent({
         (r, index) =>
           `${index + 1}. ${r.title} (${r.url})${
             r.description ? "\\n   " + r.description : ""
-          }`,
+          }`
       )
       .join("\\n\\n");
     const relatedKeywordsRaw = (serpData.relatedQueries ?? []).join(", ");
 
     // 1. Generate Text Analysis
     console.log(
-      `[Action: Analyze User Intent] Calling AI for Text Analysis...`,
+      `[Action: Analyze User Intent] Calling AI for Text Analysis...`
     );
-    const textPrompt = await getUserIntentAnalysisPrompt(
-      keyword,
-      serpString,
+    const textPrompt = await getUserIntentAnalysisPrompt({
+      query: keyword,
+      serpResults: serpString,
       relatedKeywordsRaw,
-    );
+    });
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
       prompt: textPrompt,
     });
     console.log(`[Action: Analyze User Intent] Text Analysis successful.`);
 
-    // 2. Generate JSON Analysis from Text -> CHANGED to Generate Text
+    // 2. Generate Recommendation from Text
     console.log(
-      `[Action: Analyze User Intent] Calling AI for Text Conversion...`,
-    );
-    const conversionPrompt = await getUserIntentConversionPrompt(
-      rawAnalysisText,
-      keyword,
-    );
-    const { text: rawConversionText } = await generateText({
-      model: AI_MODELS.FAST,
-      prompt: conversionPrompt,
-    });
-    console.log(`[Action: Analyze User Intent] Text Conversion successful.`);
-
-    // 3. Generate Recommendation from Text
-    console.log(
-      `[Action: Analyze User Intent] Calling AI for Recommendation...`,
+      `[Action: Analyze User Intent] Calling AI for Recommendation...`
     );
     const recommendationPrompt = await getUserIntentRecommendationPrompt(
       rawAnalysisText,
-      keyword,
+      keyword
     );
     const { text: rawRecommendationText } = await generateText({
       model: AI_MODELS.FAST,
@@ -714,7 +657,7 @@ export async function submitAiAnalysisSerpIntent({
     const docRef = db.collection(COLLECTIONS.SERP_RESULT).doc(docId);
     await docRef.update({
       userIntentRecommendationText: rawRecommendationText,
-      userIntentAnalysisText: rawConversionText,
+      userIntentAnalysisText: rawAnalysisText,
       updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: Analyze User Intent] Firestore updated.`);
@@ -729,7 +672,7 @@ export async function submitAiAnalysisSerpIntent({
   } catch (error) {
     console.error(
       `[Action: Analyze User Intent] Failed for Doc ID ${docId}:`,
-      error,
+      error
     );
     return {
       success: false,
@@ -760,7 +703,7 @@ export async function submitAiAnalysisSerpTitle({
     const serpData = await getSerpResultById(docId);
     if (!serpData) {
       console.error(
-        `[Action: Analyze Title] SERP data not found for Doc ID: ${docId}`,
+        `[Action: Analyze Title] SERP data not found for Doc ID: ${docId}`
       );
       return { success: false, error: `SERP data not found for ID: ${docId}` };
     }
@@ -769,7 +712,7 @@ export async function submitAiAnalysisSerpTitle({
     const keyword = serpData.originalKeyword;
     if (!keyword) {
       console.error(
-        `[Action: Analyze Title] Original keyword missing for Doc ID: ${docId}`,
+        `[Action: Analyze Title] Original keyword missing for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -784,7 +727,7 @@ export async function submitAiAnalysisSerpTitle({
         (r, index) =>
           `${index + 1}. ${r.title} (${r.url})${
             r.description ? "\n   " + r.description : ""
-          }`,
+          }`
       )
       .join("\n\n");
 
@@ -792,7 +735,7 @@ export async function submitAiAnalysisSerpTitle({
     console.log(`[Action: Analyze Title] Calling AI for Text Analysis...`);
     const analysisPrompt = await getSerpTitleAnalysisPrompt(
       keyword,
-      serpString,
+      serpString
     );
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
@@ -853,12 +796,12 @@ export async function submitAiAnalysisSerpBetterHave({
   try {
     // 0. Fetch SERP data directly
     console.log(
-      `[Action: Analyze Better Have] Fetching data for Doc ID: ${docId}`,
+      `[Action: Analyze Better Have] Fetching data for Doc ID: ${docId}`
     );
     const serpData = await getSerpResultById(docId);
     if (!serpData) {
       console.error(
-        `[Action: Analyze Better Have] SERP data not found for Doc ID: ${docId}`,
+        `[Action: Analyze Better Have] SERP data not found for Doc ID: ${docId}`
       );
       return { success: false, error: `SERP data not found for ID: ${docId}` };
     }
@@ -867,7 +810,7 @@ export async function submitAiAnalysisSerpBetterHave({
     const keyword = serpData.originalKeyword;
     if (!keyword) {
       console.error(
-        `[Action: Analyze Better Have] Original keyword missing for Doc ID: ${docId}`,
+        `[Action: Analyze Better Have] Original keyword missing for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -882,7 +825,7 @@ export async function submitAiAnalysisSerpBetterHave({
         (r, index) =>
           `${index + 1}. ${r.title} (${r.url})${
             r.description ? "\n   " + r.description : ""
-          }`,
+          }`
       )
       .join("\n\n");
     const paaString = (serpData.peopleAlsoAsk ?? [])
@@ -898,14 +841,14 @@ export async function submitAiAnalysisSerpBetterHave({
 
     // 1. Generate Text Analysis (Markdown bullet list)
     console.log(
-      `[Action: Analyze Better Have] Calling AI for Text Analysis...`,
+      `[Action: Analyze Better Have] Calling AI for Text Analysis...`
     );
     const textPrompt = await getBetterHaveInArticlePrompt(
       keyword,
       serpString,
       paaString,
       relatedQueriesString,
-      aiOverviewString,
+      aiOverviewString
     );
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
@@ -913,23 +856,9 @@ export async function submitAiAnalysisSerpBetterHave({
     });
     console.log(`[Action: Analyze Better Have] Text Analysis successful.`);
 
-    // 2. Generate JSON Analysis from Text -> CHANGED to Generate Text
+    // 2. Generate Recommendation from Text
     console.log(
-      `[Action: Analyze Better Have] Calling AI for Text Conversion...`,
-    );
-    const conversionPrompt = await getBetterHaveConversionPrompt(
-      rawAnalysisText,
-      keyword,
-    );
-    const { text: rawConversionText } = await generateText({
-      model: AI_MODELS.FAST,
-      prompt: conversionPrompt,
-    });
-    console.log(`[Action: Analyze Better Have] Text Conversion successful.`);
-
-    // 3. Generate Recommendation from Text
-    console.log(
-      `[Action: Analyze Better Have] Calling AI for Recommendation...`,
+      `[Action: Analyze Better Have] Calling AI for Recommendation...`
     );
     const betterHaveRecommendationPrompt =
       await getBetterHaveRecommendationPrompt(rawAnalysisText, keyword);
@@ -944,7 +873,7 @@ export async function submitAiAnalysisSerpBetterHave({
     const docRef = db.collection(COLLECTIONS.SERP_RESULT).doc(docId);
     await docRef.update({
       betterHaveRecommendationText: rawRecommendationText,
-      betterHaveAnalysisText: rawConversionText,
+      betterHaveAnalysisText: rawAnalysisText,
       updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: Analyze Better Have] Firestore updated.`);
@@ -959,7 +888,7 @@ export async function submitAiAnalysisSerpBetterHave({
   } catch (error) {
     console.error(
       `[Action: Analyze Better Have] Failed for Doc ID ${docId}:`,
-      error,
+      error
     );
     return {
       success: false,
@@ -972,7 +901,7 @@ export async function submitAiAnalysisSerpBetterHave({
 
 // --- NEW SERVER ACTION TO FETCH SERP DATA BY ID ---
 export async function getSerpDataAction(
-  docId: string,
+  docId: string
 ): Promise<FirebaseSerpResultObject | null> {
   if (!docId) {
     console.error("[Action: Get SERP Data] Received empty docId.");
@@ -985,18 +914,18 @@ export async function getSerpDataAction(
 
     if (!serpData) {
       console.warn(
-        `[Action: Get SERP Data] No SERP data found for ID: ${docId}`,
+        `[Action: Get SERP Data] No SERP data found for ID: ${docId}`
       );
       return null; // Return null if not found
     }
     console.log(
-      `[Action: Get SERP Data] SERP data fetched successfully for ID: ${docId}`,
+      `[Action: Get SERP Data] SERP data fetched successfully for ID: ${docId}`
     );
     return serpData; // Return the fetched object
   } catch (error) {
     console.error(
       `[Action: Get SERP Data] Error fetching SERP data for ID ${docId}:`,
-      error,
+      error
     );
     // Optionally, throw or return null
     return null; // Returning null to prevent crashing the client

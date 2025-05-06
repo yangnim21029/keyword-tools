@@ -9,20 +9,9 @@ import {
 import { useClientStorage } from "@/components/hooks/use-client-storage";
 import { Button } from "@/components/ui/button";
 // Removed Checkbox import as it's no longer used for fine-tunes
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+// Removed Command imports as combobox is replaced
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+// Removed Popover imports as combobox is replaced
 import {
   Select,
   SelectContent,
@@ -32,9 +21,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Check,
-  ChevronsUpDown,
-  Layers,
+  // Removed Check, ChevronsUpDown, Layers as they are no longer needed
   Loader2,
   // Removed Settings2 as fine-tune button is removed
   TerminalSquare,
@@ -50,12 +37,9 @@ import { ResultDisplay } from "../components/result-display";
 import { RevalidateButton } from "@/app/actions/actions-buttons";
 
 // --- Import Corrected Types from Schema ---
-import type {
-  KeywordVolumeListItem,
-  KeywordVolumeObject,
-} from "@/app/services/firebase/schema";
+// Removed KeywordVolumeListItem and KeywordVolumeObject types as they are no longer used
 // --- Import Server Actions ---
-import { submitGetKeywordVolumeObj } from "@/app/actions/actions-keyword-volume";
+// Removed submitGetKeywordVolumeObj as detail fetching is removed
 import { getSerpDataAction } from "@/app/actions/actions-ai-serp-result"; // SERP actions
 // --- End Import ---
 
@@ -70,7 +54,7 @@ const API_STEP4_ANALYZE_TITLE_URL = `${API_BASE_URL}/4-analyze-title`;
 const API_STEP5_ANALYZE_BETTER_HAVE_URL = `${API_BASE_URL}/5-analyze-better-have`;
 const API_STEP6_GENERATE_ACTION_PLAN_URL = `${API_BASE_URL}/6-generate-action-plan`;
 const API_STEP7_GENERATE_FINAL_PROMPT_URL = `${API_BASE_URL}/7-generate-final-prompt`;
-const API_KEYWORD_LIST_URL = `${API_BASE_URL}/keyword-list`;
+// Removed API_KEYWORD_LIST_URL as list is hardcoded
 
 // --- Define New Step IDs ---
 // Keep Step IDs the same
@@ -81,6 +65,245 @@ const STEP_ID_ANALYZE_TITLE = "analyze-title";
 const STEP_ID_ANALYZE_BETTER_HAVE = "analyze-better-have";
 const STEP_ID_GENERATE_ACTION_PLAN = "generate-action-plan";
 const STEP_ID_GENERATE_FINAL_PROMPT = "generate-final-prompt";
+
+// --- Hardcoded Keyword List ---
+const hardcodedKeywords: string[] = [
+  "五指毛桃淮山茨實湯",
+  "五指毛桃止咳湯",
+  "五指毛桃黨參湯功效",
+  "電湯煲",
+  "水煮魚",
+  "五指毛桃黨參湯食譜",
+  "冬天湯水芳姐",
+  "合桃湯",
+  "葛菜水",
+  "豬潤水",
+  "五指毛桃湯",
+  "雞煲",
+  "五指毛桃功效",
+  "金瓜",
+  "粟米肉粒飯",
+  "五指毛桃",
+  "冬蟲夏草",
+  "南瓜食譜",
+  "胡羅白",
+  "栗子蛋糕",
+  "止咳",
+  "涼薯",
+  "橙樹化痰素",
+  "感冒可以喝什麼湯",
+  "清補涼材料",
+  "煲湯",
+  "白茯苓功效",
+  "紅燒豆腐",
+  "蟲草19",
+  "肉骨茶功效",
+  "痰咳",
+  "玉竹功效",
+  "一招止寒咳",
+  "淮山",
+  "簡單燉湯食譜",
+  "羅漢果菜乾湯",
+  "茯神",
+  "淮山的功效",
+  "五指毛桃黨參瘦肉湯",
+  "化痰喝什麼",
+  "燉湯",
+  "五指毛桃牛大力土茯苓湯功效",
+  "牛大力五指毛桃湯",
+  "牛大力禁忌",
+  "清補涼禁忌",
+  "化痰藥",
+  "快速化痰的方法",
+  "茨實功效",
+  "幸福化痰素",
+  "中藥煲",
+  "五指毛桃土茯苓薏米湯",
+  "舒緩喉嚨痛",
+  "菜蜜",
+  "茯苓功效與用法",
+  "prospan",
+  "豬肉",
+  "蒸南瓜",
+  "頭啖湯",
+  "魚治",
+  "六健通",
+  "洋蔥蘋果水",
+  "九製陳皮",
+  "提升免疫力",
+  "牛膝的功效和副作用",
+  "紅蘿蔔功效與禁忌",
+  "鮮淮山湯",
+  "壓力煲",
+  "龜苓茶功效",
+  "茯苓功效禁忌",
+  "罐頭鮑魚食譜",
+  "姬松茸功效",
+  "炒菜心食譜",
+  "炸豆腐",
+  "海底椰止咳露",
+  "日本南瓜",
+  "桔仔",
+  "草姬蟲草",
+  "土茯苓功效禁忌",
+  "一人燉湯食譜",
+  "南乳齋",
+  "南瓜可以炒什麼",
+  "龜苓膏功效與禁忌",
+  "鮮淮山功效禁忌",
+  "蜜棗功效禁忌",
+  "中左covid",
+  "樂必治",
+  "滋陰潤肺湯水",
+  "陰虛火旺湯水",
+  "粉葛五指毛桃湯功效",
+  "粟米芯",
+  "什麼人不能吃靈芝",
+  "袪濕",
+  "糯玉米",
+  "滋潤湯水乾燥",
+  "炒西洋菜",
+  "南瓜 卡路里",
+  "茯苓的功效和副作用",
+  "肺熱",
+  "松茸菇",
+  "止咳化痰藥推薦",
+  "赤小豆 功效",
+  "杏甜品",
+  "粟米汁",
+  "茨實",
+  "糖蓮藕",
+  "氣管敏感止咳藥",
+  "化痰",
+  "養陰清肺湯",
+  "車前子",
+  "玉竹煲湯",
+  "橘紅",
+  "紅菜頭湯",
+  "淮山粉",
+  "白蘿蔔功效",
+  "北芪黨參禁忌",
+  "痛風藥",
+  "助養兒童",
+  "土茯苓禁忌",
+  "南瓜蕃茄紅蘿蔔湯",
+  "含鎂最多食物",
+  "茯神功效",
+  "臘鴨髀",
+  "雲苓白朮",
+  "豬肺湯功效",
+  "雞下脾",
+  "豆腐湯",
+  "豬脷",
+  "雞髀菇",
+  "粟米煎肉餅",
+  "杜仲功效和副作用",
+  "感冒藥",
+  "豬寸骨",
+  "南瓜的功效與禁忌",
+  "紅燒排骨做法",
+  "老火湯",
+  "長新冠後遺症",
+  "茯神副作用",
+  "海帶食譜",
+  "養生壺邊隻好",
+  "牛肺",
+  "蟲草功效",
+  "五指毛桃土茯苓赤小豆",
+  "目清素功效",
+  "感冒食雞",
+  "椰撻",
+  "素鴨",
+  "phosphate作用",
+  "粉葛土茯苓五指毛桃湯",
+  "鮑魚煲湯",
+  "椰菜濕熱",
+  "中式湯食譜",
+  "羅漢果蘋果雪梨水功效",
+  "耳仔痛解決方法",
+  "鮑魚 營養",
+  "鮑魚營養",
+  "港式老火湯食譜",
+  "杏桃乾的營養功效與禁忌",
+  "敏魚",
+  "香港春天",
+  "氣炸鍋牛扒",
+  "橙樹化痰素副作用",
+  "三多炸脾",
+  "什麼人可以吃六味地黃丸",
+  "軟膠水喉接駁",
+  "黨參副作用",
+  "枸杞豬潤湯功效",
+  "湯飲",
+  "茯苓安神湯",
+  "減肥晚餐",
+  "枸杞湯",
+  "霧眉後遺症",
+  "抵抗",
+  "羅漢果菊花甘草",
+  "薏米餅",
+  "五指毛桃痛風",
+  "五指毛桃日月魚湯",
+  "牛筋 卡路里",
+  "合掌瓜紅蘿蔔粟米栗子湯",
+  "栗子雞湯",
+  "化橘紅香港",
+  "扁豆衣",
+  "草姬腸道通",
+  "百合功效與禁忌",
+  "紅扁豆禁忌",
+  "鎂鹽",
+  "杜仲",
+  "四神湯功效",
+  "止咳藥",
+  "白蘿蔔止咳湯",
+  "牛骨湯麵",
+  "茯神功效禁忌",
+  "竹芋",
+  "功效",
+  "扁豆功效禁忌",
+  "土伏苓牛大力五指毛桃湯",
+  "焗陳皮水方法",
+  "黃精",
+  "五指毛桃土茯苓素湯",
+  "湯意粉",
+  "燉湯煲",
+  "西洋菜蜜",
+  "消炎藥哪裡買",
+  "豬潤清洗方法",
+  "養生湯",
+  "茯苓茶",
+  "病徵",
+  "咳可以食咩生果",
+  "發燒湯水",
+  "牛七功效",
+  "栗子卡路里",
+  "gaffer tape",
+  "豬脷食譜",
+  "中湯",
+  "南瓜排骨湯",
+  "栗子南瓜",
+  "五花腩食譜",
+  "3 4歲兒童食譜",
+  "素雞",
+  "五指毛桃茯苓湯",
+  "煲湯材料",
+  "葡萄靈功效",
+  "玉靈膏香港",
+  "補中益氣湯功效與禁忌",
+  "土茯苓的功效和副作用",
+  "soup day",
+  "土茯苓薏米湯",
+  "湯煲",
+  "補氣血湯水",
+  "雪花秀潤燥精華",
+  "簡湯",
+  "例湯食譜",
+  "高湯",
+  "養生食譜",
+  "食療食譜",
+  "老人補血湯水",
+];
 
 // Combine all fine-tune data names
 const allFineTuneNames = [
@@ -101,18 +324,14 @@ interface Step {
 export default function WritingRecipePage() {
   // Use useClientStorage for keyword and report state
   const [keyword, setKeyword] = useClientStorage("writingRecipe:keyword", ""); // Use different key for recipe page
-  const [selectedKeywordReport, setSelectedKeywordReport] =
-    useClientStorage<KeywordVolumeObject | null>(
-      "writingRecipe:selectedKeywordReport", // Use different key
-      null,
-    );
+  // Removed selectedKeywordReport state
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>(
     "writingRecipe:researchPrompt", // Use different key
-    null,
+    null
   );
   const [generationAttempted, setGenerationAttempted] = useClientStorage(
     "writingRecipe:generationAttempted", // Use different key
-    false,
+    false
   );
   const [generatedOutlineText, setGeneratedOutlineText] = useClientStorage<
     string | null
@@ -123,24 +342,10 @@ export default function WritingRecipePage() {
   const [selectedFineTunes, setSelectedFineTunes] =
     useState<string[]>(allFineTuneNames); // Pre-selected all
 
-  // --- Cluster Selection State ---
-  const [selectedClusterName, setSelectedClusterName] =
-    useState<string>("__ALL_CLUSTERS__");
-  const [displayedPersona, setDisplayedPersona] = useState<string | null>(null);
-
-  // --- State for keyword list ---
-  const [realKeywordList, setRealKeywordList] = useState<
-    KeywordVolumeListItem[]
-  >([]);
-  const [isListLoading, setIsListLoading] = useState(true);
-  const [listFetchError, setListFetchError] = useState<string | null>(null);
-
   // --- State for loading/UI ---
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [comboboxOpen, setComboboxOpen] = useState(false);
 
   // --- State for hydration fix ---
   const [isMounted, setIsMounted] = useState(false);
@@ -187,84 +392,10 @@ export default function WritingRecipePage() {
     // No need to set mediaSiteName or selectedFineTunes here, initialized above
   }, []);
 
-  useEffect(() => {
-    const loadKeywordsFromApi = async () => {
-      // ... (keyword loading logic remains the same) ...
-      setIsListLoading(true);
-      setListFetchError(null);
-      try {
-        const response = await fetch(API_KEYWORD_LIST_URL, { method: "GET" });
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to fetch keywords: ${response.statusText || response.status} - ${errorText}`);
-        }
-        const summaries = await response.json();
-        if (!Array.isArray(summaries)) {
-          throw new Error("Failed to fetch keywords: Invalid response format.");
-        }
-        setRealKeywordList(summaries);
-      } catch (error: any) {
-        console.error("[API Fetch] Error fetching keyword list:", error);
-        setListFetchError(error.message || "Unknown error");
-      } finally {
-        setIsListLoading(false);
-      }
-    };
-    loadKeywordsFromApi();
-  }, []);
-
-  useEffect(() => {
-    setSelectedClusterName("__ALL_CLUSTERS__");
-  }, [selectedKeywordReport]);
-
-  useEffect(() => {
-    // ... (persona sync logic remains the same) ...
-    if (selectedClusterName === "__ALL_CLUSTERS__" || !selectedKeywordReport?.clustersWithVolume) {
-      setDisplayedPersona(null);
-      return;
-    }
-    const foundCluster = selectedKeywordReport.clustersWithVolume.find(
-      (c: any) => c.clusterName === selectedClusterName,
-    );
-    setDisplayedPersona(foundCluster?.personaDescription || null);
-    if (selectedClusterName !== "__ALL_CLUSTERS__" && !foundCluster?.personaDescription) {
-      console.warn(`[UI Persona Sync] Persona description not found for cluster: ${selectedClusterName}`);
-    }
-  }, [selectedClusterName, selectedKeywordReport]);
-
-  // Fix: Add optional chaining for hasClusters calculation
-  const hasClusters = (selectedKeywordReport?.clustersWithVolume ?? []).length > 0;
-
-  // useEffect(() => {
-  //   const key = `writingRecipe:stepsState:${keyword || "default"}`; // Use different key
-  //   const storedSteps = localStorage.getItem(key);
-  //   if (!generationAttempted || !storedSteps) {
-  //     setSteps(initialSteps);
-  //   } else {
-  //     try {
-  //         // Ensure stored steps match the current structure before setting
-  //         const parsedSteps = JSON.parse(storedSteps);
-  //         if (Array.isArray(parsedSteps) && parsedSteps.length === initialSteps.length && parsedSteps.every((step: any) => step.id && step.name && step.status)) {
-  //             setSteps(parsedSteps);
-  //         } else {
-  //              localStorage.removeItem(key); // Remove invalid stored data
-  //              setSteps(initialSteps);
-  //         }
-  //       } catch (e) {
-  //         console.error("Failed to parse stored steps, resetting:", e);
-  //         localStorage.removeItem(key); // Remove invalid stored data
-  //         setSteps(initialSteps);
-  //       }
-  //   }
-  // }, [keyword, generationAttempted]); // Depend on generationAttempted as well
-
-  // useEffect(() => {
-  //   // Save steps to localStorage whenever they change
-  //   if (generationAttempted) {
-  //     const key = `writingRecipe:stepsState:${keyword || "default"}`;
-  //     localStorage.setItem(key, JSON.stringify(steps));
-  //   }
-  // }, [steps, keyword, generationAttempted]); // Added keyword dependency
+  // Removed useEffect for loading keywords from API
+  // Removed useEffect for syncing selectedClusterName with selectedKeywordReport
+  // Removed useEffect for syncing persona with selectedClusterName
+  // Removed hasClusters calculation
 
   if (!isMounted) {
     return null;
@@ -292,12 +423,12 @@ export default function WritingRecipePage() {
   const updateStepStatus = (
     stepId: string,
     status: Step["status"],
-    durationMs?: number,
+    durationMs?: number
   ) => {
     setSteps((prevSteps) =>
       prevSteps.map((step) =>
-        step.id === stepId ? { ...step, status, durationMs } : step,
-      ),
+        step.id === stepId ? { ...step, status, durationMs } : step
+      )
     );
   };
 
@@ -305,7 +436,7 @@ export default function WritingRecipePage() {
   const callApi = async <T,>(
     stepId: string,
     url: string,
-    payload: any,
+    payload: any
   ): Promise<T> => {
     updateStepStatus(stepId, "loading");
     const startTime = performance.now();
@@ -321,12 +452,13 @@ export default function WritingRecipePage() {
         let errorDetails = `API Error (${stepId}): ${response.statusText}`;
         try {
           const errorBody = await response.json();
-          errorDetails = errorBody.details || errorBody.error || JSON.stringify(errorBody);
+          errorDetails =
+            errorBody.details || errorBody.error || JSON.stringify(errorBody);
         } catch {
-             try {
-                const textError = await response.text();
-                if (textError) errorDetails += ` - ${textError}`;
-              } catch {}
+          try {
+            const textError = await response.text();
+            if (textError) errorDetails += ` - ${textError}`;
+          } catch {}
         }
         throw new Error(errorDetails);
       }
@@ -341,59 +473,59 @@ export default function WritingRecipePage() {
 
   // Specific API call functions (callFetchSerpApi, etc.) remain the same
 
-    // 1. Fetch SERP
+  // 1. Fetch SERP
   const callFetchSerpApi = async (
     keyword: string,
-    mediaSiteName: string,
+    mediaSiteName: string
   ): Promise<{ id: string; originalKeyword: string }> => {
     return await callApi<{ id: string; originalKeyword: string }>(
       STEP_ID_FETCH_SERP,
       API_STEP1_FETCH_SERP_URL,
-      { keyword, mediaSiteName },
+      { keyword, mediaSiteName }
     );
   };
 
   // 2. Analyze Content Type
   const callAnalyzeContentTypeApi = async (
-    serpDocId: string,
+    serpDocId: string
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_CONTENT_TYPE,
       API_STEP2_ANALYZE_CONTENT_TYPE_URL,
-      { serpDocId },
+      { serpDocId }
     );
   };
 
   // 3. Analyze User Intent
   const callAnalyzeUserIntentApi = async (
-    serpDocId: string,
+    serpDocId: string
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_USER_INTENT,
       API_STEP3_ANALYZE_USER_INTENT_URL,
-      { serpDocId },
+      { serpDocId }
     );
   };
 
   // 4. Analyze Title
   const callAnalyzeTitleApi = async (
-    serpDocId: string,
+    serpDocId: string
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_TITLE,
       API_STEP4_ANALYZE_TITLE_URL,
-      { serpDocId },
+      { serpDocId }
     );
   };
 
   // 5. Analyze Better Have
   const callAnalyzeBetterHaveApi = async (
-    serpDocId: string,
+    serpDocId: string
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_BETTER_HAVE,
       API_STEP5_ANALYZE_BETTER_HAVE_URL,
-      { serpDocId },
+      { serpDocId }
     );
   };
 
@@ -404,9 +536,7 @@ export default function WritingRecipePage() {
     contentTypeReportText: string,
     userIntentReportText: string,
     titleRecommendationText: string,
-    betterHaveRecommendationText: string,
-    keywordReport: KeywordVolumeObject | any | null,
-    selectedClusterName: string | null,
+    betterHaveRecommendationText: string
   ): Promise<{ actionPlanText: string }> => {
     return await callApi<{ actionPlanText: string }>(
       STEP_ID_GENERATE_ACTION_PLAN,
@@ -418,9 +548,9 @@ export default function WritingRecipePage() {
         userIntentReportText,
         titleRecommendationText,
         betterHaveRecommendationText,
-        keywordReport,
-        selectedClusterName,
-      },
+        keywordReport: null,
+        selectedClusterName: null,
+      }
     );
   };
 
@@ -432,11 +562,9 @@ export default function WritingRecipePage() {
     contentTypeReportText: string,
     userIntentReportText: string,
     betterHaveRecommendationText: string | null,
-    keywordReport: KeywordVolumeObject | any | null,
-    selectedClusterName: string | null,
     articleTemplate: string,
     contentMarketingSuggestion: string | null,
-    fineTuneNames: string[],
+    fineTuneNames: string[]
   ): Promise<{ finalPrompt: string }> => {
     return await callApi<{ finalPrompt: string }>(
       STEP_ID_GENERATE_FINAL_PROMPT,
@@ -448,15 +576,14 @@ export default function WritingRecipePage() {
         contentTypeReportText,
         userIntentReportText,
         betterHaveRecommendationText,
-        keywordReport,
-        selectedClusterName,
+        keywordReport: null,
+        selectedClusterName: null,
         articleTemplate,
         contentMarketingSuggestion: contentMarketingSuggestion || "",
-        fineTuneNames, // Pass the fixed fine-tunes
-      },
+        fineTuneNames,
+      }
     );
   };
-
 
   // --- handleSubmit (Updated for fixed values) ---
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -470,8 +597,8 @@ export default function WritingRecipePage() {
     setSteps(initialSteps);
 
     // Use the fixed mediaSiteName directly
-    if (!keyword || !mediaSiteName) {
-      setError("Please provide a keyword."); // Simplified error
+    if (!keyword) {
+      setError("Please select a keyword."); // Updated error message
       setIsLoading(false);
       return;
     }
@@ -491,38 +618,11 @@ export default function WritingRecipePage() {
       generatedOutlineText || "<!-- Default Outline/Template -->";
 
     console.log(
-      `Submitting Recipe: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName} (Fixed), FineTunes=All (${selectedFineTunes.length}) (Fixed), TargetCluster=${
-        selectedClusterName === "__ALL_CLUSTERS__" ? "All" : selectedClusterName
-      }`,
+      `Submitting Recipe: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName} (Fixed), FineTunes=All (${selectedFineTunes.length}) (Fixed)` // Removed TargetCluster log
     );
 
     try {
       // --- Execute Steps Sequentially (logic remains mostly the same) ---
-
-      let reportForStep6: any | null = selectedKeywordReport;
-      let reportForStep7: any | null = selectedKeywordReport;
-      const currentSelectedCluster = selectedClusterName;
-
-      if (currentSelectedCluster !== "__ALL_CLUSTERS__" && selectedKeywordReport) {
-        const clusterData = selectedKeywordReport.clustersWithVolume?.find(
-          (c: any) => c.clusterName === currentSelectedCluster,
-        );
-        if (clusterData) {
-          reportForStep6 = {
-            query: selectedKeywordReport.query,
-            language: selectedKeywordReport.language,
-            region: selectedKeywordReport.region,
-            clustersWithVolume: [clusterData],
-          };
-          reportForStep7 = null; // Only use cluster persona in step 6
-        } else {
-          reportForStep6 = selectedKeywordReport;
-          reportForStep7 = selectedKeywordReport;
-        }
-      } else {
-        reportForStep6 = selectedKeywordReport;
-        reportForStep7 = selectedKeywordReport;
-      }
 
       // Step 1: Fetch SERP
       const serpInfo = await callFetchSerpApi(firstKeyword, mediaSiteName); // Use fixed mediaSiteName
@@ -536,14 +636,13 @@ export default function WritingRecipePage() {
       const betterHaveResult = await callAnalyzeBetterHaveApi(serpId);
 
       // Fetch Updated SERP Data
-       updateStepStatus("fetch-updated-serp", "loading");
-       const updatedSerpData = await getSerpDataAction(serpId);
-       if (!updatedSerpData) {
-         updateStepStatus("fetch-updated-serp", "error");
-         throw new Error("Failed to retrieve updated SERP data after analysis.");
-       }
-       updateStepStatus("fetch-updated-serp", "completed");
-
+      updateStepStatus("fetch-updated-serp", "loading");
+      const updatedSerpData = await getSerpDataAction(serpId);
+      if (!updatedSerpData) {
+        updateStepStatus("fetch-updated-serp", "error");
+        throw new Error("Failed to retrieve updated SERP data after analysis.");
+      }
+      updateStepStatus("fetch-updated-serp", "completed");
 
       // Step 6: Generate Action Plan
       const actionPlanResult = await callGenerateActionPlanApi(
@@ -552,9 +651,7 @@ export default function WritingRecipePage() {
         updatedSerpData.contentTypeRecommendationText ?? "",
         updatedSerpData.userIntentRecommendationText ?? "",
         updatedSerpData.titleRecommendationText ?? "",
-        updatedSerpData.betterHaveRecommendationText ?? "",
-        reportForStep6,
-        currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster,
+        updatedSerpData.betterHaveRecommendationText ?? ""
       );
 
       // Step 7: Generate Final Prompt
@@ -565,11 +662,9 @@ export default function WritingRecipePage() {
         updatedSerpData.contentTypeRecommendationText ?? "",
         updatedSerpData.userIntentRecommendationText ?? "",
         updatedSerpData.betterHaveRecommendationText ?? null,
-        reportForStep7,
-        currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster,
         outlineTemplate,
         null,
-        selectedFineTunes, // Use fixed selectedFineTunes
+        selectedFineTunes // Use fixed selectedFineTunes
       );
 
       setResearchPrompt(finalPromptResult.finalPrompt);
@@ -579,7 +674,7 @@ export default function WritingRecipePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "An unexpected error occurred during recipe generation.",
+          : "An unexpected error occurred during recipe generation."
       );
     } finally {
       setIsLoading(false);
@@ -590,10 +685,7 @@ export default function WritingRecipePage() {
   const handleStartOver = () => {
     setResearchPrompt(null);
     // Don't reset mediaSiteName or selectedFineTunes
-    setSelectedKeywordReport(null);
     setKeyword(""); // Reset keyword as well
-    setSelectedClusterName("__ALL_CLUSTERS__"); // Reset cluster
-    setDisplayedPersona(null);
     setSteps(initialSteps);
     setGenerationAttempted(false);
     setGeneratedOutlineText(null); // Reset outline
@@ -626,115 +718,68 @@ export default function WritingRecipePage() {
               </div>
               {/* Right side controls - Removed Fine-Tune button */}
               <div className="flex items-center gap-4">
-                 {/* Optionally show fixed site/fine-tune count here if needed */}
-                 <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
-                   Site: urbanlife | Fine-Tunes: {selectedFineTunes.length} (All)
-                 </span>
-                 <RevalidateButton size="sm" variant="ghost" />
+                {/* Optionally show fixed site/fine-tune count here if needed */}
+                <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                  Site: urbanlife | Fine-Tunes: {selectedFineTunes.length} (All)
+                </span>
+                <RevalidateButton size="sm" variant="ghost" />
               </div>
             </div>
             {/* Form Content Area */}
             <div className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Keyword Input Section (remains the same) */}
+                {/* Keyword Input Section (Updated to use Select) */}
                 <div className="space-y-2">
                   <Label
-                    htmlFor="keyword-combobox"
+                    htmlFor="keyword-select" // Changed htmlFor
                     className="text-base font-medium"
                   >
                     Keyword
                   </Label>
                   <div className="relative">
-                    <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                      <PopoverTrigger asChild>
-                         <Button
-                          id="keyword-combobox"
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={comboboxOpen}
-                          disabled={isLoading || isListLoading}
-                          className="w-full h-12 justify-between pl-10 pr-28 text-base bg-gray-50 dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 focus-visible:ring-primary hover:bg-gray-100 dark:hover:bg-neutral-800" // Adjusted padding right
-                        >
-                          <span className="truncate">
-                            {!isMounted || !keyword ? "Select or type keyword..." : keyword}
-                          </span>
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                       <PopoverContent
-                        align="start"
-                        className="p-0"
-                        style={{ width: "var(--radix-popover-trigger-width)" }}
+                    {/* Replaced Popover/Command with Select */}
+                    <Select
+                      value={keyword}
+                      onValueChange={(value) => {
+                        setKeyword(value === "__PLACEHOLDER__" ? "" : value);
+                        // Clear dependent states if needed (though report/cluster are removed)
+                      }}
+                      disabled={isLoading}
+                    >
+                      <SelectTrigger
+                        id="keyword-select" // Changed id
+                        disabled={isLoading}
+                        className="w-full h-12 text-base bg-gray-50 dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 focus-visible:ring-primary hover:bg-gray-100 dark:hover:bg-neutral-800 pr-28" // Adjusted padding right
                       >
-                        <Command shouldFilter={false} className="p-0">
-                           <CommandInput
-                            placeholder="Search keyword or type..."
-                            value={keyword}
-                            onValueChange={(search: string) => {
-                              setKeyword(search);
-                              setSelectedKeywordReport(null); // Clear report and cluster
-                              setSelectedClusterName("__ALL_CLUSTERS__"); // Reset cluster on keyword change
-                            }}
-                            className="h-11"
-                          />
-                          <CommandList>
-                            {isListLoading && <div className="p-4 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin mr-2 inline-block" />Loading keywords...</div>}
-                            {!isListLoading && listFetchError && <div className="p-4 text-center text-sm text-red-600 dark:text-red-400">Error: {listFetchError}</div>}
-                            {!isListLoading && !listFetchError && realKeywordList.length === 0 && <CommandEmpty>No keyword research found.</CommandEmpty>}
-                            {!isListLoading && !listFetchError && realKeywordList.length > 0 && (
-                              <CommandGroup>
-                                {realKeywordList.map((item) => (
-                                  <CommandItem
-                                    key={item.id}
-                                    value={item.query}
-                                    onSelect={async (currentValue: string) => {
-                                      const selectedItem = realKeywordList.find(i => i.query.toLowerCase() === currentValue.toLowerCase());
-                                      if (!selectedItem) return;
-
-                                      setKeyword(selectedItem.query);
-                                      setComboboxOpen(false);
-                                      setSelectedKeywordReport(null);
-                                      setSelectedClusterName("__ALL_CLUSTERS__"); // Reset cluster
-                                      setIsDetailLoading(true);
-
-                                      try {
-                                        const detailResult = await submitGetKeywordVolumeObj({ researchId: selectedItem.id });
-                                        if (!detailResult) {
-                                          toast.error("Could not fetch keyword details.");
-                                        } else {
-                                          setSelectedKeywordReport(detailResult as KeywordVolumeObject);
-                                        }
-                                      } catch (error) {
-                                        toast.error(error instanceof Error ? `Error fetching details: ${error.message}` : "Unknown error fetching details.");
-                                      } finally {
-                                        setIsDetailLoading(false);
-                                      }
-                                    }}
-                                    className="cursor-pointer"
-                                  >
-                                    <Check className={cn("mr-2 h-4 w-4", keyword.toLowerCase() === item.query.toLowerCase() ? "opacity-100" : "opacity-0")} />
-                                    {item.query}
-                                    {typeof item.totalVolume === "number" && <span className="ml-auto text-xs text-muted-foreground">Vol: {item.totalVolume.toLocaleString()}</span>}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                        <SelectValue placeholder="Select a keyword..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Add placeholder if no keyword is selected initially */}
+                        {/* <SelectItem value="__PLACEHOLDER__" disabled>Select a keyword...</SelectItem> */}
+                        {hardcodedKeywords.map((kw) => (
+                          <SelectItem key={kw} value={kw}>
+                            {kw}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {/* Action Buttons - Simplified */}
                     <div className="absolute right-2 top-2 h-8 flex items-center gap-2">
                       <Button
                         type="submit"
-                        disabled={isLoading || isDetailLoading}
+                        disabled={isLoading || !keyword} // Disable if loading or no keyword selected
                         className={cn(
                           "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
-                           "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700",
-                          (isLoading || isDetailLoading) && "opacity-50 cursor-not-allowed",
+                          "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700",
+                          (isLoading || !keyword) &&
+                            "opacity-50 cursor-not-allowed" // Updated disabled style check
                         )}
                       >
-                        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TerminalSquare className="h-3.5 w-3.5" />}
+                        {isLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <TerminalSquare className="h-3.5 w-3.5" />
+                        )}
                         Generate
                       </Button>
                       {/* Removed Media Site Button */}
@@ -742,55 +787,8 @@ export default function WritingRecipePage() {
                   </div>
                 </div>
 
-                 {/* Cluster Selection Dropdown (remains the same) */}
-                 {isMounted && hasClusters && (
-                  <div className="space-y-2">
-                    <Label htmlFor="cluster-select" className="text-base font-medium">
-                      Target Cluster / Persona (Optional)
-                    </Label>
-                    <Select
-                      value={selectedClusterName}
-                      onValueChange={setSelectedClusterName}
-                      disabled={isLoading || isDetailLoading}
-                    >
-                      <SelectTrigger
-                        id="cluster-select"
-                        className="w-full h-12 text-base bg-gray-50 dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 focus-visible:ring-primary hover:bg-gray-100 dark:hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                          <SelectValue placeholder="Select a cluster..." />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__ALL_CLUSTERS__">
-                          All Clusters (No Specific Persona)
-                        </SelectItem>
-                        {selectedKeywordReport?.clustersWithVolume?.map((cluster: any, index: number) => (
-                          <SelectItem
-                            key={cluster.clusterName || `cluster-${index}`}
-                            value={cluster.clusterName || `Cluster ${index + 1}`}
-                          >
-                            {cluster.clusterName || `Cluster ${index + 1}`} (Vol: {cluster.totalVolume?.toLocaleString() ?? 'N/A'})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {/* Display Area for Associated Persona */}
-                    {selectedClusterName !== "__ALL_CLUSTERS__" && (
-                      <div className="mt-2 p-3 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-md bg-indigo-50/50 dark:bg-indigo-900/10 text-sm text-indigo-800 dark:text-indigo-200">
-                        {displayedPersona ? (
-                          <>
-                            <p className="font-medium mb-1">Targeting Persona: {selectedClusterName}</p>
-                            <p className="text-xs opacity-80 line-clamp-3">{displayedPersona}</p>
-                          </>
-                        ) : (
-                          <p className="text-xs opacity-70 italic">(Persona description not found or loading...)</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Cluster Selection Dropdown (Removed) */}
+                {/* {isMounted && hasClusters && ( ... )} */}
 
                 {/* Removed Media Site and Fine-Tune Selection Areas */}
 
@@ -801,7 +799,10 @@ export default function WritingRecipePage() {
 
                 {/* Error Display */}
                 {!isLoading && (
-                  <ErrorDisplay error={error} onDismiss={() => setError(null)} />
+                  <ErrorDisplay
+                    error={error}
+                    onDismiss={() => setError(null)}
+                  />
                 )}
 
                 {/* Result Display */}
@@ -822,4 +823,3 @@ export default function WritingRecipePage() {
     </div>
   );
 }
-

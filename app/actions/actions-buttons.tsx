@@ -36,7 +36,7 @@ import {
 import {
   submitAiAnalysisSerpBetterHave,
   submitAiAnalysisSerpContentType,
-  submitAiAnalysisSerpIntent,
+  submitAiAnalysisSerpUserIntent,
   submitAiAnalysisSerpTitle,
   submitCreateSerp,
 } from "./actions-ai-serp-result"; // Import the specific SERP analysis actions
@@ -441,7 +441,7 @@ export function AnalyzeUserIntentButton({
   const handleAnalysis = () => {
     startTransition(async () => {
       try {
-        const result = await submitAiAnalysisSerpIntent({ docId });
+        const result = await submitAiAnalysisSerpUserIntent({ docId });
         if (result.success) {
           toast.success(`User Intent analysis complete.`);
         } else {

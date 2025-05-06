@@ -36,7 +36,7 @@ function getFineTuneDataStrings(names?: string[]): string {
 
 function formatKeywordReportForPrompt(
   report: any,
-  selectedClusterName?: string | null,
+  selectedClusterName?: string | null
 ): string {
   if (!report || typeof report !== "object" || Object.keys(report).length === 0)
     return "";
@@ -47,10 +47,10 @@ function formatKeywordReportForPrompt(
   const formatKeywords = (keywords: any[] | undefined): string => {
     if (!keywords) return "No specific keywords found.";
     const highVolumeKeywords = keywords.filter(
-      (k) => k && typeof k.searchVolume === "number" && k.searchVolume >= 100,
+      (k) => k && typeof k.searchVolume === "number" && k.searchVolume >= 100
     );
     highVolumeKeywords.sort(
-      (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0),
+      (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
     );
     if (highVolumeKeywords.length === 0)
       return "No specific keywords found (Volume >= 100).";
@@ -59,8 +59,8 @@ function formatKeywordReportForPrompt(
       .map(
         (k: any) =>
           `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(
-            k?.searchVolume,
-          )})`,
+            k?.searchVolume
+          )})`
       )
       .join("\n      - ")}`;
   };
@@ -103,7 +103,7 @@ function formatKeywordReportForPrompt(
 
   if (initialLowVolumeCount > 60) {
     let filteredKeywords = lowVolumeKeywordObjects.filter(
-      (k) => k.searchVolume !== 0,
+      (k) => k.searchVolume !== 0
     );
     if (filteredKeywords.length > 100) {
       filteredKeywords = filteredKeywords.slice(0, 100);
@@ -130,10 +130,10 @@ function formatKeywordReportForPrompt(
     output += `  - **主題分群** (Clusters):\n`;
     const overallTotalVolume = report.clustersWithVolume.reduce(
       (sum: number, cluster: any) => sum + (cluster.totalVolume || 0),
-      0,
+      0
     );
     output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(
-      overallTotalVolume,
+      overallTotalVolume
     )}\n`;
     report.clustersWithVolume.forEach((cluster: any, index: number) => {
       const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
@@ -146,7 +146,7 @@ function formatKeywordReportForPrompt(
         index + 1
       }: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
       output += `      - 關鍵字 (Keywords): ${formatKeywords(
-        cluster.keywords,
+        cluster.keywords
       )}\n`; // Uses filtered & sorted (>=100) keywords
     });
   } else if (
@@ -156,10 +156,10 @@ function formatKeywordReportForPrompt(
   ) {
     const totalVolumeFromKeywords = report.keywords.reduce(
       (sum: number, kw: any) => sum + (kw.searchVolume || 0),
-      0,
+      0
     );
     output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(
-      totalVolumeFromKeywords,
+      totalVolumeFromKeywords
     )}\n`;
     output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
     output += `    - ${formatKeywords(report.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
@@ -201,7 +201,7 @@ type GenerateActionPlanStepInput = z.infer<
 >;
 
 async function generateActionPlanInternal(
-  input: GenerateActionPlanStepInput,
+  input: GenerateActionPlanStepInput
 ): Promise<string> {
   console.log("[generateActionPlanInternal] Generating action plan...");
   // Note: contentTypeReportText and userIntentReportText now contain the *recommendation* text
@@ -223,7 +223,7 @@ async function generateActionPlanInternal(
   // Format keyword report if available (pass selectedClusterName for highlighting)
   const keywordReportString = formatKeywordReportForPrompt(
     keywordReport,
-    selectedClusterName,
+    selectedClusterName
   );
 
   // Restore original full prompt text here
@@ -287,17 +287,17 @@ h2 Keyword need to cover in article
 }
 
 export async function generateActionPlanStep(
-  input: GenerateActionPlanStepInput,
+  input: GenerateActionPlanStepInput
 ): Promise<{ actionPlanText: string }> {
   const validation = generateActionPlanStepInputSchema.safeParse(input);
   if (!validation.success)
     throw new Error(
-      `Invalid input for generateActionPlanStep: ${validation.error.format()}`,
+      `Invalid input for generateActionPlanStep: ${validation.error.format()}`
     );
 
   const validatedInput = validation.data; // Use validated data
   console.log(
-    `[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`,
+    `[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`
   );
   // Pass the keywordReport from the validated input to the internal function
   const actionPlanText = await generateActionPlanInternal(validatedInput);
@@ -323,7 +323,7 @@ type GenerateFinalPromptStepInput = z.infer<
 >;
 
 async function generateFinalPromptInternal(
-  input: GenerateFinalPromptStepInput,
+  input: GenerateFinalPromptStepInput
 ): Promise<string> {
   console.log("[generateFinalPromptInternal] Generating final prompt...");
   const {
@@ -354,11 +354,11 @@ async function generateFinalPromptInternal(
   const contentTemplate = getOutlineFromReference(outlineRefName);
 
   console.log(
-    "[generateFinalPromptInternal] Fetching content suggestions string...",
+    "[generateFinalPromptInternal] Fetching content suggestions string..."
   );
   const suggestionsString = await generateContentSuggestionsAction({ keyword });
   console.log(
-    "[generateFinalPromptInternal] Content suggestions string fetched.",
+    "[generateFinalPromptInternal] Content suggestions string fetched."
   );
 
   const systemPrompt = `
@@ -446,22 +446,22 @@ ${suggestionsString}
 
   const finalPrompt: string = basePrompt + fineTuneDataString;
   console.log(
-    "[generateFinalPromptInternal] Final prompt generation complete.",
+    "[generateFinalPromptInternal] Final prompt generation complete."
   );
   return finalPrompt;
 }
 
 export async function generateFinalPromptStep(
-  input: GenerateFinalPromptStepInput,
+  input: GenerateFinalPromptStepInput
 ): Promise<{ finalPrompt: string }> {
   const validation = generateFinalPromptStepInputSchema.safeParse(input);
   if (!validation.success)
     throw new Error(
-      `Invalid input for generateFinalPromptStep: ${validation.error.format()}`,
+      `Invalid input for generateFinalPromptStep: ${validation.error.format()}`
     );
 
   console.log(
-    `[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`,
+    `[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`
   );
   const finalPrompt = await generateFinalPromptInternal(input);
   console.log(`[Action Step 7] Final Prompt generation complete.`);
@@ -485,7 +485,7 @@ function getOutlineFromReference(refName: string) {
   // If refName is empty or not found, provide a default/empty structure
   if (!reference) {
     console.warn(
-      `Outline reference '${refName}' not found. Using default empty outline.`,
+      `Outline reference '${refName}' not found. Using default empty outline.`
     );
     return {
       name: "default",
