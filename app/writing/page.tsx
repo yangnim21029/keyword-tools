@@ -39,6 +39,7 @@ import { PromptGenerationResult } from "./components/prompt-generation-result";
 import { ArticleRefinementInput } from "./components/article-refinement-input";
 import { FinalArticleGeneratorControls } from "./components/final-article-generator-controls";
 import { FinalArticleDisplay } from "./components/final-article-display";
+import Link from "next/link";
 
 const API_BASE_URL = "/api/writing";
 const API_OUTLINE_URL = `${API_BASE_URL}/outline`;
@@ -581,6 +582,14 @@ export default function WritingPage() {
   return (
     <div className="min-h-screen dark:from-neutral-950 dark:to-black">
       <div className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 max-w-7xl">
+        <div className="mb-8 text-center md:text-right">
+          <Link
+            href="/writing/recipe"
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            前往食譜專區 (Go to Recipe Section) &rarr;
+          </Link>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           <div className="space-y-6 p-6 bg-white dark:bg-neutral-900 rounded-lg shadow-md overflow-hidden">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-neutral-700">
