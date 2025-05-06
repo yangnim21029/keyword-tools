@@ -21,13 +21,19 @@ export const WritingQueueItemSchema = z.object({
   mediaSiteName: z.string().default("urbanlife"), // Defaulting as per previous logic
   resultPrompt: z.string().nullable().optional(), // To store the final generated prompt
   errorMessage: z.string().nullable().optional(), // To store error messages
+  generatedArticleText: z.string().nullable().optional(),
+  refineUrl: z.string().url().nullable().optional(), // Validate as URL if present
+  postUrl: z.string().url().nullable().optional(), // Validate as URL if present
   createdAt: z
-    .instanceof(Timestamp)
-    .or(z.date()) // Allow both Firestore Timestamp and JS Date
+    .custom<
+      Timestamp | Date
+    >((val) => val instanceof Timestamp || val instanceof Date, "Expected Firestore Timestamp or JS Date")
     .transform((val) => (val instanceof Timestamp ? val.toDate() : val)), // Convert Timestamp to Date for client
   updatedAt: z
-    .instanceof(Timestamp)
-    .or(z.date())
+    .custom<Timestamp | Date>(
+      (val) => val instanceof Timestamp || val instanceof Date,
+      "Expected Firestore Timestamp or JS Date"
+    )
     .transform((val) => (val instanceof Timestamp ? val.toDate() : val))
     .optional(), // Optional, might not be set initially
 });
@@ -93,14 +99,24 @@ const getWritingQueueItems = unstable_cache(
           }
 
           // 2. Construct the final validated object *with* the id and converted dates
-          const finalItem: WritingQueueItem = {
-            ...WritingQueueItemSchema.parse({
-              // Parse again with the final schema to ensure correct types (like converted dates)
-              ...validationResult.data, // Validated data (with Timestamps)
-              id: doc.id, // Add the document ID
-            }),
-          };
-          return finalItem;
+          // Use WritingQueueItemSchema.parse to ensure final structure and types (like Date objects)
+          const parseResult = WritingQueueItemSchema.safeParse({
+            ...validationResult.data, // Use validated data (with Timestamps)
+            id: doc.id, // Add the document ID
+            // Ensure createdAt/updatedAt are handled correctly by the base schema's transform
+            createdAt: validationResult.data.createdAt,
+            updatedAt: validationResult.data.updatedAt,
+          });
+
+          if (!parseResult.success) {
+            console.warn(
+              `[getWritingQueueItems] Final object validation failed for doc ID ${doc.id}:`,
+              parseResult.error.flatten()
+            );
+            return null;
+          }
+
+          return parseResult.data;
         })
         .filter((item): item is WritingQueueItem => item !== null); // Filter out nulls
 
@@ -115,7 +131,7 @@ const getWritingQueueItems = unstable_cache(
       return null; // Return null on error for now
     }
   },
-  [WRITING_QUEUE_LIST_TAG], // Cache key
+  [WRITING_QUEUE_LIST_TAG], // Cache key name
   { tags: [WRITING_QUEUE_LIST_TAG] } // Cache tag for revalidation
 );
 

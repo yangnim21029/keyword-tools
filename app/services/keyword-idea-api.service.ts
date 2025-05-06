@@ -77,7 +77,7 @@ async function getAccessToken(): Promise<string> {
     });
     if (!response.ok) {
       throw new Error(
-        `Failed to get access token: ${response.status} ${response.statusText}`,
+        `Failed to get access token: ${response.status} ${response.statusText}`
       );
     }
     const tokenData = await response.json();
@@ -125,14 +125,14 @@ async function fetchKeywordIdeasWithRetry({
       const response = await fetchKeywordIdeas(
         batchKeywords,
         locationId,
-        languageId,
+        languageId
       );
       return response;
     } catch (error: unknown) {
       retries++;
       console.error(
         `[fetchKeywordIdeasWithRetry] Attempt ${retries} failed:`,
-        error,
+        error
       );
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -144,20 +144,20 @@ async function fetchKeywordIdeasWithRetry({
           retryDelayMs = parseInt(retryMatch[1], 10) * 1000 + 500; // Add buffer
         }
         console.log(
-          `[fetchKeywordIdeasWithRetry] Retrying after ${retryDelayMs}ms...`,
+          `[fetchKeywordIdeasWithRetry] Retrying after ${retryDelayMs}ms...`
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
         continue;
       }
 
       console.error(
-        `[fetchKeywordIdeasWithRetry] Non-retryable error or max retries reached.`,
+        `[fetchKeywordIdeasWithRetry] Non-retryable error or max retries reached.`
       );
       throw error;
     }
   }
   throw new Error(
-    `[fetchKeywordIdeasWithRetry] Failed after ${maxRetries} attempts.`,
+    `[fetchKeywordIdeasWithRetry] Failed after ${maxRetries} attempts.`
   );
 }
 
@@ -168,7 +168,7 @@ async function fetchKeywordIdeasWithRetry({
 async function fetchKeywordIdeas(
   keywords: string[],
   locationId: number,
-  languageId: number,
+  languageId: number
 ): Promise<GoogleAdsKeywordIdeaResponse> {
   try {
     const accessToken = await getAccessToken();
@@ -204,14 +204,14 @@ async function fetchKeywordIdeas(
         detailedError = errorText;
       }
       throw new Error(
-        `API request failed (${apiUrl}): ${response.status} ${response.statusText}\nDetailed error: ${detailedError}`,
+        `API request failed (${apiUrl}): ${response.status} ${response.statusText}\nDetailed error: ${detailedError}`
       );
     }
     const data = await response.json();
     console.log(
       `Successfully received response, keywords count: ${
         data.results ? data.results.length : 0
-      }`,
+      }`
     );
     // Cast the response to the defined interface
     return data as GoogleAdsKeywordIdeaResponse;
@@ -240,7 +240,7 @@ export async function getSearchVolume({
   filterZeroVolume = false,
 }: GetSearchVolumeParams): Promise<KeywordVolumeItem[]> {
   console.log(
-    `[getSearchVolume] Received ${keywords.length} keywords for region: ${region}, language: ${language}...`,
+    `[getSearchVolume] Received ${keywords.length} keywords for region: ${region}, language: ${language}...`
   );
 
   // --- Parameter Validation and Setup ---
@@ -257,7 +257,7 @@ export async function getSearchVolume({
   }
 
   console.log(
-    `[getSearchVolume] Config: Region=${region}(${locationId}), Language=${language}(${languageId})`,
+    `[getSearchVolume] Config: Region=${region}(${locationId}), Language=${language}(${languageId})`
   );
   // --- End Setup ---
 
@@ -279,7 +279,7 @@ export async function getSearchVolume({
       // Define the task for this batch
       batchTasks.push(async () => {
         console.log(
-          `[getSearchVolume] Starting batch ${batchNum} (${batchKeywords.length} keywords)`,
+          `[getSearchVolume] Starting batch ${batchNum} (${batchKeywords.length} keywords)`
         );
         const batchResults: KeywordVolumeItem[] = [];
         try {
@@ -294,14 +294,14 @@ export async function getSearchVolume({
           const keywordIdeas = response.results || [];
           console.log(
             `[getSearchVolume] Raw API response for batch ${batchNum}:`,
-            JSON.stringify(keywordIdeas, null, 2),
+            JSON.stringify(keywordIdeas, null, 2)
           );
 
           // --- Inlined processing logic ---
           for (const idea of keywordIdeas) {
             const originalText = idea.text || "";
             console.log(
-              `[getSearchVolume] Processing keyword: "${originalText}"`,
+              `[getSearchVolume] Processing keyword: "${originalText}"`
             );
 
             if (!originalText) {
@@ -312,13 +312,13 @@ export async function getSearchVolume({
             // Normalize text for duplicate checking
             const normalizedText = originalText.toLowerCase().trim();
             console.log(
-              `[getSearchVolume] Normalized keyword: "${normalizedText}"`,
+              `[getSearchVolume] Normalized keyword: "${normalizedText}"`
             );
 
             // Check against map using normalized text
             if (processedKeywords.has(normalizedText)) {
               console.log(
-                `[getSearchVolume] Skipping duplicate keyword: "${normalizedText}"`,
+                `[getSearchVolume] Skipping duplicate keyword: "${normalizedText}"`
               );
               continue;
             }
@@ -326,7 +326,7 @@ export async function getSearchVolume({
             if (apiLanguageCode !== "zh_CN") {
               if (hasSimplifiedChinese(originalText)) {
                 console.log(
-                  `[getSearchVolume] Skipping simplified Chinese keyword: "${originalText}"`,
+                  `[getSearchVolume] Skipping simplified Chinese keyword: "${originalText}"`
                 );
                 continue;
               }
@@ -399,18 +399,18 @@ export async function getSearchVolume({
             } else {
               console.warn(
                 `[getSearchVolume] Zod validation failed for keyword "${originalText}" in batch ${batchNum}:`,
-                validationResult.error.flatten(),
+                validationResult.error.flatten()
               );
             }
           }
           console.log(
-            `[getSearchVolume] Finished batch ${batchNum}: Processed ${batchResults.length} new items from ${keywordIdeas.length} ideas.`,
+            `[getSearchVolume] Finished batch ${batchNum}: Processed ${batchResults.length} new items from ${keywordIdeas.length} ideas.`
           );
           return batchResults;
         } catch (batchError) {
           console.error(
             `[getSearchVolume] Error processing batch ${batchNum}:`,
-            batchError instanceof Error ? batchError.message : batchError,
+            batchError instanceof Error ? batchError.message : batchError
           );
           // Re-throw to be caught by Promise.allSettled as 'rejected'
           throw batchError;
@@ -420,12 +420,12 @@ export async function getSearchVolume({
 
     // --- Process tasks in concurrent chunks ---
     console.log(
-      `[getSearchVolume] Starting processing of ${batchTasks.length} batches with concurrency ${CONCURRENT_BATCH_LIMIT}...`,
+      `[getSearchVolume] Starting processing of ${batchTasks.length} batches with concurrency ${CONCURRENT_BATCH_LIMIT}...`
     );
     for (let i = 0; i < batchTasks.length; i += CONCURRENT_BATCH_LIMIT) {
       const chunk = batchTasks.slice(i, i + CONCURRENT_BATCH_LIMIT);
       console.log(
-        `[getSearchVolume] Processing chunk starting at batch ${i + 1}...`,
+        `[getSearchVolume] Processing chunk starting at batch ${i + 1}...`
       );
 
       const results = await Promise.allSettled(chunk.map((task) => task()));
@@ -440,18 +440,18 @@ export async function getSearchVolume({
             `[getSearchVolume] Batch ${originalBatchNum} failed permanently:`,
             result.reason instanceof Error
               ? result.reason.message
-              : result.reason,
+              : result.reason
           );
         }
       });
       console.log(
         `[getSearchVolume] Finished processing chunk up to batch ${
           i + chunk.length
-        }.`,
+        }.`
       );
     }
     console.log(
-      `[getSearchVolume] Completed all batches. Raw results before final dedupe: ${allResults.length}`,
+      `[getSearchVolume] Completed all batches. Raw results before final dedupe: ${allResults.length}`
     );
     // --- End Concurrent Processing ---
 
@@ -467,7 +467,7 @@ export async function getSearchVolume({
     });
     const finalUniqueResults = Array.from(finalUniqueResultsMap.values());
     console.log(
-      `[getSearchVolume] Final deduplicated results: ${finalUniqueResults.length}`,
+      `[getSearchVolume] Final deduplicated results: ${finalUniqueResults.length}`
     );
 
     // Final filtering based on filterZeroVolume
