@@ -1,19 +1,27 @@
-import { useState, useEffect, useCallback, Dispatch, SetStateAction } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  Dispatch,
+  SetStateAction,
+} from "react";
 
 // Enum to represent storage types
 enum StorageType {
-  LocalStorage = 'localStorage',
-  SessionStorage = 'sessionStorage',
-  Memory = 'memory',
+  LocalStorage = "localStorage",
+  SessionStorage = "sessionStorage",
+  Memory = "memory",
 }
 
 // Helper function to check if storage is available and working
-function isStorageAvailable(type: StorageType.LocalStorage | StorageType.SessionStorage): boolean {
+function isStorageAvailable(
+  type: StorageType.LocalStorage | StorageType.SessionStorage,
+): boolean {
   let storage: Storage | undefined;
   try {
     storage = window[type];
     if (!storage) return false;
-    const testKey = '__testStorageAvailability__';
+    const testKey = "__testStorageAvailability__";
     storage.setItem(testKey, testKey);
     storage.removeItem(testKey);
     return true;
@@ -34,7 +42,10 @@ function getAvailableStorageType(): StorageType {
 }
 
 // The custom hook
-export function useClientStorage<T>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] {
+export function useClientStorage<T>(
+  key: string,
+  initialValue: T,
+): [T, Dispatch<SetStateAction<T>>] {
   // Determine the storage type once
   const [storageType] = useState<StorageType>(getAvailableStorageType);
 
@@ -52,7 +63,8 @@ export function useClientStorage<T>(key: string, initialValue: T): [T, Dispatch<
   // Get initial state from the best available storage or use initialValue
   const [storedValue, setStoredValue] = useState<T>(() => {
     const storage = getStorage();
-    if (!storage) { // Using memory storage
+    if (!storage) {
+      // Using memory storage
       return initialValue;
     }
     try {
@@ -65,19 +77,24 @@ export function useClientStorage<T>(key: string, initialValue: T): [T, Dispatch<
   });
 
   // Return a wrapped version of useState's setter function that persists the new value.
-  const setValue: Dispatch<SetStateAction<T>> = useCallback((value) => {
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore); // Update React state
+  const setValue: Dispatch<SetStateAction<T>> = useCallback(
+    (value) => {
+      try {
+        const valueToStore =
+          value instanceof Function ? value(storedValue) : value;
+        setStoredValue(valueToStore); // Update React state
 
-      const storage = getStorage();
-      if (storage) { // Persist to localStorage or sessionStorage
-        storage.setItem(key, JSON.stringify(valueToStore));
+        const storage = getStorage();
+        if (storage) {
+          // Persist to localStorage or sessionStorage
+          storage.setItem(key, JSON.stringify(valueToStore));
+        }
+      } catch (error) {
+        console.error(`Error setting ${storageType} key “${key}”:`, error);
       }
-    } catch (error) {
-      console.error(`Error setting ${storageType} key “${key}”:`, error);
-    }
-  }, [key, storedValue, storageType]); // Include storageType dependency
+    },
+    [key, storedValue, storageType],
+  ); // Include storageType dependency
 
   // Effect to update state if localStorage changes in another tab/window
   // Note: 'storage' event primarily works reliably for localStorage.
@@ -91,19 +108,24 @@ export function useClientStorage<T>(key: string, initialValue: T): [T, Dispatch<
         event.newValue !== JSON.stringify(storedValue) // Avoid infinite loop if change originated here
       ) {
         try {
-          setStoredValue(event.newValue ? (JSON.parse(event.newValue) as T) : initialValue);
+          setStoredValue(
+            event.newValue ? (JSON.parse(event.newValue) as T) : initialValue,
+          );
         } catch (error) {
-          console.error(`Error parsing storage change for key “${key}”:`, error);
+          console.error(
+            `Error parsing storage change for key “${key}”:`,
+            error,
+          );
           setStoredValue(initialValue);
         }
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
     };
-  // Add storedValue to dependency array to ensure the comparison in handler is up-to-date
+    // Add storedValue to dependency array to ensure the comparison in handler is up-to-date
   }, [key, initialValue, storageType, storedValue]);
 
   return [storedValue, setValue];

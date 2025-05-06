@@ -1,13 +1,13 @@
-'use client'
+"use client";
 
-import { useFormStatus } from 'react-dom'
-import { cn } from '@/lib/utils'
+import { useFormStatus } from "react-dom";
+import { cn } from "@/lib/utils";
 
 export default function SearchButton() {
-  const { pending } = useFormStatus()
-  
+  const { pending } = useFormStatus();
+
   return (
-    <button 
+    <button
       type="submit"
       disabled={pending}
       className={cn(
@@ -15,7 +15,7 @@ export default function SearchButton() {
         "hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2",
         "transition-all duration-200 ease-in-out",
         "disabled:opacity-70 disabled:cursor-not-allowed",
-        "flex items-center gap-2"
+        "flex items-center gap-2",
       )}
     >
       {pending ? (
@@ -46,5 +46,5 @@ export default function SearchButton() {
         <span>$ RUN_ANALYSIS</span>
       )}
     </button>
-  )
-} 
+  );
+}

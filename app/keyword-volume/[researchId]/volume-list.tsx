@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { KeywordVolumeItem } from '@/app/services/firebase/schema';
+import { KeywordVolumeItem } from "@/app/services/firebase/schema";
 import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
-} from '@/components/ui/table';
-import { formatVolume } from '@/lib/utils';
-import { useMemo, useState } from 'react';
-import VolumeFilter, { type VolumeFilterType } from './volume-filter';
-import { PaginationControls } from './volume-list-pagination-control';
+  TableRow,
+} from "@/components/ui/table";
+import { formatVolume } from "@/lib/utils";
+import { useMemo, useState } from "react";
+import VolumeFilter, { type VolumeFilterType } from "./volume-filter";
+import { PaginationControls } from "./volume-list-pagination-control";
 // Import thresholds from global config
 import {
   HIGH_VOLUME_THRESHOLD,
-  MEDIUM_VOLUME_THRESHOLD
-} from '@/app/global-config';
+  MEDIUM_VOLUME_THRESHOLD,
+} from "@/app/global-config";
 
 // Define NEW constants to match VolumeFilter
 // const HIGH_VOLUME_THRESHOLD = 400; // Removed - Defined globally
@@ -32,29 +32,29 @@ interface VolumeListProps {
 
 export default function VolumeList({
   keywords: initialKeywords, // Rename prop for clarity
-  researchId
+  researchId,
 }: VolumeListProps) {
   const [currentPage, setCurrentPage] = useState(1);
-  const [volumeFilter, setVolumeFilter] = useState<VolumeFilterType>('all');
+  const [volumeFilter, setVolumeFilter] = useState<VolumeFilterType>("all");
 
   // Memoize filtered and paginated keywords (using NEW thresholds)
   const {
     keywordsForCurrentPage,
     totalPages,
     totalKeywords,
-    maxOverallVolume
+    maxOverallVolume,
   } = useMemo(() => {
-    const filteredKeywords = initialKeywords.filter(kw => {
+    const filteredKeywords = initialKeywords.filter((kw) => {
       const volume = kw.searchVolume ?? 0;
       switch (volumeFilter) {
-        case 'high':
+        case "high":
           return volume >= HIGH_VOLUME_THRESHOLD; // >= 400
-        case 'medium':
+        case "medium":
           return (
             volume >= MEDIUM_VOLUME_THRESHOLD && // >= 100
             volume < HIGH_VOLUME_THRESHOLD // < 400
           );
-        case 'low':
+        case "low":
           return volume < MEDIUM_VOLUME_THRESHOLD; // < 100
         default:
           return true; // 'all'
@@ -70,14 +70,14 @@ export default function VolumeList({
     // Calculate max volume from *all* keywords
     const maxOverallVolume = Math.max(
       0,
-      ...initialKeywords.map(kw => kw.searchVolume ?? 0)
+      ...initialKeywords.map((kw) => kw.searchVolume ?? 0),
     );
 
     return {
       keywordsForCurrentPage,
       totalPages,
       totalKeywords,
-      maxOverallVolume
+      maxOverallVolume,
     };
   }, [initialKeywords, volumeFilter, currentPage]);
 
@@ -153,9 +153,9 @@ export default function VolumeList({
           </>
         ) : (
           <p className="text-muted-foreground text-center py-4">
-            {volumeFilter === 'all'
-              ? '沒有找到關鍵字數據。'
-              : '沒有找到符合當前條件的關鍵字。'}
+            {volumeFilter === "all"
+              ? "沒有找到關鍵字數據。"
+              : "沒有找到符合當前條件的關鍵字。"}
           </p>
         )}
       </div>

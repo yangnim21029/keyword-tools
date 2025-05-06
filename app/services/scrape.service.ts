@@ -1,6 +1,6 @@
-import { Readability } from '@mozilla/readability';
-import { JSDOM } from 'jsdom';
-import { ScrapedPageContent } from './firebase/data-onpage-result';
+import { Readability } from "@mozilla/readability";
+import { JSDOM } from "jsdom";
+import { ScrapedPageContent } from "./firebase/data-onpage-result";
 
 /**
  * Fetches a URL and extracts the main article content using Readability.
@@ -9,21 +9,21 @@ import { ScrapedPageContent } from './firebase/data-onpage-result';
  * @returns A promise that resolves to the scraped content or null if extraction fails.
  */
 export async function extractArticleContentFromUrl(
-  url: string
-): Promise<Omit<ScrapedPageContent, 'extractedAt'> | null> {
+  url: string,
+): Promise<Omit<ScrapedPageContent, "extractedAt"> | null> {
   console.log(`[Scrape Service] Attempting to extract content from: ${url}`);
   try {
     const response = await fetch(url, {
       headers: {
         // Set a common user-agent to mimic a browser
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
     });
 
     if (!response.ok) {
       console.error(
-        `[Scrape Service] Failed to fetch ${url}: ${response.status} ${response.statusText}`
+        `[Scrape Service] Failed to fetch ${url}: ${response.status} ${response.statusText}`,
       );
       return null;
     }
@@ -39,26 +39,27 @@ export async function extractArticleContentFromUrl(
     const article = reader.parse();
 
     if (!article) {
-      console.warn(`[Scrape Service] Readability could not parse article from ${url}`);
+      console.warn(
+        `[Scrape Service] Readability could not parse article from ${url}`,
+      );
       return null;
     }
 
     console.log(`[Scrape Service] Successfully extracted content from: ${url}`);
 
     // Return the extracted data conforming to the interface (excluding extractedAt)
-    const scrapedData: Omit<ScrapedPageContent, 'extractedAt'> = {
+    const scrapedData: Omit<ScrapedPageContent, "extractedAt"> = {
       url: url,
-      title: article.title ?? '',
-      textContent: article.textContent ?? '',
-      htmlContent: article.content ?? '',
+      title: article.title ?? "",
+      textContent: article.textContent ?? "",
+      htmlContent: article.content ?? "",
       excerpt: article.excerpt,
       byline: article.byline,
       length: article.length,
-      siteName: article.siteName
+      siteName: article.siteName,
     };
 
     return scrapedData;
-
   } catch (error) {
     console.error(`[Scrape Service] Error processing ${url}:`, error);
     return null;

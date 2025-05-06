@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { Globe, Languages as LanguagesIcon } from 'lucide-react';
-import { useState } from 'react';
-import { CreateNewSerpButton } from '../actions/actions-buttons';
-import { LANGUAGES, REGIONS } from '../global-config';
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { Globe, Languages as LanguagesIcon } from "lucide-react";
+import { useState } from "react";
+import { CreateNewSerpButton } from "../actions/actions-buttons";
+import { LANGUAGES, REGIONS } from "../global-config";
 
 export default function CreateNewSerpForm() {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [region, setRegion] = useState(Object.values(REGIONS)[0]);
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState("en");
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [languageDialogOpen, setLanguageDialogOpen] = useState(false);
 
@@ -49,8 +49,8 @@ export default function CreateNewSerpForm() {
     <div className="flex flex-col items-center justify-center w-full max-w-xl px-4">
       <div
         className={cn(
-          'w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3',
-          'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200'
+          "w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3",
+          "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200",
         )}
       >
         <div className="relative w-full flex items-center">
@@ -58,12 +58,12 @@ export default function CreateNewSerpForm() {
             type="text"
             placeholder="Enter your search query for SERP analysis"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             className="h-12 text-lg pl-5 pr-5 w-full border-none ring-offset-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 bg-transparent shadow-none"
           />
         </div>
 
-        <div className={cn('flex items-center justify-between pt-2 px-2')}>
+        <div className={cn("flex items-center justify-between pt-2 px-2")}>
           <div className="flex flex-wrap gap-2">
             {/* Region Selection Dialog */}
             <Dialog open={regionDialogOpen} onOpenChange={setRegionDialogOpen}>

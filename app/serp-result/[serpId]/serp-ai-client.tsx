@@ -1,25 +1,23 @@
-'use client';
+"use client";
 
 import {
   AnalyzeBetterHaveButton,
   AnalyzeContentTypeButton,
   AnalyzeTitleButton,
-  AnalyzeUserIntentButton
-} from '@/app/actions/actions-buttons'; // Import action buttons
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+  AnalyzeUserIntentButton,
+} from "@/app/actions/actions-buttons"; // Import action buttons
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
-} from '@/components/ui/card';
-import { Terminal } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import {
-  FirebaseSerpResultObject
-} from '@/app/services/firebase/schema';
+  CardTitle,
+} from "@/components/ui/card";
+import { Terminal } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { FirebaseSerpResultObject } from "@/app/services/firebase/schema";
 
 // --- Define a minimal client-safe type for AI Overview ---
 type ClientAiOverview = {
@@ -35,9 +33,9 @@ type ClientSafeSerpData = {
   language?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  organicResults?: FirebaseSerpResultObject['organicResults'];
+  organicResults?: FirebaseSerpResultObject["organicResults"];
   relatedQueries?: any[] | null;
-  peopleAlsoAsk?: FirebaseSerpResultObject['peopleAlsoAsk'];
+  peopleAlsoAsk?: FirebaseSerpResultObject["peopleAlsoAsk"];
   aiOverview?: ClientAiOverview | null;
   contentTypeAnalysisText?: string | null;
   userIntentAnalysisText?: string | null;
@@ -57,53 +55,53 @@ type ClientSafeSerpData = {
 
 function formatSerpResults(organicResults: any[] | undefined | null): string {
   if (!Array.isArray(organicResults) || organicResults.length === 0) {
-    return 'No organic results found.';
+    return "No organic results found.";
   }
   return organicResults
     .map(
       (result, index) =>
         `Position ${result.position || index + 1}:\nTitle: ${
           result.title
-        }\nDescription: ${result.description}\nURL: ${result.url}\n---`
+        }\nDescription: ${result.description}\nURL: ${result.url}\n---`,
     )
-    .join('\n\n');
+    .join("\n\n");
 }
 
 function formatRelatedKeywords(
-  relatedQueries: any[] | undefined | null
+  relatedQueries: any[] | undefined | null,
 ): string {
   if (!Array.isArray(relatedQueries) || relatedQueries.length === 0) {
-    return 'No related keywords found.';
+    return "No related keywords found.";
   }
   return relatedQueries
-    .map(q => `${q.query || q.title}, ?`) // Use title if query is missing (API schema difference)
-    .join('\n');
+    .map((q) => `${q.query || q.title}, ?`) // Use title if query is missing (API schema difference)
+    .join("\n");
 }
 
 function formatPAA(peopleAlsoAsk: any[] | undefined | null): string {
   if (!Array.isArray(peopleAlsoAsk) || peopleAlsoAsk.length === 0) {
-    return 'No People Also Ask data found.';
+    return "No People Also Ask data found.";
   }
   return peopleAlsoAsk
     .map(
-      paa =>
+      (paa) =>
         `- ${paa.question}${
           paa.answer
             ? `\n  Answer Snippet: ${paa.answer.substring(0, 100)}...`
-            : ''
-        }`
+            : ""
+        }`,
     )
-    .join('\n');
+    .join("\n");
 }
 
 function formatAIOverview(
-  aiOverview: ClientAiOverview | undefined | null
+  aiOverview: ClientAiOverview | undefined | null,
 ): string {
   const content = aiOverview?.content;
-  if (!content || typeof content !== 'string' || content.trim().length === 0) {
-    return 'No AI Overview data found.';
+  if (!content || typeof content !== "string" || content.trim().length === 0) {
+    return "No AI Overview data found.";
   }
-  return content.substring(0, 1000) + (content.length > 1000 ? '...' : '');
+  return content.substring(0, 1000) + (content.length > 1000 ? "..." : "");
 }
 
 // --- Component Props ---
@@ -115,37 +113,37 @@ interface SerpAiDisplayProps {
 // --- Client Component ---
 export default function SerpAiDisplay({
   initialSerpData,
-  serpId
+  serpId,
 }: SerpAiDisplayProps) {
   // Initialize router
   const router = useRouter();
 
   // SERP Data State - Initialized directly from props
   const [serpData, setSerpData] = useState<ClientSafeSerpData | null>(
-    initialSerpData
+    initialSerpData,
   );
   // Pre-formatted strings for display/prompts - Initialized directly from props
   const [serpString, setSerpString] = useState<string>(
-    formatSerpResults(initialSerpData?.organicResults?.slice(0, 15))
+    formatSerpResults(initialSerpData?.organicResults?.slice(0, 15)),
   );
   const [relatedKeywordsRaw, setRelatedKeywordsRaw] = useState<string>(
-    formatRelatedKeywords(initialSerpData?.relatedQueries)
+    formatRelatedKeywords(initialSerpData?.relatedQueries),
   );
   const [paaString, setPaaString] = useState<string>(
-    formatPAA(initialSerpData?.peopleAlsoAsk)
+    formatPAA(initialSerpData?.peopleAlsoAsk),
   );
   const [aiOverviewString, setAiOverviewString] = useState<string>(
-    formatAIOverview(initialSerpData?.aiOverview)
+    formatAIOverview(initialSerpData?.aiOverview),
   );
 
   // Effect to update state if initialSerpData changes (e.g., after parent refresh)
   useEffect(() => {
     setSerpData(initialSerpData);
     setSerpString(
-      formatSerpResults(initialSerpData?.organicResults?.slice(0, 15))
+      formatSerpResults(initialSerpData?.organicResults?.slice(0, 15)),
     );
     setRelatedKeywordsRaw(
-      formatRelatedKeywords(initialSerpData?.relatedQueries)
+      formatRelatedKeywords(initialSerpData?.relatedQueries),
     );
     setPaaString(formatPAA(initialSerpData?.peopleAlsoAsk));
     setAiOverviewString(formatAIOverview(initialSerpData?.aiOverview));
@@ -219,7 +217,7 @@ export default function SerpAiDisplay({
           <CardHeader>
             <CardTitle>Analysis Actions</CardTitle>
             <CardDescription>
-              Trigger analysis actions for the fetched SERP data (ID:{' '}
+              Trigger analysis actions for the fetched SERP data (ID:{" "}
               {serpData.id}). Results and status will be shown via
               notifications.
             </CardDescription>

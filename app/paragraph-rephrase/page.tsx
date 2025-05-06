@@ -1,20 +1,29 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AnalyzeParagraphsButton, RephraseButton } from '@/app/actions/actions-buttons';
-import { Plus, Trash2 } from 'lucide-react';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  AnalyzeParagraphsButton,
+  RephraseButton,
+} from "@/app/actions/actions-buttons";
+import { Plus, Trash2 } from "lucide-react";
 
 export default function ParagraphRephrasePage() {
-  const [aSections, setASections] = useState<string[]>(['']);
-  const [bSection, setBSection] = useState('');
-  const [step1Result, setStep1Result] = useState('');
-  const [step2Result, setStep2Result] = useState('');
+  const [aSections, setASections] = useState<string[]>([""]);
+  const [bSection, setBSection] = useState("");
+  const [step1Result, setStep1Result] = useState("");
+  const [step2Result, setStep2Result] = useState("");
 
   const addASection = () => {
-    setASections([...aSections, '']);
+    setASections([...aSections, ""]);
   };
 
   const removeASection = (index: number) => {
@@ -30,19 +39,23 @@ export default function ParagraphRephrasePage() {
   return (
     <div className="container mx-auto py-8 space-y-8">
       <h1 className="text-3xl font-bold mb-8">Paragraph Rephrase</h1>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <Card>
           <CardHeader>
             <CardTitle>Input Sections</CardTitle>
-            <CardDescription>Enter reference paragraphs and target paragraph</CardDescription>
+            <CardDescription>
+              Enter reference paragraphs and target paragraph
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
               {aSections.map((section, index) => (
                 <div key={index} className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium">Reference Section {index + 1}</label>
+                    <label className="text-sm font-medium">
+                      Reference Section {index + 1}
+                    </label>
                     {index > 0 && (
                       <Button
                         variant="ghost"
@@ -104,7 +117,9 @@ export default function ParagraphRephrasePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Analysis Results</CardTitle>
-                <CardDescription>Graph knowledge visualization and differences</CardDescription>
+                <CardDescription>
+                  Graph knowledge visualization and differences
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="whitespace-pre-wrap">{step1Result}</div>
@@ -116,7 +131,9 @@ export default function ParagraphRephrasePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Rephrased Content</CardTitle>
-                <CardDescription>Target section rephrased based on reference sections</CardDescription>
+                <CardDescription>
+                  Target section rephrased based on reference sections
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="whitespace-pre-wrap">{step2Result}</div>

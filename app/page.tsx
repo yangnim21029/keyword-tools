@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
+import { redirect } from "next/navigation";
 
 export default function RootPage() {
-  redirect('/keyword-volume');
+  redirect("/keyword-volume");
   return null;
 }

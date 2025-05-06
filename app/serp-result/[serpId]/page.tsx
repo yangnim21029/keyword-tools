@@ -1,9 +1,9 @@
-'use server';
+"use server";
 
-import { getSerpResultById } from '@/app/services/firebase/data-serp-result';
-import { NextPageProps } from '@/app/types';
-import { notFound } from 'next/navigation';
-import SerpAiDisplay from './serp-ai-client'; // Import the new client component
+import { getSerpResultById } from "@/app/services/firebase/data-serp-result";
+import { NextPageProps } from "@/app/types";
+import { notFound } from "next/navigation";
+import SerpAiDisplay from "./serp-ai-client"; // Import the new client component
 
 // Helper function to safely stringify/parse to convert complex server objects (like Timestamps) to client-safe JSON
 // Adjust this based on the actual structure of FirebaseSerpResultObject and ClientSafeSerpData
@@ -12,10 +12,10 @@ function makeSerpDataClientSafe(serverData: any): any {
   try {
     // Convert specific fields if necessary (e.g., Timestamps to ISO strings)
     const data = { ...serverData };
-    if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+    if (data.createdAt && typeof data.createdAt.toDate === "function") {
       data.createdAt = data.createdAt.toDate().toISOString();
     }
-    if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+    if (data.updatedAt && typeof data.updatedAt.toDate === "function") {
       data.updatedAt = data.updatedAt.toDate().toISOString();
     }
     // Add any other necessary conversions here
@@ -49,7 +49,7 @@ function makeSerpDataClientSafe(serverData: any): any {
 
     return JSON.parse(JSON.stringify(data)); // Simple deep clone for safety
   } catch (error) {
-    console.error('Error making SERP data client-safe:', error);
+    console.error("Error making SERP data client-safe:", error);
     return null; // Return null if conversion fails
   }
 }
@@ -72,7 +72,7 @@ export default async function SerpResultPage({ params }: NextPageProps) {
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-6">
       <h1 className="text-2xl font-bold mb-6">
-        SERP Analysis:{' '}
+        SERP Analysis:{" "}
         {initialClientSerpData?.originalKeyword
           ? `"${initialClientSerpData.originalKeyword}"`
           : `ID ${serpId}`}

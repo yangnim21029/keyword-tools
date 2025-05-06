@@ -1,11 +1,11 @@
-'use server';
+"use server";
 
-import { notFound } from 'next/navigation';
-import { Suspense } from 'react';
-import { COLLECTIONS, db, getKeywordVolumeList } from '../services/firebase';
-import KeywordVolumeObjectList from './components/keyword-obj-list';
-import KeywordSearchForm from './components/keyword-search-form';
-import { RevalidateButton } from '../actions/actions-buttons';
+import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { COLLECTIONS, db, getKeywordVolumeList } from "../services/firebase";
+import KeywordVolumeObjectList from "./components/keyword-obj-list";
+import KeywordSearchForm from "./components/keyword-search-form";
+import { RevalidateButton } from "../actions/actions-buttons";
 
 export default async function KeywordToolPage() {
   if (!db) return notFound();
@@ -27,10 +27,10 @@ export default async function KeywordToolPage() {
               你正在查詢？
             </h1>
             <p className="text-md text-muted-foreground mt-2">
-              已有{' '}
+              已有{" "}
               <strong className="text-primary">
                 {totalCount.toLocaleString()}
-              </strong>{' '}
+              </strong>{" "}
               次關鍵字研究完成！ 更多的人正在為他們的文章，找到合適的關鍵字！
             </p>
           </div>

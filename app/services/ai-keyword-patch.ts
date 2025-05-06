@@ -1,17 +1,17 @@
 /**
  * AI Service - 提供 AI 相關的功能
  */
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { AI_MODELS } from '../global-config';
-const RELATED_KEYWORDS_MODEL = 'gpt-4.1-mini';
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { AI_MODELS } from "../global-config";
+const RELATED_KEYWORDS_MODEL = "gpt-4.1-mini";
 
 // 定義 AI 服務的輸入類型 (保持泛用性)
 export interface AIServiceInput {
   keywords: string[];
   region?: string;
   language?: string;
-  model?: 'gpt-4.1-mini' | 'gpt-4.1-mini'; // Keep this generic for now
+  model?: "gpt-4.1-mini" | "gpt-4.1-mini"; // Keep this generic for now
 }
 
 // 定義 AI 服務的輸出類型 (保持泛用性)
@@ -24,17 +24,17 @@ export interface AIServiceOutput {
  * AI 服務的主要函數 (Placeholder - can be removed if not needed)
  */
 export async function processWithAI(
-  input: AIServiceInput
+  input: AIServiceInput,
 ): Promise<AIServiceOutput> {
   try {
     // 這裡可以添加 AI 處理的邏輯
     return {
-      results: {}
+      results: {},
     };
   } catch (error) {
     return {
       results: {},
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : "Unknown error occurred",
     };
   }
 }
@@ -53,15 +53,15 @@ export async function aiGetDifferenceEntityName(
   query: string,
   region: string,
   language: string,
-  count: number = 10
+  count: number = 10,
 ): Promise<string[]> {
   if (!query) {
-    console.warn('[AI Service] aiGetDifferenceEntityName: Query is empty.');
+    console.warn("[AI Service] aiGetDifferenceEntityName: Query is empty.");
     return [];
   }
 
   console.log(
-    `[AI Service] aiGetDifferenceEntityName called for query: "${query}", Region: ${region}, Lang: ${language}, Count: ${count}`
+    `[AI Service] aiGetDifferenceEntityName called for query: "${query}", Region: ${region}, Lang: ${language}, Count: ${count}`,
   );
 
   // --- NEW Prompt (Focus on Prefixes, Suffixes, Alternatives) ---
@@ -92,21 +92,21 @@ export async function aiGetDifferenceEntityName(
   try {
     const { text } = await generateText({
       model: AI_MODELS.BASE,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: "user", content: prompt }],
     });
 
     console.log(
-      `[AI Service] Received raw response from AI for related keywords.`
+      `[AI Service] Received raw response from AI for related keywords.`,
     );
 
     // Clean and parse the response
     let cleanedText = text.trim();
-    if (cleanedText.startsWith('```json')) {
+    if (cleanedText.startsWith("```json")) {
       cleanedText = cleanedText.substring(7).trim();
-    } else if (cleanedText.startsWith('```')) {
+    } else if (cleanedText.startsWith("```")) {
       cleanedText = cleanedText.substring(3).trim();
     }
-    if (cleanedText.endsWith('```')) {
+    if (cleanedText.endsWith("```")) {
       cleanedText = cleanedText.substring(0, cleanedText.length - 3).trim();
     }
 
@@ -114,31 +114,30 @@ export async function aiGetDifferenceEntityName(
       const parsedResult = JSON.parse(cleanedText);
       if (
         Array.isArray(parsedResult) &&
-        parsedResult.every(item => typeof item === 'string')
+        parsedResult.every((item) => typeof item === "string")
       ) {
         console.log(
-          `[AI Service] Successfully parsed ${parsedResult.length} related keywords from AI.`
+          `[AI Service] Successfully parsed ${parsedResult.length} related keywords from AI.`,
         );
         return parsedResult;
       } else {
         console.error(
-          '[AI Service] AI response is not a valid JSON array of strings. Parsed:',
-          parsedResult
+          "[AI Service] AI response is not a valid JSON array of strings. Parsed:",
+          parsedResult,
         );
         return [];
       }
     } catch (parseError) {
       console.error(
-        '[AI Service] Failed to parse JSON response:',
+        "[AI Service] Failed to parse JSON response:",
         parseError,
-        'Cleaned Text:',
-        cleanedText
+        "Cleaned Text:",
+        cleanedText,
       );
       return [];
     }
   } catch (error) {
-    console.error('[AI Service] Error calling AI for related keywords:', error);
+    console.error("[AI Service] Error calling AI for related keywords:", error);
     return [];
   }
 }
-

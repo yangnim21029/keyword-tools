@@ -1,45 +1,53 @@
-import GlobalLoadingOverlay from '@/components/common/global-loading-overlay';
-import { ThemeProvider } from '@/providers/theme-provider';
-import type { Metadata, Viewport } from 'next';
-import { Inter, Roboto } from 'next/font/google';
-import type React from 'react';
-import { Toaster as SonnerToaster } from 'sonner';
-import { BarChart, Box, HelpCircle, List, Pen, Search, Settings } from 'lucide-react';
-import './globals.css';
-import { Navigation } from './global-navigation';
+import GlobalLoadingOverlay from "@/components/common/global-loading-overlay";
+import { ThemeProvider } from "@/providers/theme-provider";
+import type { Metadata, Viewport } from "next";
+import { Inter, Roboto } from "next/font/google";
+import type React from "react";
+import { Toaster as SonnerToaster } from "sonner";
+import {
+  BarChart,
+  Box,
+  HelpCircle,
+  List,
+  Pen,
+  Search,
+  Settings,
+} from "lucide-react";
+import "./globals.css";
+import { Navigation } from "./global-navigation";
 
 // 使用 Inter 作为主要字体
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 // 使用 Roboto 作为次要字体（接近Apple风格）
 const roboto = Roboto({
-  weight: ['300', '400', '500', '700'],
-  subsets: ['latin'],
-  variable: '--font-roboto',
-  display: 'swap'
+  weight: ["300", "400", "500", "700"],
+  subsets: ["latin"],
+  variable: "--font-roboto",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: 'PressLogic 編輯專用找關鍵字的工具',
-  description: '輸入關鍵字或網址以開始分析。',
+  title: "PressLogic 編輯專用找關鍵字的工具",
+  description: "輸入關鍵字或網址以開始分析。",
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
-    title: 'Keyword Tools'
-  }
+    statusBarStyle: "default",
+    title: "Keyword Tools",
+  },
 };
 
 // 修改視口配置，移除暗黑模式的主題色
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: 'white'
+  themeColor: "white",
 };
 
 export default function RootLayout({
-  children
+  children,
 }: {
   children: React.ReactNode;
 }) {
@@ -61,11 +69,11 @@ export default function RootLayout({
             toastOptions={{
               duration: 5000,
               style: {
-                borderLeft: '4px solid hsl(var(--primary))',
-                borderRadius: '0.5rem',
-                boxShadow: 'var(--shadow-sm)'
+                borderLeft: "4px solid hsl(var(--primary))",
+                borderRadius: "0.5rem",
+                boxShadow: "var(--shadow-sm)",
               },
-              className: 'sm:max-w-[356px] max-w-[90vw]'
+              className: "sm:max-w-[356px] max-w-[90vw]",
             }}
             closeButton={false}
             theme="light"

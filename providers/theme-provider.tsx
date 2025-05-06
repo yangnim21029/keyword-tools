@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { ThemeProvider as NextThemesProvider } from 'next-themes';
-import * as React from 'react';
+import { ThemeProvider as NextThemesProvider } from "next-themes";
+import * as React from "react";
 
 export function ThemeProvider({
   children,
@@ -15,7 +15,7 @@ export function ThemeProvider({
       disableTransitionOnChange
       storageKey="keyword-killer-theme"
       forcedTheme={props.forcedTheme}
-      themes={['light', 'dark', 'system']}
+      themes={["light", "dark", "system"]}
       {...props}
     >
       {children}

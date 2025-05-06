@@ -1,12 +1,12 @@
-'use server';
+"use server";
 
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { revalidateTag } from 'next/cache';
-import { z } from 'zod';
-import { COLLECTIONS, db, getKeywordVolumeObj } from '../services/firebase';
-import { AiClusterItem } from '../services/firebase/schema';
-import { AI_MODELS } from '../global-config';
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { revalidateTag } from "next/cache";
+import { z } from "zod";
+import { COLLECTIONS, db, getKeywordVolumeObj } from "../services/firebase";
+import { AiClusterItem } from "../services/firebase/schema";
+import { AI_MODELS } from "../global-config";
 
 // --- DB IMPORTS ---
 
@@ -15,7 +15,7 @@ import { AI_MODELS } from '../global-config';
  */
 const getPersonaTextPrompt = ({
   clusterName,
-  keywords
+  keywords,
 }: {
   clusterName: string;
   keywords: string[];
@@ -37,7 +37,7 @@ const getPersonaTextPrompt = ({
 Based *only* on the provided keyword cluster theme and its keywords, analyze and describe the likely user persona behind these searches.
 
 **Cluster Theme:** ${clusterName}
-**Keywords:** ${keywords.join(', ')}
+**Keywords:** ${keywords.join(", ")}
 
 Provide a concise user persona description (around 100-150 words) covering the following points:
 1.  **Primary Intent:** What specific goal or information is the user likely seeking with these keywords?
@@ -55,7 +55,7 @@ Respond ONLY with the persona description text.`;
 async function _genreatePersonaText({
   clusterName,
   keywords,
-  model
+  model,
 }: {
   clusterName: string;
   keywords: string[];
@@ -63,12 +63,12 @@ async function _genreatePersonaText({
 }): Promise<string | null> {
   const textPrompt = getPersonaTextPrompt({
     clusterName,
-    keywords
+    keywords,
   });
 
   const { text: rawPersonaText } = await generateText({
     model: AI_MODELS.BASE,
-    prompt: textPrompt
+    prompt: textPrompt,
   });
 
   const trimmedPersonaText = rawPersonaText.trim();
@@ -85,19 +85,19 @@ async function _genreatePersonaText({
 export async function submitGeneratePersonaForCluster({
   keywordVolumeObjectId,
   clusterName,
-  model = 'gpt-4.1-mini'
+  model = "gpt-4.1-mini",
 }: {
   keywordVolumeObjectId: string;
   clusterName: string;
   model?: string;
 }): Promise<{ success: boolean; error?: string }> {
   const keywordVolumeObject = await getKeywordVolumeObj({
-    researchId: keywordVolumeObjectId
+    researchId: keywordVolumeObjectId,
   });
 
   if (!keywordVolumeObject) {
     // Object not found
-    return { success: false, error: 'Keyword research object not found.' };
+    return { success: false, error: "Keyword research object not found." };
   }
 
   const clusters = keywordVolumeObject.clustersWithVolume;
@@ -105,30 +105,30 @@ export async function submitGeneratePersonaForCluster({
   // Check if clusters is a valid array
   if (!Array.isArray(clusters)) {
     console.error(
-      `[Action] clustersWithVolume is not an array for research '${keywordVolumeObjectId}'. Cannot generate persona.`
+      `[Action] clustersWithVolume is not an array for research '${keywordVolumeObjectId}'. Cannot generate persona.`,
     );
-    return { success: false, error: 'Invalid cluster data structure.' };
+    return { success: false, error: "Invalid cluster data structure." };
   }
 
   // Find the target cluster in the ARRAY
   const targetClusterIndex = clusters.findIndex(
-    (cluster: AiClusterItem) => cluster.clusterName === clusterName
+    (cluster: AiClusterItem) => cluster.clusterName === clusterName,
   );
 
   if (targetClusterIndex === -1) {
     // Cluster not found
     console.error(
-      `[Action] Cluster '${clusterName}' not found in research object '${keywordVolumeObjectId}'. Cannot generate persona.`
+      `[Action] Cluster '${clusterName}' not found in research object '${keywordVolumeObjectId}'. Cannot generate persona.`,
     );
     return {
       success: false,
-      error: `Cluster '${clusterName}' not found.`
+      error: `Cluster '${clusterName}' not found.`,
     };
   }
 
   // Extract keywords relevant to the target cluster
   const targetClusterKeywords =
-    clusters[targetClusterIndex]?.keywords?.map(kw => kw.text) || [];
+    clusters[targetClusterIndex]?.keywords?.map((kw) => kw.text) || [];
   if (targetClusterKeywords.length === 0) {
     console.warn(`[Action] Target cluster '${clusterName}' has no keywords.`);
   }
@@ -138,16 +138,16 @@ export async function submitGeneratePersonaForCluster({
     const personaText = await _genreatePersonaText({
       clusterName,
       keywords: targetClusterKeywords,
-      model
+      model,
     });
 
     if (!personaText) {
-      throw new Error('AI returned empty persona description');
+      throw new Error("AI returned empty persona description");
     }
 
     // Save to DB
     if (!db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
     const researchDocRef = db
       .collection(COLLECTIONS.KEYWORD_VOLUME)
@@ -163,23 +163,23 @@ export async function submitGeneratePersonaForCluster({
 
     await researchDocRef.update({
       clustersWithVolume: updatedClustersWithVolume,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
 
     // Revalidate Cache
     console.log(`[Cache] Revalidating cache for ${keywordVolumeObjectId}...`);
     revalidateTag(keywordVolumeObjectId);
-    revalidateTag('getKeywordVolumeList');
+    revalidateTag("getKeywordVolumeList");
 
     return { success: true };
   } catch (error) {
     // Error Handling
     const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
+      error instanceof Error ? error.message : "Unknown error";
     console.error(
       `[Action] Error in submitGeneratePersonaForCluster (Research: ${keywordVolumeObjectId}, Cluster: ${clusterName}):`,
       errorMessage,
-      error instanceof z.ZodError ? error.flatten() : error
+      error instanceof z.ZodError ? error.flatten() : error,
     );
     return { success: false, error: errorMessage };
   }

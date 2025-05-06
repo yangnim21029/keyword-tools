@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import { z } from "zod";
 // Import the main schema from schema.ts
-import { FirebaseSerpResultObjectSchema } from './firebase/schema';
+import { FirebaseSerpResultObjectSchema } from "./firebase/schema";
 
 // --- Zod schema for the API response structure ---
 // Apify returns an array, usually with one item for a single query run
@@ -21,7 +21,7 @@ const apifyPayloadSchema = z.object({
     .min(2)
     .max(2)
     .toLowerCase()
-    .describe('Apify country code (e.g., hk, tw)'),
+    .describe("Apify country code (e.g., hk, tw)"),
   forceExactMatch: z.boolean().optional().default(false),
   includeIcons: z.boolean().optional().default(false),
   includeUnfilteredResults: z.boolean().optional().default(false),
@@ -30,14 +30,14 @@ const apifyPayloadSchema = z.object({
   queries: z
     .string()
     .min(1)
-    .describe('Search queries as a single string (can contain newlines)'),
+    .describe("Search queries as a single string (can contain newlines)"),
   resultsPerPage: z.number().int().positive().max(100).optional().default(100),
   saveHtml: z.boolean().optional().default(false),
   saveHtmlToKeyValueStore: z.boolean().optional().default(true),
   searchLanguage: z
     .string()
     .optional()
-    .describe('Apify search language (e.g., zh-TW)')
+    .describe("Apify search language (e.g., zh-TW)"),
 });
 
 // Define input type for fetchSerpByKeyword
@@ -53,41 +53,41 @@ interface FetchSerpByKeywordParams {
  * @returns An object containing the full SERP data structure or throws an error
  */
 export async function fetchSerpByKeyword(
-  params: FetchSerpByKeywordParams // Use object input
+  params: FetchSerpByKeywordParams, // Use object input
 ): Promise<FullSerpApiResponse> {
   const { query, region, language } = params; // Destructure params
 
   const apiUrl =
-    'https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3';
+    "https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=apify_api_n4QsZ7oEbTf359GZDTdb05i1U449og3Qzre3";
 
   // Use provided region/language or defaults
-  const countryCode = (region || 'tw').toLowerCase(); // Keep region lowercase as Apify likely expects this
-  const searchLanguage = language || 'zh-TW'; // REMOVE .toLowerCase() - Use original case
+  const countryCode = (region || "tw").toLowerCase(); // Keep region lowercase as Apify likely expects this
+  const searchLanguage = language || "zh-TW"; // REMOVE .toLowerCase() - Use original case
 
   console.log(
     `[fetchSerpByKeyword] Calling Apify with: query=${JSON.stringify(
-      query
-    )}, region=${countryCode}, language=${searchLanguage}`
+      query,
+    )}, region=${countryCode}, language=${searchLanguage}`,
   );
 
   // Prepare the queries as a single string
   let queriesString: string;
-  if (typeof query === 'string') {
+  if (typeof query === "string") {
     queriesString = query.trim();
   } else {
     // Join array elements with newline, trim each, filter empty, then join
     queriesString = query
-      .map(q => q.trim())
-      .filter(q => q.length > 0)
-      .join('\n');
+      .map((q) => q.trim())
+      .filter((q) => q.length > 0)
+      .join("\n");
   }
 
   // Check if queries string is empty after processing
   if (queriesString.length === 0) {
     console.error(
-      '[fetchSerpByKeyword] No valid queries provided after processing input.'
+      "[fetchSerpByKeyword] No valid queries provided after processing input.",
     );
-    throw new Error('未提供有效的搜索查詢。');
+    throw new Error("未提供有效的搜索查詢。");
   }
 
   const payload = {
@@ -101,41 +101,41 @@ export async function fetchSerpByKeyword(
     resultsPerPage: 100,
     saveHtml: false,
     saveHtmlToKeyValueStore: true,
-    searchLanguage: searchLanguage // Use the potentially mixed-case language code
+    searchLanguage: searchLanguage, // Use the potentially mixed-case language code
   };
 
   // --- Validate the payload before sending ---
   const validatedPayload = apifyPayloadSchema.safeParse(payload);
   if (!validatedPayload.success) {
     console.error(
-      '[fetchSerpByKeyword] Payload validation failed:',
+      "[fetchSerpByKeyword] Payload validation failed:",
       validatedPayload.error.flatten(),
-      'Original Payload:',
-      payload
+      "Original Payload:",
+      payload,
     );
     const errorMessages = validatedPayload.error.errors
-      .map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`)
-      .join(', ');
+      .map((e: z.ZodIssue) => `${e.path.join(".")}: ${e.message}`)
+      .join(", ");
     throw new Error(`內部 Payload 格式無效: ${errorMessages}`);
   }
   // --- End payload validation ---
 
   try {
     const response = await fetch(apiUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(validatedPayload.data) // Send the validated payload data
+      body: JSON.stringify(validatedPayload.data), // Send the validated payload data
     });
 
     if (!response.ok) {
       // Log the payload on error for debugging
       console.error(
-        '[fetchSerpByKeyword] API request failed. Status:',
+        "[fetchSerpByKeyword] API request failed. Status:",
         response.status,
-        'Payload:',
-        payload
+        "Payload:",
+        payload,
       );
       throw new Error(`API responded with status: ${response.status}`);
     }
@@ -146,14 +146,14 @@ export async function fetchSerpByKeyword(
 
     if (!validationResult.success) {
       console.error(
-        '[fetchSerpByKeyword] API response validation failed:',
+        "[fetchSerpByKeyword] API response validation failed:",
         validationResult.error.flatten(),
-        'Raw Data:',
-        rawData // Log raw data on validation failure
+        "Raw Data:",
+        rawData, // Log raw data on validation failure
       );
       const errorMessages = validationResult.error.errors
-        .map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`)
-        .join(', ');
+        .map((e: z.ZodIssue) => `${e.path.join(".")}: ${e.message}`)
+        .join(", ");
       throw new Error(`無法驗證 API 回應格式: ${errorMessages}`);
     }
 
@@ -165,7 +165,7 @@ export async function fetchSerpByKeyword(
     throw new Error(
       `獲取關鍵字數據時發生錯誤: ${
         error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }

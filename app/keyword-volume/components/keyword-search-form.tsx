@@ -1,27 +1,27 @@
-'use client';
+"use client";
 
-import { SubmitKeywordResearchButton } from '@/app/actions/actions-buttons';
-import { LANGUAGES, REGIONS } from '@/app/global-config';
-import { Button } from '@/components/ui/button';
+import { SubmitKeywordResearchButton } from "@/app/actions/actions-buttons";
+import { LANGUAGES, REGIONS } from "@/app/global-config";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { Globe, Languages as LanguagesIcon } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { startTransition, useEffect, useState } from 'react';
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { Globe, Languages as LanguagesIcon } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { startTransition, useEffect, useState } from "react";
 
 export default function KeywordSearchForm() {
   // --- Hooks ---
@@ -30,12 +30,12 @@ export default function KeywordSearchForm() {
   const pathname = usePathname();
 
   // --- Local State ---
-  const [queryInput, setQueryInput] = useState<string>('');
+  const [queryInput, setQueryInput] = useState<string>("");
   const [selectedRegion, setSelectedRegion] = useState<string>(() => {
-    return searchParams.get('region') || Object.values(REGIONS)[0] || '';
+    return searchParams.get("region") || Object.values(REGIONS)[0] || "";
   });
   const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
-    return searchParams.get('language') || Object.keys(LANGUAGES)[0] || '';
+    return searchParams.get("language") || Object.keys(LANGUAGES)[0] || "";
   });
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [languageDialogOpen, setLanguageDialogOpen] = useState(false);
@@ -43,15 +43,15 @@ export default function KeywordSearchForm() {
   // --- Logic ---
 
   useEffect(() => {
-    const initialQueryFromUrl = searchParams.get('q');
+    const initialQueryFromUrl = searchParams.get("q");
     if (initialQueryFromUrl && !queryInput) {
       setQueryInput(decodeURIComponent(initialQueryFromUrl));
     }
-    const initialRegion = searchParams.get('region');
+    const initialRegion = searchParams.get("region");
     if (initialRegion && initialRegion !== selectedRegion) {
       setSelectedRegion(initialRegion);
     }
-    const initialLanguage = searchParams.get('language');
+    const initialLanguage = searchParams.get("language");
     if (initialLanguage && initialLanguage !== selectedLanguage) {
       setSelectedLanguage(initialLanguage);
     }
@@ -65,7 +65,7 @@ export default function KeywordSearchForm() {
       current.delete(key);
     }
     const search = current.toString();
-    const query = search ? `?${search}` : '';
+    const query = search ? `?${search}` : "";
     startTransition(() => {
       router.push(`${pathname}${query}`);
     });
@@ -73,13 +73,13 @@ export default function KeywordSearchForm() {
 
   const handleRegionChange = (value: string) => {
     setSelectedRegion(value);
-    updateSearchParams('region', value);
+    updateSearchParams("region", value);
     setRegionDialogOpen(false);
   };
 
   const handleLanguageChange = (value: string) => {
     setSelectedLanguage(value);
-    updateSearchParams('language', value);
+    updateSearchParams("language", value);
     setLanguageDialogOpen(false);
   };
 
@@ -93,8 +93,8 @@ export default function KeywordSearchForm() {
     <div className="flex flex-col items-center justify-center w-full max-w-xl px-4">
       <div
         className={cn(
-          'w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3',
-          'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200'
+          "w-full bg-white p-3 rounded-2xl border border-gray-300 space-y-3",
+          "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 transition-shadow duration-200",
         )}
       >
         <div className="relative w-full flex items-center">
@@ -102,12 +102,12 @@ export default function KeywordSearchForm() {
             type="text"
             placeholder="輸入關鍵字開始研究..."
             value={queryInput}
-            onChange={e => setQueryInput(e.target.value)}
+            onChange={(e) => setQueryInput(e.target.value)}
             className="h-12 text-lg pl-5 pr-5 w-full border-none ring-offset-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 bg-transparent shadow-none"
           />
         </div>
 
-        <div className={cn('flex items-center justify-between pt-2 px-2')}>
+        <div className={cn("flex items-center justify-between pt-2 px-2")}>
           <div className="flex flex-wrap gap-2">
             <Dialog open={regionDialogOpen} onOpenChange={setRegionDialogOpen}>
               <DialogTrigger asChild>

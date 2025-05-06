@@ -1,9 +1,9 @@
-import { Timestamp, FieldValue } from 'firebase-admin/firestore';
-import { unstable_cache } from 'next/cache';
-import { COLLECTIONS, db } from './db-config';
+import { Timestamp, FieldValue } from "firebase-admin/firestore";
+import { unstable_cache } from "next/cache";
+import { COLLECTIONS, db } from "./db-config";
 
 // --- Define Cache Tag --- //
-const ONPAGE_DATA_TAG = 'onPageData';
+const ONPAGE_DATA_TAG = "onPageData";
 const ONPAGE_COLLECTION = COLLECTIONS.ONPAGE_RESULT; // Assuming you add this to db-config
 
 /**
@@ -24,7 +24,7 @@ export interface ScrapedPageContent {
 // Schema/structure for storing in Firestore
 export interface FirebaseOnPageResultObject extends ScrapedPageContent {
   id: string; // Firestore document ID
-  status?: 'pending' | 'processing' | 'complete' | 'failed'; // Status of extraction/analysis
+  status?: "pending" | "processing" | "complete" | "failed"; // Status of extraction/analysis
   createdAt: Timestamp;
   updatedAt: Timestamp;
   originalTextContent?: string | null | undefined; // Backup of the original text before AI organization
@@ -42,23 +42,26 @@ export interface FirebaseOnPageResultObject extends ScrapedPageContent {
  * Adds scraped page content to Firestore.
  */
 export const addOnPageResult = async (
-  data: ScrapedPageContent
+  data: ScrapedPageContent,
 ): Promise<string | null> => {
-  if (!db) throw new Error('Firestore is not initialized.');
+  if (!db) throw new Error("Firestore is not initialized.");
   console.log(`[Firestore] Adding OnPage Result for URL: ${data.url}`);
   try {
     const collectionRef = db.collection(ONPAGE_COLLECTION);
     const dataToSave = {
       ...data,
-      status: 'complete', // Assuming scrape itself is complete
+      status: "complete", // Assuming scrape itself is complete
       createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     };
     const docRef = await collectionRef.add(dataToSave);
     console.log(`[Firestore] Added OnPage Result with ID: ${docRef.id}`);
     return docRef.id;
   } catch (error) {
-    console.error(`[Firestore] Error adding OnPage Result for ${data.url}:`, error);
+    console.error(
+      `[Firestore] Error adding OnPage Result for ${data.url}:`,
+      error,
+    );
     return null;
   }
 };
@@ -67,11 +70,11 @@ export const addOnPageResult = async (
  * Fetches a specific OnPage result document by its Firestore ID.
  */
 export const getOnPageResultById = async (
-  docId: string
+  docId: string,
 ): Promise<FirebaseOnPageResultObject | null> => {
-  if (!db) throw new Error('Firestore is not initialized.');
+  if (!db) throw new Error("Firestore is not initialized.");
   if (!docId) {
-    console.warn('[Firestore] getOnPageResultById called with empty docId.');
+    console.warn("[Firestore] getOnPageResultById called with empty docId.");
     return null;
   }
   console.log(`[Firestore] Fetching OnPage Result by ID: ${docId}`);
@@ -86,12 +89,15 @@ export const getOnPageResultById = async (
     // Basic validation/casting - consider Zod schema for robustness later
     const data = {
       ...docSnap.data(),
-      id: docSnap.id
+      id: docSnap.id,
     } as FirebaseOnPageResultObject;
     console.log(`[Firestore] Found OnPage Result ID: ${docSnap.id}`);
     return data;
   } catch (error) {
-    console.error(`[Firestore] Error fetching OnPage Result for ID ${docId}:`, error);
+    console.error(
+      `[Firestore] Error fetching OnPage Result for ID ${docId}:`,
+      error,
+    );
     throw error; // Re-throw for server components
   }
 };
@@ -102,7 +108,7 @@ export const getOnPageResultById = async (
 export const getOnPageResultList = unstable_cache(
   async (
     limit = 50,
-    offset = 0
+    offset = 0,
   ): Promise<
     {
       id: string;
@@ -111,15 +117,15 @@ export const getOnPageResultList = unstable_cache(
       timestamp: Timestamp;
     }[]
   > => {
-    if (!db) throw new Error('Firestore is not initialized.');
+    if (!db) throw new Error("Firestore is not initialized.");
     console.log(
-      `[Firestore CACHED] Fetching OnPage list (limit: ${limit}, offset: ${offset})...`
+      `[Firestore CACHED] Fetching OnPage list (limit: ${limit}, offset: ${offset})...`,
     );
     try {
       const snapshot = await db
         .collection(ONPAGE_COLLECTION)
-        .orderBy('updatedAt', 'desc')
-        .select('url', 'title', 'updatedAt')
+        .orderBy("updatedAt", "desc")
+        .select("url", "title", "updatedAt")
         .limit(limit)
         .offset(offset)
         .get();
@@ -130,7 +136,7 @@ export const getOnPageResultList = unstable_cache(
         title: string | null;
         timestamp: Timestamp;
       }[] = [];
-      snapshot.forEach(doc => {
+      snapshot.forEach((doc) => {
         const data = doc.data();
         // Ensure timestamp exists and is valid
         if (data?.updatedAt instanceof Timestamp) {
@@ -138,28 +144,28 @@ export const getOnPageResultList = unstable_cache(
             id: doc.id,
             url: data.url ?? null,
             title: data.title ?? null,
-            timestamp: data.updatedAt
+            timestamp: data.updatedAt,
           });
         } else {
           console.warn(
-            `[Firestore List CACHED] Skipping OnPage doc ${doc.id} due to missing/invalid timestamp`
+            `[Firestore List CACHED] Skipping OnPage doc ${doc.id} due to missing/invalid timestamp`,
           );
         }
       });
       console.log(
-        `[Firestore CACHED] Fetched ${list.length} OnPage list entries.`
+        `[Firestore CACHED] Fetched ${list.length} OnPage list entries.`,
       );
       return list;
     } catch (error) {
-      console.error('[Firestore CACHED] Error fetching OnPage list:', error);
+      console.error("[Firestore CACHED] Error fetching OnPage list:", error);
       throw error;
     }
   },
-  ['getOnPageResultList'], // Cache key
+  ["getOnPageResultList"], // Cache key
   {
     tags: [ONPAGE_DATA_TAG],
     // revalidate: 3600 // Optional revalidation time
-  }
+  },
 );
 
 /**
@@ -167,9 +173,9 @@ export const getOnPageResultList = unstable_cache(
  */
 export const getTotalOnPageResultCount = unstable_cache(
   async (): Promise<number> => {
-    if (!db) throw new Error('Firestore is not initialized.');
+    if (!db) throw new Error("Firestore is not initialized.");
     console.log(
-      '[Firestore CACHED] Getting total count of OnPage documents...'
+      "[Firestore CACHED] Getting total count of OnPage documents...",
     );
     try {
       const snapshot = await db.collection(ONPAGE_COLLECTION).count().get();
@@ -177,15 +183,18 @@ export const getTotalOnPageResultCount = unstable_cache(
       console.log(`[Firestore CACHED] Total OnPage documents count: ${count}`);
       return count;
     } catch (error) {
-      console.error('[Firestore CACHED] Error getting total OnPage count:', error);
+      console.error(
+        "[Firestore CACHED] Error getting total OnPage count:",
+        error,
+      );
       return 0; // Return 0 on error
     }
   },
-  ['getTotalOnPageResultCount'], // Cache key
+  ["getTotalOnPageResultCount"], // Cache key
   {
     tags: [ONPAGE_DATA_TAG],
     // revalidate: 3600 // Optional revalidation time
-  }
+  },
 );
 
 // TODO: Define COLLECTIONS.ONPAGE_RESULT in db-config.ts
