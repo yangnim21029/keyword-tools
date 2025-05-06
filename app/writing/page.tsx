@@ -534,8 +534,8 @@ export default function WritingPage() {
           targetUrl: targetUrl || "",
         });
 
-        if (result.success && result.revisedArticle) {
-          setFinalArticle(result.revisedArticle);
+        if (result.success && result.refinedArticle) {
+          setFinalArticle(result.refinedArticle);
           toast.success("Final article generated successfully!");
         } else {
           const errorMsg =

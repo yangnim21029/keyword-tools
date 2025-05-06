@@ -33,7 +33,7 @@ export interface FirebaseOnPageResultObject extends ScrapedPageContent {
   onPageRankingFactorAnalysisV2Text?: string | null | undefined; // Stores raw text output of V2 ranking factor analysis
   onPageRankingFactorRecommendationText?: string | null | undefined; // Stores raw text output of V2 recommendation
   paragraphGraphText?: string | null | undefined; // Stores raw text output of paragraph graph generation
-  revisedTextContent?: string | null | undefined; // Stores the AI-revised article based on the graph
+  refinedTextContent?: string | null | undefined; // Stores the AI-refined article based on the graph
   // Add future analysis fields here, e.g.:
   // keywordAnalysis?: any;
   // structureAnalysis?: any;
@@ -43,7 +43,7 @@ export interface FirebaseOnPageResultObject extends ScrapedPageContent {
  * Adds scraped page content to Firestore.
  */
 export const addOnPageResult = async (
-  data: ScrapedPageContent,
+  data: ScrapedPageContent
 ): Promise<string | null> => {
   if (!db) throw new Error("Firestore is not initialized.");
   console.log(`[Firestore] Adding OnPage Result for URL: ${data.url}`);
@@ -61,7 +61,7 @@ export const addOnPageResult = async (
   } catch (error) {
     console.error(
       `[Firestore] Error adding OnPage Result for ${data.url}:`,
-      error,
+      error
     );
     return null;
   }
@@ -71,7 +71,7 @@ export const addOnPageResult = async (
  * Fetches a specific OnPage result document by its Firestore ID.
  */
 export const getOnPageResultById = async (
-  docId: string,
+  docId: string
 ): Promise<FirebaseOnPageResultObject | null> => {
   if (!db) throw new Error("Firestore is not initialized.");
   if (!docId) {
@@ -97,7 +97,7 @@ export const getOnPageResultById = async (
   } catch (error) {
     console.error(
       `[Firestore] Error fetching OnPage Result for ID ${docId}:`,
-      error,
+      error
     );
     throw error; // Re-throw for server components
   }
@@ -109,7 +109,7 @@ export const getOnPageResultById = async (
 export const getOnPageResultList = unstable_cache(
   async (
     limit = 50,
-    offset = 0,
+    offset = 0
   ): Promise<
     {
       id: string;
@@ -120,7 +120,7 @@ export const getOnPageResultList = unstable_cache(
   > => {
     if (!db) throw new Error("Firestore is not initialized.");
     console.log(
-      `[Firestore CACHED] Fetching OnPage list (limit: ${limit}, offset: ${offset})...`,
+      `[Firestore CACHED] Fetching OnPage list (limit: ${limit}, offset: ${offset})...`
     );
     try {
       const snapshot = await db
@@ -149,12 +149,12 @@ export const getOnPageResultList = unstable_cache(
           });
         } else {
           console.warn(
-            `[Firestore List CACHED] Skipping OnPage doc ${doc.id} due to missing/invalid timestamp`,
+            `[Firestore List CACHED] Skipping OnPage doc ${doc.id} due to missing/invalid timestamp`
           );
         }
       });
       console.log(
-        `[Firestore CACHED] Fetched ${list.length} OnPage list entries.`,
+        `[Firestore CACHED] Fetched ${list.length} OnPage list entries.`
       );
       return list;
     } catch (error) {
@@ -166,7 +166,7 @@ export const getOnPageResultList = unstable_cache(
   {
     tags: [ONPAGE_DATA_TAG],
     // revalidate: 3600 // Optional revalidation time
-  },
+  }
 );
 
 /**
@@ -176,7 +176,7 @@ export const getTotalOnPageResultCount = unstable_cache(
   async (): Promise<number> => {
     if (!db) throw new Error("Firestore is not initialized.");
     console.log(
-      "[Firestore CACHED] Getting total count of OnPage documents...",
+      "[Firestore CACHED] Getting total count of OnPage documents..."
     );
     try {
       const snapshot = await db.collection(ONPAGE_COLLECTION).count().get();
@@ -186,7 +186,7 @@ export const getTotalOnPageResultCount = unstable_cache(
     } catch (error) {
       console.error(
         "[Firestore CACHED] Error getting total OnPage count:",
-        error,
+        error
       );
       return 0; // Return 0 on error
     }
@@ -195,7 +195,7 @@ export const getTotalOnPageResultCount = unstable_cache(
   {
     tags: [ONPAGE_DATA_TAG],
     // revalidate: 3600 // Optional revalidation time
-  },
+  }
 );
 
 // TODO: Define COLLECTIONS.ONPAGE_RESULT in db-config.ts

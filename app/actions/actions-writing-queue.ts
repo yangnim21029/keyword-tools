@@ -326,14 +326,21 @@ export async function refineArticleAction(
     if (!taskSnap.exists) {
       return { success: false, error: "Task not found." };
     }
-    const taskData = taskSnap.data() as WritingQueueItem; // Cast carefully or validate
+    // Cast or validate taskData - validation is safer
+    const taskData = taskSnap.data();
+    if (!taskData) {
+      return { success: false, error: "Task data is empty." };
+    }
 
     // 2. Validate required fields
-    const inputText = taskData.generatedArticleText;
+    const inputText = taskData.generatedArticleText; // Use the initial/edited article as input
     const targetUrl = taskData.refineUrl;
 
     if (!inputText || inputText.trim().length === 0) {
-      return { success: false, error: "Generated article text is missing." };
+      return {
+        success: false,
+        error: "Initial article text (generatedArticleText) is missing.",
+      };
     }
     if (!targetUrl || targetUrl.trim().length === 0) {
       return { success: false, error: "Refine URL is missing." };
@@ -346,30 +353,36 @@ export async function refineArticleAction(
       targetUrl,
     });
 
-    if (!refinementResult.success || !refinementResult.revisedArticle) {
+    if (!refinementResult.success || !refinementResult.refinedArticle) {
       throw new Error(refinementResult.error || "Article refinement failed.");
     }
 
-    // 4. Save the refined article back (overwriting the original)
-    console.log(`[Action] Saving refined article back to task ${taskId}...`);
-    const updateFormData = new FormData();
-    updateFormData.append("taskId", taskId);
-    updateFormData.append("articleText", refinementResult.revisedArticle);
-    const saveResult = await updateGeneratedArticleAction(updateFormData);
+    // 4. Save the refined article to the *new* field
+    console.log(
+      `[Action] Saving refined article to 'refinedArticleText' for task ${taskId}...`
+    );
+    // Use the helper function to save to the specific field, using the correct property name
+    const saveResult = await updateTaskField(
+      taskId,
+      "refinedArticleText",
+      refinementResult.refinedArticle
+    );
 
     if (!saveResult.success) {
       // Log error but consider the overall action potentially successful if refinement worked
       console.error(
-        `[Action] Refinement successful, but failed to save updated article: ${saveResult.error}`
+        `[Action] Refinement successful, but failed to save refined article: ${saveResult.error}`
       );
+      // Perhaps return a specific error indicating save failure but generation success?
+      // For now, let's return success=false as the final state isn't saved.
       return {
-        success: true,
+        success: false,
         error: `Refined article generated but failed to save: ${saveResult.error}`,
       };
     }
 
     console.log(
-      `[Action Success] Article refined and saved for task ${taskId}`
+      `[Action Success] Article refined and saved to refinedArticleText for task ${taskId}`
     );
     return { success: true };
   } catch (error) {

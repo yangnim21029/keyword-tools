@@ -108,7 +108,8 @@ type ActiveDialog =
   | { type: "viewPrompt"; task: KeywordTaskState }
   | { type: "editArticle"; task: KeywordTaskState }
   | { type: "editRefineUrl"; task: KeywordTaskState }
-  | { type: "editPostUrl"; task: KeywordTaskState };
+  | { type: "editPostUrl"; task: KeywordTaskState }
+  | { type: "viewRefinedArticle"; task: KeywordTaskState };
 
 export function WritingQueueTable({
   initialTasks,
@@ -135,6 +136,11 @@ export function WritingQueueTable({
   const [isAddingTask, startAddTaskTransition] = useTransition();
   const [isUpdatingTask, startUpdateTaskTransition] = useTransition();
   const [isRefiningTask, startRefineTaskTransition] = useTransition();
+  const [isResettingTask, startResetTaskTransition] = useTransition();
+
+  // State to track which task is currently being processed by row-specific actions
+  const [refiningTaskId, setRefiningTaskId] = useState<string | null>(null);
+  const [resettingTaskId, setResettingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -467,15 +473,27 @@ export function WritingQueueTable({
     ] // Add API callers to dependencies
   );
 
-  // --- handleResetTask --- Adjusted to use task.id
+  // --- handleResetTask --- Wrap in transition and track ID
   const handleResetTask = useCallback(
     (taskId: string, taskKeyword: string) => {
-      updateTaskState(taskId, {
-        status: "pending",
-        resultPrompt: null,
-        errorMessage: null,
+      startResetTaskTransition(() => {
+        setResettingTaskId(taskId); // Track which task is resetting
+        updateTaskState(taskId, {
+          status: "pending",
+          resultPrompt: null,
+          errorMessage: null,
+          // Also clear other potentially generated fields if needed
+          generatedArticleText: null,
+          refinedArticleText: null,
+          refineUrl: null,
+          // Keep postUrl? Or clear? Let's clear for a full reset.
+          postUrl: null,
+        });
+        toast.info(`Task for "${taskKeyword}" reset.`);
+        // Simulate brief delay for visual feedback if desired, though not strictly necessary
+        // await new Promise(resolve => setTimeout(resolve, 300));
+        setResettingTaskId(null); // Clear tracking
       });
-      toast.info(`Task for "${taskKeyword}" reset.`);
     },
     [updateTaskState]
   );
@@ -563,26 +581,29 @@ export function WritingQueueTable({
     });
   };
 
-  // --- NEW HANDLER for Refine Article Action ---
+  // --- handleRefineArticle --- Track ID during transition
   const handleRefineArticle = async (taskId: string, taskKeyword: string) => {
     if (!taskId || isRefiningTask) return;
 
     console.log(`[UI] Starting Refine Article for Task ID: ${taskId}`);
     toast.info(`Starting refinement for "${taskKeyword}"...`);
+    setRefiningTaskId(taskId); // Track refining task
     startRefineTaskTransition(async () => {
-      const formData = new FormData();
-      formData.append("taskId", taskId);
-      const result = await refineArticleAction(formData);
+      try {
+        const formData = new FormData();
+        formData.append("taskId", taskId);
+        const result = await refineArticleAction(formData);
 
-      if (result.success) {
-        toast.success(`Article successfully refined for "${taskKeyword}".`);
-        if (result.error) {
-          // Handle partial success (refined but failed to save)
-          toast.warning(result.error);
+        if (result.success) {
+          toast.success(`Article successfully refined for "${taskKeyword}".`);
+          if (result.error) {
+            toast.warning(result.error);
+          }
+        } else {
+          toast.error(`Article refinement failed: ${result.error}`);
         }
-        // List updates via revalidation
-      } else {
-        toast.error(`Article refinement failed: ${result.error}`);
+      } finally {
+        setRefiningTaskId(null); // Clear tracking regardless of outcome
       }
     });
   };
@@ -748,7 +769,7 @@ export function WritingQueueTable({
                             </p>
                           </TooltipContent>
                         </Tooltip>
-                        {/* Edit Article Button */}
+                        {/* Edit Article Button (Initial/Editable) */}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -771,8 +792,39 @@ export function WritingQueueTable({
                           <TooltipContent>
                             <p>
                               {task.generatedArticleText
-                                ? "Edit Article"
-                                : "Add Article"}
+                                ? "Edit Initial Article"
+                                : "Add Initial Article"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                        {/* View Refined Article Button (NEW) */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-6 w-6",
+                                task.refinedArticleText
+                                  ? "text-cyan-500"
+                                  : "text-gray-400 opacity-50"
+                              )}
+                              onClick={() =>
+                                openDialog({
+                                  type: "viewRefinedArticle",
+                                  task,
+                                })
+                              }
+                              disabled={!task.refinedArticleText}
+                            >
+                              <Wand2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {task.refinedArticleText
+                                ? "View Refined Article"
+                                : "Article not refined"}
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -834,6 +886,7 @@ export function WritingQueueTable({
                         {task.status !== "error" &&
                           !task.resultPrompt &&
                           !task.generatedArticleText &&
+                          !task.refinedArticleText &&
                           !task.refineUrl &&
                           !task.postUrl && (
                             <span className="italic text-gray-400 dark:text-gray-600">
@@ -857,7 +910,7 @@ export function WritingQueueTable({
                           : "-"}
                       </div>
                     </TableCell>
-                    {/* Actions Column (REVISED) */}
+                    {/* Actions Column (REVISED Loading States) */}
                     <TableCell className="px-4 py-3 text-right space-x-0.5 align-top">
                       {/* Generate Prompt Button */}
                       <Tooltip>
@@ -867,10 +920,7 @@ export function WritingQueueTable({
                             size="icon"
                             className="h-7 w-7"
                             onClick={() => handleGenerate(task)}
-                            disabled={
-                              task.status === "processing" ||
-                              task.status === "completed"
-                            }
+                            disabled={task.status === "processing"}
                           >
                             {task.status === "processing" ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -882,7 +932,7 @@ export function WritingQueueTable({
                         <TooltipContent>
                           <p>
                             {task.status === "completed"
-                              ? "Generated"
+                              ? "Re-generate Prompt"
                               : "Generate Prompt"}
                           </p>
                         </TooltipContent>
@@ -900,13 +950,10 @@ export function WritingQueueTable({
                             disabled={
                               !task.generatedArticleText ||
                               !task.refineUrl ||
-                              isRefiningTask
+                              (isRefiningTask && refiningTaskId === task.id)
                             }
                           >
-                            {isRefiningTask &&
-                            activeDialog &&
-                            "task" in activeDialog &&
-                            activeDialog.task.id === task.id ? (
+                            {isRefiningTask && refiningTaskId === task.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <Wand2 className="h-3.5 w-3.5" />
@@ -914,7 +961,11 @@ export function WritingQueueTable({
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Refine Article</p>
+                          <p>
+                            {task.refinedArticleText
+                              ? "Re-refine Article"
+                              : "Refine Article"}
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                       {/* Reset Task Button */}
@@ -929,10 +980,15 @@ export function WritingQueueTable({
                             }
                             disabled={
                               task.status === "pending" ||
-                              task.status === "processing"
+                              task.status === "processing" ||
+                              isResettingTask
                             }
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            {isResettingTask && resettingTaskId === task.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -949,7 +1005,6 @@ export function WritingQueueTable({
       </div>
 
       {/* --- DIALOG RENDERING --- */}
-      {/* Corrected Dialog Open Condition & Added Fragment Wrapper */}
       <Dialog
         open={!!activeDialog}
         onOpenChange={(isOpen) => {
@@ -960,7 +1015,8 @@ export function WritingQueueTable({
           className={cn(
             "sm:max-w-md",
             (activeDialog?.type === "editArticle" ||
-              activeDialog?.type === "viewPrompt") &&
+              activeDialog?.type === "viewPrompt" ||
+              activeDialog?.type === "viewRefinedArticle") &&
               "sm:max-w-2xl" // Wider for article/prompt
           )}
         >
@@ -1167,6 +1223,44 @@ export function WritingQueueTable({
                   </Button>
                 </DialogFooter>
               </form>
+            )}
+
+            {/* NEW: View Refined Article Dialog */}
+            {activeDialog?.type === "viewRefinedArticle" && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>View Refined Article</DialogTitle>
+                  <DialogDescription>
+                    Keyword: {activeDialog.task.keyword}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 max-h-[60vh] overflow-y-auto">
+                  <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded-md">
+                    {activeDialog.task.refinedArticleText ||
+                      "Refined article not available."}
+                  </pre>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      handleCopyToClipboard(
+                        activeDialog.task.refinedArticleText ?? "",
+                        activeDialog.task.keyword
+                      )
+                    }
+                    disabled={!activeDialog.task.refinedArticleText}
+                  >
+                    <ClipboardCopy className="mr-2 h-4 w-4" /> Copy Refined
+                    Article
+                  </Button>
+                  <DialogClose asChild>
+                    <Button type="button" variant="secondary">
+                      Close
+                    </Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
             )}
           </>
         </DialogContent>

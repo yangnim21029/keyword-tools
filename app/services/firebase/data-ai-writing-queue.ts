@@ -21,7 +21,8 @@ export const WritingQueueItemSchema = z.object({
   mediaSiteName: z.string().default("urbanlife"), // Defaulting as per previous logic
   resultPrompt: z.string().nullable().optional(), // To store the final generated prompt
   errorMessage: z.string().nullable().optional(), // To store error messages
-  generatedArticleText: z.string().nullable().optional(),
+  generatedArticleText: z.string().nullable().optional(), // Initial/Editable Article
+  refinedArticleText: z.string().nullable().optional(), // <<< NEW FIELD for refined version
   refineUrl: z.string().url().nullable().optional(), // Validate as URL if present
   postUrl: z.string().url().nullable().optional(), // Validate as URL if present
   createdAt: z

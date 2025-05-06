@@ -26,7 +26,7 @@ async function getReviseArticlePrompt(
     `${graphText}`,
     ``,
     `**CRITICAL INSTRUCTIONS:**`,
-    `*   Generate the revised article based *only* on the provided input text and graph suggestions.`, // Added instruction
+    `*   Generate the refined article based *only* on the provided input text and graph suggestions.`, // Added instruction
     `*   Focus on incorporating the suggestions from the graph into the original text structure and content.`, // Added instruction
     `*   Output *only* the newly generated, complete article text.`, // Added instruction
     `*   Do NOT include introductory text, explanations, or the original prompt in the response.`, // Added instruction
@@ -39,16 +39,16 @@ async function getReviseArticlePrompt(
 }
 
 /**
- * Action: Generate a revised article using the original text and a knowledge graph.
- * UPDATED: Returns the revised article text on success.
+ * Action: Generate a refined article using the original text and a knowledge graph.
+ * UPDATED: Returns the refined article text on success.
  */
-export async function generateRevisedArticleFromGraph({
+export async function generateRefinedArticleFromGraph({
   docId,
 }: {
   docId: string;
 }): Promise<{
   success: boolean;
-  revisedArticle?: string | null; // <-- Added return field
+  refinedArticle?: string | null; // <-- Added return field
   error?: string;
   id?: string;
 }> {
@@ -58,7 +58,7 @@ export async function generateRevisedArticleFromGraph({
 
   console.log(`[Action: Revise Article] Starting for Doc ID: ${docId}`);
 
-  let generatedRevisedArticle: string | null = null; // Variable to store the generated text
+  let generatedRefinedArticle: string | null = null; // Variable to store the generated text
 
   try {
     // 0. Fetch OnPage data
@@ -99,25 +99,25 @@ export async function generateRevisedArticleFromGraph({
       // Still allow proceeding, the prompt has a fallback instruction
     }
 
-    // 1. Generate Revised Article
+    // 1. Generate Refined Article
     console.log(`[Action: Revise Article] Calling AI for Article Revision...`);
     const revisePrompt = await getReviseArticlePrompt(
       sourceText,
       graphText || ""
     ); // Pass empty string if graph is null/undefined
-    const { text: revisedArticleText } = await generateText({
+    const { text: refinedArticleText } = await generateText({
       model: AI_MODELS.BASE, // Use BASE model for better text generation
       prompt: revisePrompt,
       // Consider adding parameters like maxTokens if needed
     });
-    generatedRevisedArticle = revisedArticleText; // Store the generated text
+    generatedRefinedArticle = refinedArticleText; // Store the generated text
     console.log(`[Action: Revise Article] Article Revision successful.`);
 
     // 2. Update Firestore directly
     console.log(`[Action: Revise Article] Updating Firestore...`);
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
-      revisedTextContent: generatedRevisedArticle, // Use the stored variable
+      refinedTextContent: generatedRefinedArticle, // Use the stored variable
       updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: Revise Article] Firestore updated.`);
@@ -126,7 +126,7 @@ export async function generateRevisedArticleFromGraph({
     return {
       success: true,
       id: docId,
-      revisedArticle: generatedRevisedArticle, // <-- Return the text
+      refinedArticle: generatedRefinedArticle, // <-- Return the text
     };
   } catch (error) {
     console.error(
@@ -154,15 +154,15 @@ export async function generateRevisedArticleFromGraph({
 }
 
 /**
- * Action: Generate a revised article directly from provided input text and graph text.
+ * Action: Generate a refined article directly from provided input text and graph text.
  */
-export async function generateRevisedArticleDirectly({
+export async function generateRefinedArticleDirectly({
   inputText,
   graphText,
 }: {
   inputText: string;
   graphText: string;
-}): Promise<{ success: boolean; revisedArticle?: string; error?: string }> {
+}): Promise<{ success: boolean; refinedArticle?: string; error?: string }> {
   console.log(`[Action: Revise Article Directly] Starting...`);
 
   // Basic input validation
@@ -182,11 +182,11 @@ export async function generateRevisedArticleDirectly({
       effectiveGraphText
     );
 
-    // 2. Generate Revised Article
+    // 2. Generate Refined Article
     console.log(
       `[Action: Revise Article Directly] Calling AI for Article Revision...`
     );
-    const { text: revisedArticle } = await generateText({
+    const { text: refinedArticle } = await generateText({
       model: AI_MODELS.BASE,
       prompt: revisePrompt,
     });
@@ -197,7 +197,7 @@ export async function generateRevisedArticleDirectly({
     // 3. Return success with the article
     return {
       success: true,
-      revisedArticle: revisedArticle,
+      refinedArticle: refinedArticle,
     };
   } catch (error) {
     console.error(`[Action: Revise Article Directly] Failed:`, error);
@@ -324,7 +324,7 @@ export async function scrapeUrlAndGenerateGraph({
 
 /**
  * Action: Scrapes a target URL for graph suggestions, then uses provided
- * input text and the generated graph to create a revised article.
+ * input text and the generated graph to create a refined article.
  */
 export async function generateRevisionFromInputTextAndUrlGraph({
   inputText,
@@ -332,7 +332,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
 }: {
   inputText: string;
   targetUrl: string;
-}): Promise<{ success: boolean; revisedArticle?: string; error?: string }> {
+}): Promise<{ success: boolean; refinedArticle?: string; error?: string }> {
   console.log(
     `[Action: Revise from Input & URL Graph] Starting for URL: ${targetUrl}`
   );
@@ -425,23 +425,23 @@ export async function generateRevisionFromInputTextAndUrlGraph({
       );
     }
 
-    // 4. Generate the revised article using USER'S input text and the SCRAPED graph
+    // 4. Generate the refined article using USER'S input text and the SCRAPED graph
     console.log(
-      `[Action: Revise from Input & URL Graph] Generating revised article...`
+      `[Action: Revise from Input & URL Graph] Generating refined article...`
     );
     const revisePrompt = await getReviseArticlePrompt(
       inputText,
       graphText || ""
     );
-    const { text: revisedArticle } = await generateText({
+    const { text: refinedArticle } = await generateText({
       model: AI_MODELS.BASE,
       prompt: revisePrompt,
     });
     console.log(
-      `[Action: Revise from Input & URL Graph] Revised article generated.`
+      `[Action: Revise from Input & URL Graph] Refined article generated.`
     );
 
-    // 5. Optionally: Update the Firestore doc with the final revised text?
+    // 5. Optionally: Update the Firestore doc with the final refined text?
     // For now, just returning it as requested.
     // If saving is desired, uncomment below:
     /*
@@ -450,7 +450,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
             const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
             await docRef.update({
                 // Maybe save under a different field to distinguish it?
-                finalRevisedTextFromInput: revisedArticle,
+                finalRefinedTextFromInput: refinedArticle,
                 updatedAt: FieldValue.serverTimestamp(),
             });
             console.log(`[Action: Revise from Input & URL Graph] Saved final revision to doc ${docId}.`);
@@ -461,10 +461,10 @@ export async function generateRevisionFromInputTextAndUrlGraph({
     }
     */
 
-    // 6. Return the final revised article
+    // 6. Return the final refined article
     return {
       success: true,
-      revisedArticle: revisedArticle,
+      refinedArticle: refinedArticle,
     };
   } catch (error) {
     console.error(
