@@ -290,6 +290,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: "/api", label: "API Docs", icon: "bar-chart", isPrimary: false },
   { href: "/dev", label: "各站成效", icon: "bar-chart", isPrimary: false },
+  {
+    href: "/graph",
+    label: "Graph Revision",
+    icon: "bar-chart",
+    isPrimary: true,
+  },
 ];
 
 // Define the settings navigation item

@@ -3,17 +3,8 @@
 import { cn } from "@/lib/utils";
 import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
 import type React from "react";
+import type { Step } from "../page";
 
-// Re-define Step interface here or import if shared
-interface Step {
-  id: string;
-  name: string;
-  status: "pending" | "loading" | "completed" | "error" | "skipped";
-  durationMs?: number;
-  errorMessage?: string | null;
-}
-
-// Re-define StepChecklist component here
 const StepChecklist = ({ steps }: { steps: Step[] }) => {
   const getIcon = (status: Step["status"]) => {
     switch (status) {
@@ -23,10 +14,6 @@ const StepChecklist = ({ steps }: { steps: Step[] }) => {
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case "error":
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case "skipped":
-        return (
-          <Circle className="h-4 w-4 text-gray-400 dark:text-gray-500 opacity-60" />
-        );
       case "pending":
       default:
         return <Circle className="h-4 w-4 text-gray-300 dark:text-gray-600" />;
@@ -46,8 +33,6 @@ const StepChecklist = ({ steps }: { steps: Step[] }) => {
               step.status === "completed" &&
                 "text-green-700 dark:text-green-400",
               step.status === "error" && "text-red-600 dark:text-red-400",
-              step.status === "skipped" &&
-                "text-gray-400 dark:text-gray-500 italic opacity-70",
             )}
           >
             {step.name}
@@ -70,26 +55,5 @@ interface ProgressChecklistDisplayProps {
 export const ProgressChecklistDisplay: React.FC<
   ProgressChecklistDisplayProps
 > = ({ steps }) => {
-  return (
-    <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            {" "}
-            {/* Window controls */}
-            <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
-            <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
-            <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
-          </div>
-          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">
-            GENERATING_PROMPT
-          </span>
-        </div>
-      </div>
-      <div className="p-6">
-        <StepChecklist steps={steps} />
-      </div>
-    </div>
-  );
+  return <StepChecklist steps={steps} />;
 };

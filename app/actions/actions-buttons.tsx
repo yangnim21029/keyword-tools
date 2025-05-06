@@ -9,10 +9,13 @@ import {
   Trash2,
   RefreshCw,
   TerminalSquare,
+  Settings2,
 } from "lucide-react"; // Add ArrowUp, Trash2, and ShieldAlert
 import { useRouter } from "next/navigation"; // Import useRouter
 import { useTransition } from "react";
 import { toast } from "sonner";
+import React from "react";
+import { Button } from "@/components/ui/button"; // Ensure Button is imported
 
 import { submitGeneratePersonaForCluster } from "@/app/actions/actions-ai-persona"; // Action for persona
 import {
@@ -959,7 +962,7 @@ export function RephraseButton({
   );
 }
 
-// === Generate Paragraph Graph Button ===
+// === Generate Graph Button ===
 
 interface GenerateGraphButtonProps {
   docId: string;
@@ -1043,6 +1046,43 @@ export function GenerateGraphButton({
   );
 }
 
+// === Generate Article Button ===
+interface GenerateArticleButtonProps {
+  onClick: () => void;
+  isLoading: boolean;
+  disabled?: boolean;
+  className?: string;
+  // Allow customizing text/icons if needed in the future, but provide defaults
+  buttonText?: string;
+  loadingText?: string;
+  icon?: React.ReactNode;
+}
+
+export function GenerateArticleButton({
+  onClick,
+  isLoading,
+  disabled = false,
+  className = "",
+  buttonText = "生成文章",
+  loadingText = "生成中...",
+  icon = <Sparkles className="mr-2 h-4 w-4" />,
+}: GenerateArticleButtonProps) {
+  return (
+    <LoadingButton
+      onClick={onClick}
+      isLoading={isLoading}
+      disabled={disabled || isLoading}
+      variant="primary" // Apply the blue style
+      loadingText={loadingText}
+      className={cn("w-full md:w-auto", className)} // Default responsive width
+      loadingIcon={<Loader2 className="h-4 w-4 animate-spin" />}
+    >
+      {!isLoading && icon} {/* Show icon only when not loading */} 
+      {buttonText}
+    </LoadingButton>
+  );
+}
+
 // === Organize Text Content Button ===
 
 interface OrganizeTextContentButtonProps extends BaseAnalysisButtonProps {
@@ -1115,5 +1155,37 @@ export function OrganizeTextContentButton({
       {!isPending && <Sparkles className="h-4 w-4 mr-2" />} {/* Example icon */}
       {buttonText}
     </LoadingButton>
+  );
+}
+
+// === Fine Tune Button ===
+interface FineTuneButtonProps {
+  onClick: () => void;
+  disabled?: boolean;
+  count: number; // Number of selected fine tunes
+  variant?: React.ComponentProps<typeof Button>["variant"];
+  size?: React.ComponentProps<typeof Button>["size"];
+  className?: string;
+}
+
+export function FineTuneButton({
+  onClick,
+  disabled = false,
+  count,
+  variant = "ghost", // Default style matches the original
+  size = "sm",
+  className = "text-xs font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-neutral-700 px-2 py-1 h-auto", // Original classes
+}: FineTuneButtonProps) {
+  return (
+    <Button
+      variant={variant}
+      size={size}
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+    >
+      <Settings2 className="h-3.5 w-3.5 mr-1" />
+      Fine-Tune ({count})
+    </Button>
   );
 }
