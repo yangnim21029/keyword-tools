@@ -33,6 +33,7 @@ export interface FirebaseOnPageResultObject extends ScrapedPageContent {
   onPageRankingFactorAnalysisV2Text?: string | null | undefined; // Stores raw text output of V2 ranking factor analysis
   onPageRankingFactorRecommendationText?: string | null | undefined; // Stores raw text output of V2 recommendation
   paragraphGraphText?: string | null | undefined; // Stores raw text output of paragraph graph generation
+  revisedTextContent?: string | null | undefined; // Stores the AI-revised article based on the graph
   // Add future analysis fields here, e.g.:
   // keywordAnalysis?: any;
   // structureAnalysis?: any;

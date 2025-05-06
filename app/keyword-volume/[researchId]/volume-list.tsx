@@ -9,8 +9,10 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { formatVolume } from '@/lib/utils';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { Copy, Check } from 'lucide-react';
 import VolumeFilter, { type VolumeFilterType } from './volume-filter';
 import { PaginationControls } from './volume-list-pagination-control';
 // Import thresholds from global config
@@ -36,6 +38,7 @@ export default function VolumeList({
 }: VolumeListProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [volumeFilter, setVolumeFilter] = useState<VolumeFilterType>('all');
+  const [isCopied, setIsCopied] = useState(false);
 
   // Memoize filtered and paginated keywords (using NEW thresholds)
   const {
@@ -91,14 +94,62 @@ export default function VolumeList({
     setCurrentPage(newPage);
   };
 
+  // Function to copy all unique keywords
+  const handleCopyAll = useCallback(() => {
+    if (!initialKeywords || initialKeywords.length === 0) return;
+
+    // 1. Extract, trim, filter empty, and deduplicate
+    const uniqueKeywords = Array.from(
+      new Set(
+        initialKeywords
+          .map(kw => kw.text.replace(/\s+/g, '')) // Replace all whitespace
+          .filter(text => text.length > 0) // Remove empty strings
+      )
+    );
+
+    // 2. Join with newlines
+    const keywordsString = uniqueKeywords.join('\n');
+
+    // 3. Copy to clipboard
+    navigator.clipboard.writeText(keywordsString).then(() => {
+      setIsCopied(true);
+      setTimeout(() => {
+        setIsCopied(false);
+      }, 2000); // Reset icon after 2 seconds
+    }).catch(err => {
+      console.error('Failed to copy keywords:', err);
+      // Optionally: Show an error message to the user
+    });
+  }, [initialKeywords]); // Dependency: initialKeywords
+
   return (
     <div className="space-y-6">
-      {/* Section 2: Volume Visualization */}
-      <VolumeFilter
-        keywords={initialKeywords} // Pass the full list for counts
-        currentFilter={volumeFilter}
-        onFilterChange={handleFilterChange}
-      />
+      {/* Section 1: Filters and Actions */}
+      <div className="flex flex-wrap gap-4 items-center justify-between">
+        <VolumeFilter
+          keywords={initialKeywords} // Pass the full list for counts
+          currentFilter={volumeFilter}
+          onFilterChange={handleFilterChange}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCopyAll}
+          disabled={!initialKeywords || initialKeywords.length === 0 || isCopied}
+        >
+          {isCopied ? (
+            <>
+              <Check className="mr-2 h-4 w-4" />
+              已複製！
+            </>
+          ) : (
+            <>
+              <Copy className="mr-2 h-4 w-4" />
+              複製所有關鍵字
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* Section 3: Keywords Table */}
       <div className="md:col-span-1 space-y-3">
