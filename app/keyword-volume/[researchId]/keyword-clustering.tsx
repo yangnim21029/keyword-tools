@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { GeneratePersonaButton } from '@/app/actions/actions-buttons';
+import { GeneratePersonaButton } from "@/app/actions/actions-buttons";
 import {
   AiClusterItem,
   KeywordVolumeItem,
-  KeywordVolumeObject
-} from '@/app/services/firebase/schema';
-import { Button } from '@/components/ui/button';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { formatVolume } from '@/lib/utils';
-import { LayoutGrid, TrendingUp, User } from 'lucide-react';
-import { useState } from 'react';
+  KeywordVolumeObject,
+} from "@/app/services/firebase/schema";
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { formatVolume } from "@/lib/utils";
+import { LayoutGrid, TrendingUp, User } from "lucide-react";
+import { useState } from "react";
 
 interface KeywordClusteringProps {
   keywordVolumeObject: KeywordVolumeObject | null;
@@ -19,16 +19,16 @@ interface KeywordClusteringProps {
 const INITIAL_VISIBLE_COUNT = 3;
 
 export default function KeywordClustering({
-  keywordVolumeObject
+  keywordVolumeObject,
 }: KeywordClusteringProps) {
   const [expandedKeywords, setExpandedKeywords] = useState<
     Record<string, boolean>
   >({});
 
   const toggleExpanded = (clusterName: string) => {
-    setExpandedKeywords(prev => ({
+    setExpandedKeywords((prev) => ({
       ...prev,
-      [clusterName]: !prev[clusterName]
+      [clusterName]: !prev[clusterName],
     }));
   };
 
@@ -63,7 +63,7 @@ export default function KeywordClustering({
   }
 
   const sortedClusters = [...(clustersWithVolume as AiClusterItem[])].sort(
-    (a, b) => (b.totalVolume ?? 0) - (a.totalVolume ?? 0)
+    (a, b) => (b.totalVolume ?? 0) - (a.totalVolume ?? 0),
   );
 
   return (
@@ -89,18 +89,18 @@ export default function KeywordClustering({
             const isExpanded = !!expandedKeywords[clusterName];
 
             const mainAxisKeywordItem = cluster.keywords?.find(
-              (kw: KeywordVolumeItem) => kw.text === cluster.mainKeyword
+              (kw: KeywordVolumeItem) => kw.text === cluster.mainKeyword,
             );
             const mainAxisKeywordText =
-              mainAxisKeywordItem?.text || cluster.mainKeyword || '-';
+              mainAxisKeywordItem?.text || cluster.mainKeyword || "-";
             const mainAxisVolume = formatVolume(
-              mainAxisKeywordItem?.searchVolume ?? 0
+              mainAxisKeywordItem?.searchVolume ?? 0,
             );
             const validKeywords = Array.isArray(cluster.keywords)
               ? cluster.keywords
               : [];
             const allSupportingKeywords = validKeywords
-              .filter(kw => kw.text !== mainAxisKeywordText)
+              .filter((kw) => kw.text !== mainAxisKeywordText)
               .sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0));
 
             const keywordsToShow = isExpanded
@@ -110,7 +110,7 @@ export default function KeywordClustering({
               allSupportingKeywords.length - keywordsToShow.length;
 
             const rowBackground =
-              index % 2 === 0 ? 'md:bg-card' : 'md:bg-muted/40';
+              index % 2 === 0 ? "md:bg-card" : "md:bg-muted/40";
             const currentPersona = cluster.personaDescription;
             const longTail = cluster.longTailKeywords;
 
@@ -137,7 +137,7 @@ export default function KeywordClustering({
                     主軸關鍵字 / 量
                   </div>
                   <div title={mainAxisKeywordText}>
-                    {mainAxisKeywordText}{' '}
+                    {mainAxisKeywordText}{" "}
                     <span className="text-xs font-mono text-indigo-600/80 dark:text-indigo-400/80">
                       ({mainAxisVolume})
                     </span>
@@ -180,7 +180,7 @@ export default function KeywordClustering({
                           onClick={() => toggleExpanded(clusterName)}
                         >
                           {isExpanded
-                            ? '顯示較少'
+                            ? "顯示較少"
                             : `+ ${remainingCount} 個更多`}
                         </Button>
                       )}

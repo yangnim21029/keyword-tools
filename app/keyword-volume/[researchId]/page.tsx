@@ -1,29 +1,29 @@
-'use server';
+"use server";
 
-import { formatVolume } from '@/lib/utils';
+import { formatVolume } from "@/lib/utils";
 
-import { Badge } from '@/components/ui/badge';
-import { Clock, Globe, Languages, ListTree, Sigma, Tag } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Clock, Globe, Languages, ListTree, Sigma, Tag } from "lucide-react";
 
 import {
   getKeywordVolumeList,
-  getKeywordVolumeObj
-} from '@/app/services/firebase';
+  getKeywordVolumeObj,
+} from "@/app/services/firebase";
 
-import { notFound } from 'next/navigation';
-import MatchingSiteBar from '../components/matching-site-bar';
+import { notFound } from "next/navigation";
+import MatchingSiteBar from "../components/matching-site-bar";
 
-import { ClusterAnalysisButton } from '@/app/actions/actions-buttons';
-import KeywordClustering from './keyword-clustering';
+import { ClusterAnalysisButton } from "@/app/actions/actions-buttons";
+import KeywordClustering from "./keyword-clustering";
 
-import { KeywordVolumeListItem } from '@/app/services/firebase/schema';
-import VolumeList from './volume-list';
+import { KeywordVolumeListItem } from "@/app/services/firebase/schema";
+import VolumeList from "./volume-list";
 
 export async function generateStaticParams() {
   const data = await getKeywordVolumeList({ limit: 50 });
 
   if (!data) {
-    console.error('Failed to fetch researches for static params');
+    console.error("Failed to fetch researches for static params");
     return [];
   }
 
@@ -31,7 +31,7 @@ export async function generateStaticParams() {
   return data
     .filter((d: KeywordVolumeListItem) => d && d.id)
     .map((d: KeywordVolumeListItem) => ({
-      researchId: d.id as string
+      researchId: d.id as string,
     }));
 }
 
@@ -46,7 +46,7 @@ interface KeywordResultPageProps {
 }
 
 export default async function KeywordResultPage({
-  params
+  params,
 }: KeywordResultPageProps) {
   const researchId = (await params).researchId;
 
@@ -57,7 +57,7 @@ export default async function KeywordResultPage({
   }
 
   if (!dataObj.id) {
-    console.error('[KeywordResultPage] Missing id in dataObj');
+    console.error("[KeywordResultPage] Missing id in dataObj");
     return (
       <div className="text-center p-8 border rounded-lg bg-destructive/10 text-destructive">
         <h3 className="text-xl font-medium mb-2">錯誤：研究數據不完整</h3>
@@ -75,7 +75,7 @@ export default async function KeywordResultPage({
     updatedAt,
     tags,
     keywords: originalKeywords,
-    clustersWithVolume
+    clustersWithVolume,
   } = dataObj;
 
   const hasValidClusters = clustersWithVolume && clustersWithVolume.length > 0;
@@ -83,10 +83,10 @@ export default async function KeywordResultPage({
   // --- Server-side Data Processing (Keep sorting, remove filtering/slicing) ---
   const validKeywords = Array.isArray(originalKeywords) ? originalKeywords : [];
   const uniqueKeywords = Array.from(
-    new Map(validKeywords.map(kw => [kw.text, kw])).values()
+    new Map(validKeywords.map((kw) => [kw.text, kw])).values(),
   );
   const sortedUniqueKeywords = [...uniqueKeywords].sort(
-    (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
+    (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0),
   );
 
   return (
@@ -102,7 +102,7 @@ export default async function KeywordResultPage({
             />
             {formatVolume(totalVolume)}
           </div>
-          <MatchingSiteBar region={region ?? ''} />
+          <MatchingSiteBar region={region ?? ""} />
         </div>
       </div>
 
@@ -110,20 +110,20 @@ export default async function KeywordResultPage({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground mb-6 border-b pb-4">
         <div className="flex items-center">
           <Globe className="mr-1.5 h-4 w-4 flex-shrink-0" />
-          地區: {region || '未指定'}
+          地區: {region || "未指定"}
         </div>
         <div className="flex items-center">
           <Languages className="mr-1.5 h-4 w-4 flex-shrink-0" />
-          語言: {language || '未指定'}
+          語言: {language || "未指定"}
         </div>
         <div className="flex items-center">
           <Clock className="mr-1.5 h-4 w-4 flex-shrink-0" />
-          最後更新:{' '}
+          最後更新:{" "}
           {updatedAt
-            ? updatedAt.toLocaleString('zh-TW', {
-                timeZone: 'Asia/Taipei'
+            ? updatedAt.toLocaleString("zh-TW", {
+                timeZone: "Asia/Taipei",
               })
-            : 'N/A'}
+            : "N/A"}
         </div>
         {tags && tags.length > 0 && (
           <div className="flex items-center gap-1">
@@ -153,7 +153,7 @@ export default async function KeywordResultPage({
           <div className="flex items-center justify-end">
             <ClusterAnalysisButton
               researchId={verifiedResearchId}
-              buttonText={hasValidClusters ? '重新分群' : '請求分群'}
+              buttonText={hasValidClusters ? "重新分群" : "請求分群"}
             />
           </div>
           {/* Section 3: Clustering Display (Keep) */}

@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from "react";
 
 interface UseRepeatActionOnHoldOptions {
   callback: () => void;
@@ -16,7 +16,7 @@ export function useRepeatActionOnHold({
   callback,
   delay = DEFAULT_DELAY_MS,
   interval = DEFAULT_INTERVAL_MS,
-  disabled = false
+  disabled = false,
 }: UseRepeatActionOnHoldOptions) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // Store callback and disabled state in refs to prevent stale closures in timers
@@ -72,10 +72,10 @@ export function useRepeatActionOnHold({
           // Schedule the next repeat
           startTimer(false); // Not the initial call anymore
         },
-        isInitialCall ? delay : interval
+        isInitialCall ? delay : interval,
       ); // Use delay for first repeat, then interval
     },
-    [delay, interval, stopTimer]
+    [delay, interval, stopTimer],
   );
 
   const handleMouseDown = useCallback(() => {
@@ -92,6 +92,6 @@ export function useRepeatActionOnHold({
   return {
     onMouseDown: handleMouseDown,
     onMouseUp: handleMouseUpOrLeave,
-    onMouseLeave: handleMouseUpOrLeave
+    onMouseLeave: handleMouseUpOrLeave,
   };
 }

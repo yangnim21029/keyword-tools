@@ -1,12 +1,13 @@
-'use server';
+"use server";
 
-import { openai } from '@ai-sdk/openai'; // Vercel AI SDK - OpenAI Provider
-import { generateText } from 'ai'; // Vercel AI SDK - Core
-import { AI_MODELS } from '../global-config';
+import { generateText } from "ai"; // Vercel AI SDK - Core
+import { AI_MODELS } from "../global-config";
 
 // Check for OpenAI API Key
 if (!process.env.OPENAI_API_KEY) {
-    console.warn("OPENAI_API_KEY environment variable is not set. AI calls will likely fail.");
+  console.warn(
+    "OPENAI_API_KEY environment variable is not set. AI calls will likely fail.",
+  );
 }
 
 interface GenerateContentSuggestionsParams {
@@ -18,12 +19,12 @@ interface GenerateContentSuggestionsParams {
  * via Vercel AI SDK and returns them as a formatted string.
  */
 export async function generateContentSuggestionsAction(
-  params: GenerateContentSuggestionsParams
+  params: GenerateContentSuggestionsParams,
 ): Promise<string> {
   const { keyword } = params;
 
   if (!keyword) {
-    throw new Error('Keyword is required.');
+    throw new Error("Keyword is required.");
   }
 
   // --- Construct the AI Prompt (Now asking for text list) ---
@@ -47,22 +48,26 @@ export async function generateContentSuggestionsAction(
   console.log(`Generating content suggestions for keyword: ${keyword}`);
 
   try {
-    // --- Actual AI Call --- 
+    // --- Actual AI Call ---
     const { text } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: prompt
+      prompt: prompt,
     });
     console.log("Raw AI Response Text (Expected List):", text);
 
-    // --- Removed JSON Parsing and Formatting --- 
+    // --- Removed JSON Parsing and Formatting ---
     // No need to parse JSON anymore.
     // The raw text is assumed to be the desired formatted list.
 
     return text; // RETURN THE RAW TEXT FROM AI
-
   } catch (error) {
-    console.error('Error generating content suggestions:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during AI suggestion generation.';
-    throw new Error(`Failed to generate content suggestions for "${keyword}". Reason: ${errorMessage}`);
+    console.error("Error generating content suggestions:", error);
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "An unknown error occurred during AI suggestion generation.";
+    throw new Error(
+      `Failed to generate content suggestions for "${keyword}". Reason: ${errorMessage}`,
+    );
   }
 }

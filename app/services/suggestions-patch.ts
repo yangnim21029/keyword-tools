@@ -1,7 +1,7 @@
-import type { KeywordSuggestionResult } from '@/app/services/firebase';
-import { hasSimplifiedChinese } from '@/lib/utils';
-import { ALPHABET, SYMBOLS } from '../global-config';
-import { fetchAutocomplete } from './suggestion.service';
+import type { KeywordSuggestionResult } from "@/app/services/firebase";
+import { hasSimplifiedChinese } from "@/lib/utils";
+import { ALPHABET, SYMBOLS } from "../global-config";
+import { fetchAutocomplete } from "./suggestion.service";
 
 // Interface for performFetchKeywordSuggestions parameters
 interface performFetchKeywordSuggestionsParams {
@@ -24,21 +24,21 @@ async function fetchExpandedSuggestions(
   baseQuery: string,
   region: string,
   language: string,
-  characters: string[]
+  characters: string[],
 ): Promise<string[]> {
   // 建立在查詢詞「前面」加上字元的 API 請求 Promises
-  const prefixPromises = characters.map(char =>
-    fetchAutocomplete(`${char} ${baseQuery}`, region, language)
+  const prefixPromises = characters.map((char) =>
+    fetchAutocomplete(`${char} ${baseQuery}`, region, language),
   );
   // 建立在查詢詞「後面」加上字元的 API 請求 Promises
-  const suffixPromises = characters.map(char =>
-    fetchAutocomplete(`${baseQuery} ${char}`, region, language)
+  const suffixPromises = characters.map((char) =>
+    fetchAutocomplete(`${baseQuery} ${char}`, region, language),
   );
 
   // 同時執行所有前綴和後綴的 API 請求
   const [prefixResults, suffixResults] = await Promise.all([
     Promise.all(prefixPromises), // 等待所有前綴請求完成
-    Promise.all(suffixPromises) // 等待所有後綴請求完成
+    Promise.all(suffixPromises), // 等待所有後綴請求完成
   ]);
 
   // 將兩組結果（都是二維陣列）攤平成一維陣列並合併
@@ -55,11 +55,11 @@ export async function performFetchKeywordSuggestions({
   region,
   language,
   useAlphabet = false,
-  useSymbols = false
+  useSymbols = false,
 }: performFetchKeywordSuggestionsParams): Promise<KeywordSuggestionResult> {
   console.log(
-    '[performFetchKeywordSuggestions] Starting suggestion fetch for:',
-    query
+    "[performFetchKeywordSuggestions] Starting suggestion fetch for:",
+    query,
   );
 
   const trimQuery = query.trim();
@@ -68,7 +68,7 @@ export async function performFetchKeywordSuggestions({
     // 如果查詢詞為空，直接回傳空結果
     return {
       suggestions: [],
-      sourceInfo: '數據來源: 無有效查詢詞'
+      sourceInfo: "數據來源: 無有效查詢詞",
     };
   }
 
@@ -80,69 +80,69 @@ export async function performFetchKeywordSuggestions({
     // 2. 如果啟用字母擴展，呼叫輔助函式取得字母擴展建議
     if (useAlphabet) {
       console.log(
-        '[performFetchKeywordSuggestions] Fetching alphabet suggestions...'
+        "[performFetchKeywordSuggestions] Fetching alphabet suggestions...",
       );
       const alphabetSuggestions = await fetchExpandedSuggestions(
         trimQuery,
         region,
         language,
-        ALPHABET
+        ALPHABET,
       );
       allSuggestions = allSuggestions.concat(alphabetSuggestions); // 合併結果
       console.log(
-        '[performFetchKeywordSuggestions] Alphabet suggestions fetched.'
+        "[performFetchKeywordSuggestions] Alphabet suggestions fetched.",
       );
     }
 
     // 3. 如果啟用符號擴展，呼叫輔助函式取得符號擴展建議
     if (useSymbols) {
       console.log(
-        '[performFetchKeywordSuggestions] Fetching symbol suggestions...'
+        "[performFetchKeywordSuggestions] Fetching symbol suggestions...",
       );
       const symbolSuggestions = await fetchExpandedSuggestions(
         trimQuery,
         region,
         language,
-        SYMBOLS
+        SYMBOLS,
       );
       allSuggestions = allSuggestions.concat(symbolSuggestions); // 合併結果
       console.log(
-        '[performFetchKeywordSuggestions] Symbol suggestions fetched.'
+        "[performFetchKeywordSuggestions] Symbol suggestions fetched.",
       );
     }
 
     // 4. 過濾與去重
     console.log(
-      `[performFetchKeywordSuggestions] Total suggestions before filtering: ${allSuggestions.length}`
+      `[performFetchKeywordSuggestions] Total suggestions before filtering: ${allSuggestions.length}`,
     );
     // Filter suggestions that do *not* have simplified Chinese
     const filteredSuggestions = allSuggestions.filter(
-      suggestion => !hasSimplifiedChinese(suggestion)
+      (suggestion) => !hasSimplifiedChinese(suggestion),
     );
     const uniqueSuggestions: string[] = [...new Set(filteredSuggestions)]; // No need for type assertion if input is already string[]
     console.log(
-      `[performFetchKeywordSuggestions] Unique suggestions after filtering: ${uniqueSuggestions.length}`
+      `[performFetchKeywordSuggestions] Unique suggestions after filtering: ${uniqueSuggestions.length}`,
     );
 
     // 6. 回傳成功結果
     return {
       suggestions: uniqueSuggestions,
-      sourceInfo: '數據來源: Google Autocomplete API'
+      sourceInfo: "數據來源: Google Autocomplete API",
     };
   } catch (error) {
     // 7. 處理錯誤情況
     console.error(
-      '[performFetchKeywordSuggestions] Error fetching suggestions:',
-      error
+      "[performFetchKeywordSuggestions] Error fetching suggestions:",
+      error,
     );
     const errorMessage =
       error instanceof Error
         ? error.message
-        : 'Unknown error fetching keyword suggestions';
+        : "Unknown error fetching keyword suggestions";
     return {
       suggestions: [],
-      sourceInfo: '數據來源: 獲取失敗',
-      error: errorMessage
+      sourceInfo: "數據來源: 獲取失敗",
+      error: errorMessage,
     };
   }
 }
@@ -155,36 +155,37 @@ interface GetUrlSuggestionsParams {
 }
 
 export async function getUrlSuggestions(
-  formData: GetUrlSuggestionsParams
+  formData: GetUrlSuggestionsParams,
 ): Promise<KeywordSuggestionResult> {
   const { url, region, language } = formData;
 
   if (!url) {
     return {
       suggestions: [],
-      sourceInfo: '數據來源: 輸入驗證失敗'
+      sourceInfo: "數據來源: 輸入驗證失敗",
     };
   }
 
   try {
     // Extract potential keywords from URL
     const { hostname, pathname } = new URL(url);
-    const domain = hostname.replace(/^www\./, '');
+    const domain = hostname.replace(/^www\./, "");
     const domainParts = domain
-      .split('.')
+      .split(".")
       .filter(
-        part => !['com', 'org', 'net', 'edu', 'gov', 'io', 'co'].includes(part)
+        (part) =>
+          !["com", "org", "net", "edu", "gov", "io", "co"].includes(part),
       );
     const pathParts = pathname
-      .split('/')
-      .filter(part => part && part.length > 2)
-      .map(part => part.replace(/-|_/g, ' '));
+      .split("/")
+      .filter((part) => part && part.length > 2)
+      .map((part) => part.replace(/-|_/g, " "));
     const potentialKeywords = [...domainParts, ...pathParts];
 
     if (potentialKeywords.length === 0) {
       return {
         suggestions: [],
-        sourceInfo: '數據來源: URL 解析失敗'
+        sourceInfo: "數據來源: URL 解析失敗",
       };
     }
 
@@ -198,19 +199,19 @@ export async function getUrlSuggestions(
     // Filter and deduplicate
     // Filter suggestions that do *not* have simplified Chinese
     const filteredSuggestions = allSuggestions.filter(
-      suggestion => !hasSimplifiedChinese(suggestion)
+      (suggestion) => !hasSimplifiedChinese(suggestion),
     );
     const uniqueSuggestions: string[] = [...new Set(filteredSuggestions)]; // No need for type assertion
 
     return {
       suggestions: uniqueSuggestions,
-      sourceInfo: '數據來源: URL 分析 + Google Autocomplete API'
+      sourceInfo: "數據來源: URL 分析 + Google Autocomplete API",
     };
   } catch (error) {
     return {
       suggestions: [],
-      error: error instanceof Error ? error.message : '獲取 URL 建議失敗',
-      sourceInfo: '數據來源: 獲取失敗'
+      error: error instanceof Error ? error.message : "獲取 URL 建議失敗",
+      sourceInfo: "數據來源: 獲取失敗",
     };
   }
 }

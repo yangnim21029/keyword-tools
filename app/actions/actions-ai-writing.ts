@@ -1,70 +1,68 @@
-'use server';
+"use server";
 
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai'; // Removed generateObject for now
-import { MEDIASITE_DATA } from '../global-config';
-import { AI_MODELS } from '../global-config';
+import { generateText } from "ai"; // Removed generateObject for now
+import { AI_MODELS, MEDIASITE_DATA } from "../global-config";
 // Import fine-tune data
-import { z } from 'zod';
+import { z } from "zod";
 import {
   LANGUAGE_FINE_TUNE_DATA,
   MEDIA_SITE_FINE_TUNE_DATA,
-  THEME_FINE_TUNE_DATA
-} from '../prompt/fine-tune';
+  THEME_FINE_TUNE_DATA,
+} from "../prompt/fine-tune";
 
 // Import the necessary type
 
-import { getKeywordVolumeList } from '../services/firebase';
-import { KeywordVolumeListItem } from '../services/firebase/schema';
-import { generateContentSuggestionsAction } from './use-content-ai';
+import { getKeywordVolumeList } from "../services/firebase";
+import { KeywordVolumeListItem } from "../services/firebase/schema";
+import { generateContentSuggestionsAction } from "./actions-ai-content-ux";
 
 function getFineTuneDataStrings(names?: string[]): string {
-  if (!names || names.length === 0) return '';
+  if (!names || names.length === 0) return "";
   const allData = [
     ...THEME_FINE_TUNE_DATA,
     ...MEDIA_SITE_FINE_TUNE_DATA,
-    ...LANGUAGE_FINE_TUNE_DATA
+    ...LANGUAGE_FINE_TUNE_DATA,
   ];
-  const filteredData = allData.filter(item => names.includes(item.name));
-  if (filteredData.length === 0) return '';
-  const formattedStrings = filteredData.map(item => {
-    const description = item.data_set_description || 'No description provided';
+  const filteredData = allData.filter((item) => names.includes(item.name));
+  if (filteredData.length === 0) return "";
+  const formattedStrings = filteredData.map((item) => {
+    const description = item.data_set_description || "No description provided";
     const dataString = JSON.stringify(item.data, null, 2);
     return `===\n${description}\n${dataString}\n===`;
   });
   return `\n\n---
-檢查文章，不要犯以下錯誤\n===\n${formattedStrings.join('\n\n')}`;
+檢查文章，不要犯以下錯誤\n===\n${formattedStrings.join("\n\n")}`;
 }
 
 function formatKeywordReportForPrompt(
   report: any,
-  selectedClusterName?: string | null
+  selectedClusterName?: string | null,
 ): string {
-  if (!report || typeof report !== 'object' || Object.keys(report).length === 0)
-    return '';
+  if (!report || typeof report !== "object" || Object.keys(report).length === 0)
+    return "";
   const formatNumber = (num: number | null | undefined): string =>
-    typeof num === 'number' ? num.toLocaleString() : 'N/A';
+    typeof num === "number" ? num.toLocaleString() : "N/A";
 
   // Format and sort keywords with volume >= 100
   const formatKeywords = (keywords: any[] | undefined): string => {
-    if (!keywords) return 'No specific keywords found.';
+    if (!keywords) return "No specific keywords found.";
     const highVolumeKeywords = keywords.filter(
-      k => k && typeof k.searchVolume === 'number' && k.searchVolume >= 100
+      (k) => k && typeof k.searchVolume === "number" && k.searchVolume >= 100,
     );
     highVolumeKeywords.sort(
-      (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0)
+      (a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0),
     );
     if (highVolumeKeywords.length === 0)
-      return 'No specific keywords found (Volume >= 100).';
+      return "No specific keywords found (Volume >= 100).";
     // Add newline and indent for each keyword
     return `\n      - ${highVolumeKeywords
       .map(
         (k: any) =>
           `${k?.text || JSON.stringify(k)} (Vol: ${formatNumber(
-            k?.searchVolume
-          )})`
+            k?.searchVolume,
+          )})`,
       )
-      .join('\n      - ')}`;
+      .join("\n      - ")}`;
   };
 
   // Collector for low-volume keyword OBJECTS
@@ -74,16 +72,16 @@ function formatKeywordReportForPrompt(
     keywords.forEach((k: any) => {
       if (
         k &&
-        typeof k.searchVolume === 'number' &&
+        typeof k.searchVolume === "number" &&
         k.searchVolume < 100 &&
         k.text
       ) {
         if (
-          !lowVolumeKeywordObjects.some(existing => existing.text === k.text)
+          !lowVolumeKeywordObjects.some((existing) => existing.text === k.text)
         ) {
           lowVolumeKeywordObjects.push({
             text: k.text,
-            searchVolume: k.searchVolume
+            searchVolume: k.searchVolume,
           });
         }
       }
@@ -105,7 +103,7 @@ function formatKeywordReportForPrompt(
 
   if (initialLowVolumeCount > 60) {
     let filteredKeywords = lowVolumeKeywordObjects.filter(
-      k => k.searchVolume !== 0
+      (k) => k.searchVolume !== 0,
     );
     if (filteredKeywords.length > 100) {
       filteredKeywords = filteredKeywords.slice(0, 100);
@@ -120,9 +118,9 @@ function formatKeywordReportForPrompt(
 
   // Build Output String
   let output = `\n- **使用以下關鍵字研究報告** (Keyword Research Report):\n`;
-  output += `  - 主查詢 (Main Query): ${report.query || 'N/A'}\n`;
-  output += `  - 語言 (Language): ${report.language || 'N/A'}\n`;
-  output += `  - 地區 (Region): ${report.region || 'N/A'}\n`;
+  output += `  - 主查詢 (Main Query): ${report.query || "N/A"}\n`;
+  output += `  - 語言 (Language): ${report.language || "N/A"}\n`;
+  output += `  - 地區 (Region): ${report.region || "N/A"}\n`;
 
   if (
     report.clustersWithVolume &&
@@ -132,23 +130,23 @@ function formatKeywordReportForPrompt(
     output += `  - **主題分群** (Clusters):\n`;
     const overallTotalVolume = report.clustersWithVolume.reduce(
       (sum: number, cluster: any) => sum + (cluster.totalVolume || 0),
-      0
+      0,
     );
     output += `  - 總搜尋量 (Total Volume from Clusters): ${formatNumber(
-      overallTotalVolume
+      overallTotalVolume,
     )}\n`;
     report.clustersWithVolume.forEach((cluster: any, index: number) => {
       const clusterName = cluster.clusterName || `Cluster ${index + 1}`;
       const marker =
         selectedClusterName && clusterName === selectedClusterName
-          ? ' [TARGET CLUSTER]'
-          : '';
+          ? " [TARGET CLUSTER]"
+          : "";
       const clusterVol = formatNumber(cluster.totalVolume);
       output += `    - **分群 ${
         index + 1
       }: ${clusterName}**${marker} (Volume: ${clusterVol})\n`;
       output += `      - 關鍵字 (Keywords): ${formatKeywords(
-        cluster.keywords
+        cluster.keywords,
       )}\n`; // Uses filtered & sorted (>=100) keywords
     });
   } else if (
@@ -158,10 +156,10 @@ function formatKeywordReportForPrompt(
   ) {
     const totalVolumeFromKeywords = report.keywords.reduce(
       (sum: number, kw: any) => sum + (kw.searchVolume || 0),
-      0
+      0,
     );
     output += `  - 總搜尋量 (Total Volume from Keywords): ${formatNumber(
-      totalVolumeFromKeywords
+      totalVolumeFromKeywords,
     )}\n`;
     output += `  - **關鍵字** (Keywords - No specific clusters):\n`;
     output += `    - ${formatKeywords(report.keywords)}\n`; // Uses filtered & sorted (>=100) keywords
@@ -176,14 +174,14 @@ function formatKeywordReportForPrompt(
 `;
     // Add newline and indent for each topic reference
     output += `  - 主題參考 (Topic References):\n  - ${finalLowVolumeKeywords
-      .map(k => k.text)
-      .join('\n  - ')}\n`;
+      .map((k) => k.text)
+      .join("\n  - ")}\n`;
   }
 
   output += `\n  - 報告更新時間 (Report Updated): ${
-    report.updatedAt ? new Date(report.updatedAt).toLocaleString() : 'N/A'
+    report.updatedAt ? new Date(report.updatedAt).toLocaleString() : "N/A"
   }\n`;
-  return output + '\n';
+  return output + "\n";
 }
 // --- END: Helper Functions ---
 
@@ -196,16 +194,16 @@ const generateActionPlanStepInputSchema = z.object({
   titleRecommendationText: z.string().optional().nullable(), // Make optional/nullable
   betterHaveRecommendationText: z.string().optional().nullable(), // Make optional/nullable
   keywordReport: z.any().optional().nullable(), // Add keywordReport
-  selectedClusterName: z.string().optional().nullable() // Add selectedClusterName
+  selectedClusterName: z.string().optional().nullable(), // Add selectedClusterName
 });
 type GenerateActionPlanStepInput = z.infer<
   typeof generateActionPlanStepInputSchema
 >;
 
 async function generateActionPlanInternal(
-  input: GenerateActionPlanStepInput
+  input: GenerateActionPlanStepInput,
 ): Promise<string> {
-  console.log('[generateActionPlanInternal] Generating action plan...');
+  console.log("[generateActionPlanInternal] Generating action plan...");
   // Note: contentTypeReportText and userIntentReportText now contain the *recommendation* text
   const {
     keyword,
@@ -215,17 +213,17 @@ async function generateActionPlanInternal(
     titleRecommendationText,
     betterHaveRecommendationText,
     keywordReport,
-    selectedClusterName
+    selectedClusterName,
   } = input;
 
-  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+  const mediaSite = MEDIASITE_DATA.find((site) => site.name === mediaSiteName);
   if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
   const mediaSiteDataString = JSON.stringify(mediaSite);
 
   // Format keyword report if available (pass selectedClusterName for highlighting)
   const keywordReportString = formatKeywordReportForPrompt(
     keywordReport,
-    selectedClusterName
+    selectedClusterName,
   );
 
   // Restore original full prompt text here
@@ -240,11 +238,11 @@ You are an SEO Project Manager with knowledge in consumer behavior theory, tradi
 
 1. **Accroding and Read the SEO Analysis Results to write a detailed SEO action plan**:
     - Include Key Topics/Trust Factors ('Better Have'): ${
-      betterHaveRecommendationText ?? 'N/A'
+      betterHaveRecommendationText ?? "N/A"
     }
-    - choose Content Type Analysis: ${contentTypeReportText ?? 'N/A'} 
-    - choose User Intent Analysis: ${userIntentReportText ?? 'N/A'}
-    - choose Title Analysis: ${titleRecommendationText ?? 'N/A'}
+    - choose Content Type Analysis: ${contentTypeReportText ?? "N/A"} 
+    - choose User Intent Analysis: ${userIntentReportText ?? "N/A"}
+    - choose Title Analysis: ${titleRecommendationText ?? "N/A"}
 2. **Identify Theme**:
     - Analyze the keyword to discern the main theme
 3. **Create Action Plan**:
@@ -282,24 +280,24 @@ h2 Keyword need to cover in article
 
   const { text: actionPlanText } = await generateText({
     model: AI_MODELS.BASE,
-    prompt: prompt
+    prompt: prompt,
   });
-  console.log('[generateActionPlanInternal] Generated Action Plan.');
+  console.log("[generateActionPlanInternal] Generated Action Plan.");
   return actionPlanText;
 }
 
 export async function generateActionPlanStep(
-  input: GenerateActionPlanStepInput
+  input: GenerateActionPlanStepInput,
 ): Promise<{ actionPlanText: string }> {
   const validation = generateActionPlanStepInputSchema.safeParse(input);
   if (!validation.success)
     throw new Error(
-      `Invalid input for generateActionPlanStep: ${validation.error.format()}`
+      `Invalid input for generateActionPlanStep: ${validation.error.format()}`,
     );
 
   const validatedInput = validation.data; // Use validated data
   console.log(
-    `[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`
+    `[Action Step 6] Generating Action Plan for Keyword: ${validatedInput.keyword}`,
   );
   // Pass the keywordReport from the validated input to the internal function
   const actionPlanText = await generateActionPlanInternal(validatedInput);
@@ -317,17 +315,17 @@ const generateFinalPromptStepInputSchema = z.object({
   betterHaveRecommendationText: z.string().optional().nullable(),
   keywordReport: z.any().optional().nullable(), // Keep as any or define schema
   selectedClusterName: z.string().optional().nullable(),
-  outlineRefName: z.string().optional().default(''),
-  fineTuneNames: z.array(z.string()).optional()
+  outlineRefName: z.string().optional().default(""),
+  fineTuneNames: z.array(z.string()).optional(),
 });
 type GenerateFinalPromptStepInput = z.infer<
   typeof generateFinalPromptStepInputSchema
 >;
 
 async function generateFinalPromptInternal(
-  input: GenerateFinalPromptStepInput
+  input: GenerateFinalPromptStepInput,
 ): Promise<string> {
-  console.log('[generateFinalPromptInternal] Generating final prompt...');
+  console.log("[generateFinalPromptInternal] Generating final prompt...");
   const {
     keyword,
     actionPlan,
@@ -338,29 +336,29 @@ async function generateFinalPromptInternal(
     keywordReport,
     selectedClusterName,
     outlineRefName,
-    fineTuneNames
+    fineTuneNames,
   } = input;
 
-  const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+  const mediaSite = MEDIASITE_DATA.find((site) => site.name === mediaSiteName);
   if (!mediaSite) throw new Error(`Media site not found: ${mediaSiteName}`);
   const mediaSiteDataString = JSON.stringify(mediaSite);
 
   const keywordReportString = selectedClusterName
-    ? '<!-- Keyword report details were incorporated into the Action Plan -->'
+    ? "<!-- Keyword report details were incorporated into the Action Plan -->"
     : formatKeywordReportForPrompt(keywordReport, selectedClusterName);
 
   const fineTuneDataString = getFineTuneDataStrings(fineTuneNames);
 
-  const serpTextAnalysisPoints = betterHaveRecommendationText || 'N/A';
+  const serpTextAnalysisPoints = betterHaveRecommendationText || "N/A";
 
   const contentTemplate = getOutlineFromReference(outlineRefName);
 
   console.log(
-    '[generateFinalPromptInternal] Fetching content suggestions string...'
+    "[generateFinalPromptInternal] Fetching content suggestions string...",
   );
   const suggestionsString = await generateContentSuggestionsAction({ keyword });
   console.log(
-    '[generateFinalPromptInternal] Content suggestions string fetched.'
+    "[generateFinalPromptInternal] Content suggestions string fetched.",
   );
 
   const systemPrompt = `
@@ -448,22 +446,22 @@ ${suggestionsString}
 
   const finalPrompt: string = basePrompt + fineTuneDataString;
   console.log(
-    '[generateFinalPromptInternal] Final prompt generation complete.'
+    "[generateFinalPromptInternal] Final prompt generation complete.",
   );
   return finalPrompt;
 }
 
 export async function generateFinalPromptStep(
-  input: GenerateFinalPromptStepInput
+  input: GenerateFinalPromptStepInput,
 ): Promise<{ finalPrompt: string }> {
   const validation = generateFinalPromptStepInputSchema.safeParse(input);
   if (!validation.success)
     throw new Error(
-      `Invalid input for generateFinalPromptStep: ${validation.error.format()}`
+      `Invalid input for generateFinalPromptStep: ${validation.error.format()}`,
     );
 
   console.log(
-    `[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`
+    `[Action Step 7] Generating Final Prompt for Keyword: ${input.keyword}`,
   );
   const finalPrompt = await generateFinalPromptInternal(input);
   console.log(`[Action Step 7] Final Prompt generation complete.`);
@@ -472,14 +470,14 @@ export async function generateFinalPromptStep(
 
 const outlineReference = {
   recipe: {
-    name: 'recipe',
+    name: "recipe",
     reference: `
      ## xx食材介紹與功效引言
      ## 食譜
      ## FAQ
      ## 連結
-     `
-  }
+     `,
+  },
 };
 
 function getOutlineFromReference(refName: string) {
@@ -487,11 +485,11 @@ function getOutlineFromReference(refName: string) {
   // If refName is empty or not found, provide a default/empty structure
   if (!reference) {
     console.warn(
-      `Outline reference '${refName}' not found. Using default empty outline.`
+      `Outline reference '${refName}' not found. Using default empty outline.`,
     );
     return {
-      name: 'default',
-      reference: '<!-- No specific outline requested -->'
+      name: "default",
+      reference: "<!-- No specific outline requested -->",
     };
   }
   return reference; // Return the object { name: '...', reference: '...' }
@@ -499,7 +497,7 @@ function getOutlineFromReference(refName: string) {
 
 export async function submitGetKeywordVolumeList({
   limit,
-  offset
+  offset,
 }: {
   limit: number;
   offset: number;

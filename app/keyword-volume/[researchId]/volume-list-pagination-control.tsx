@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { Button } from '@/components/ui/button';
-import { useRepeatActionOnHold } from '@/hooks/useRepeatActionOnHold';
-import { useCallback } from 'react';
+import { Button } from "@/components/ui/button";
+import { useRepeatActionOnHold } from "@/hooks/useRepeatActionOnHold";
+import { useCallback } from "react";
 
 interface PaginationControlsProps {
   currentPage: number;
@@ -13,7 +13,7 @@ interface PaginationControlsProps {
 export function PaginationControls({
   currentPage,
   totalPages,
-  onPageChange
+  onPageChange,
 }: PaginationControlsProps) {
   const handleNextPage = useCallback(() => {
     if (currentPage < totalPages) {
@@ -29,12 +29,12 @@ export function PaginationControls({
 
   const nextPageHandlers = useRepeatActionOnHold({
     callback: handleNextPage,
-    disabled: currentPage >= totalPages
+    disabled: currentPage >= totalPages,
   });
 
   const prevPageHandlers = useRepeatActionOnHold({
     callback: handlePrevPage,
-    disabled: currentPage <= 1
+    disabled: currentPage <= 1,
   });
 
   if (totalPages <= 1) {

@@ -1,19 +1,19 @@
 import {
   getSerpResultList,
-  getTotalSerpDataCount
-} from '../services/firebase/data-serp-result';
+  getTotalSerpDataCount,
+} from "../services/firebase/data-serp-result";
 
-import Link from 'next/link';
+import Link from "next/link";
 
 // --- Shadcn UI Imports ---
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
-} from '@/components/ui/card';
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -21,11 +21,11 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
-} from '@/components/ui/table';
-import { Info } from 'lucide-react';
-import CreateNewSerpForm from './create-new-serp-form';
-import { TestAiButton } from '@/app/actions/actions-buttons';
+  TableRow,
+} from "@/components/ui/table";
+import { Info } from "lucide-react";
+import CreateNewSerpForm from "./create-new-serp-form";
+import { TestAiButton } from "@/app/actions/actions-buttons";
 // --- End Shadcn UI Imports ---
 
 // import { CreateNewSerpButton } from '../actions/actions-buttons'; // Assuming this button allows setting params later
@@ -43,7 +43,7 @@ export default async function SerpAnalysisListPage() {
         <Info className="h-4 w-4" />
         <AlertTitle>Total Analyses</AlertTitle>
         <AlertDescription>
-          You have analyzed a total of{' '}
+          You have analyzed a total of{" "}
           <strong>{totalAnalyzedCount.toLocaleString()}</strong> SERP pages.
         </AlertDescription>
       </Alert>
@@ -79,23 +79,23 @@ export default async function SerpAnalysisListPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                serpResultList.map(serp => (
+                serpResultList.map((serp) => (
                   <TableRow key={serp.id}>
                     <TableCell className="font-medium">
                       <Link
                         href={`/serp-ai/${serp.id}`}
                         className="hover:underline text-blue-600"
                       >
-                        {serp.keyword || 'N/A'}
+                        {serp.keyword || "N/A"}
                       </Link>
                     </TableCell>
-                    <TableCell>{serp.region || 'N/A'}</TableCell>
-                    <TableCell>{serp.language || 'N/A'}</TableCell>
+                    <TableCell>{serp.region || "N/A"}</TableCell>
+                    <TableCell>{serp.language || "N/A"}</TableCell>
                     <TableCell className="text-right">
                       {serp.timestamp &&
-                      typeof serp.timestamp.toDate === 'function'
+                      typeof serp.timestamp.toDate === "function"
                         ? serp.timestamp.toDate().toLocaleDateString()
-                        : 'N/A'}
+                        : "N/A"}
                     </TableCell>
                   </TableRow>
                 ))

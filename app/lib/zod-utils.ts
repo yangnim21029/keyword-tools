@@ -1,16 +1,16 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /**
  * 處理 Zod 驗證錯誤並返回標準化的錯誤對象
  */
 export function formatZodError(error: z.ZodError) {
   return {
-    status: 'error',
-    code: 'VALIDATION_ERROR',
-    errors: error.errors.map(err => ({
-      path: err.path.join('.'),
-      message: err.message
-    }))
+    status: "error",
+    code: "VALIDATION_ERROR",
+    errors: error.errors.map((err) => ({
+      path: err.path.join("."),
+      message: err.message,
+    })),
   };
 }
 
@@ -20,13 +20,13 @@ export function formatZodError(error: z.ZodError) {
 export function createApiResponse<T>(
   success: boolean,
   data?: T,
-  error?: unknown
+  error?: unknown,
 ) {
   return {
     success,
     data: data || null,
     error: error || null,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -41,8 +41,8 @@ export function createApiResponse<T>(
 export function safeParse<T extends z.ZodType>(
   schema: T,
   data: unknown,
-  label: string = '數據',
-  throwOnError: boolean = false
+  label: string = "數據",
+  throwOnError: boolean = false,
 ): z.infer<T> | null {
   const result = schema.safeParse(data);
 

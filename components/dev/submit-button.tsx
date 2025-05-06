@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useFormStatus } from 'react-dom';
-import { LoadingButton } from '@/components/ui/LoadingButton'; // Adjust path if needed
+import { useFormStatus } from "react-dom";
+import { LoadingButton } from "@/components/ui/LoadingButton"; // Adjust path if needed
 
 export function SubmitButton() {
   const { pending } = useFormStatus();
@@ -16,4 +16,4 @@ export function SubmitButton() {
       查詢
     </LoadingButton>
   );
-} 
+}

@@ -1,15 +1,40 @@
-"use client"
+"use client";
 
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { BarChart, Box, HelpCircle, List, Pen, Search, Settings, type LucideProps } from "lucide-react";
+import {
+  BarChart,
+  Box,
+  HelpCircle,
+  List,
+  Pen,
+  Search,
+  Settings,
+  type LucideProps,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
-import { type ForwardRefExoticComponent, type RefAttributes, useState, useMemo } from "react";
+import {
+  type ForwardRefExoticComponent,
+  type RefAttributes,
+  useState,
+  useMemo,
+} from "react";
 import { toast } from "sonner";
-import { NAV_ITEMS, SETTINGS_NAV_ITEM, type IconName, type NavItem, type SettingsItem } from "./global-config";
+import {
+  NAV_ITEMS,
+  SETTINGS_NAV_ITEM,
+  type IconName,
+  type NavItem,
+  type SettingsItem,
+} from "./global-config";
 
 const iconMap: {
   [key in IconName]: ForwardRefExoticComponent<
@@ -48,7 +73,9 @@ export function Navigation({ className }: NavigationProps) {
     >
       <div className="flex h-14 items-center justify-center border-b px-2">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <span className={cn("sr-only", isExpanded && "sr-only-hidden")}>PL</span>
+          <span className={cn("sr-only", isExpanded && "sr-only-hidden")}>
+            PL
+          </span>
           <span className={cn("whitespace-nowrap", !isExpanded && "sr-only")}>
             Keyword Tools
           </span>
@@ -70,7 +97,7 @@ export function Navigation({ className }: NavigationProps) {
                         ? "bg-muted text-foreground"
                         : item.isPrimary
                           ? "text-muted-foreground"
-                          : "text-muted-foreground/60"
+                          : "text-muted-foreground/60",
                     )}
                     aria-current={isActive ? "page" : undefined}
                   >
@@ -78,12 +105,15 @@ export function Navigation({ className }: NavigationProps) {
                     <span
                       className={cn(
                         "flex items-center gap-1.5 overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
-                        isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
+                        isExpanded ? "w-auto opacity-100" : "w-0 opacity-0",
                       )}
                     >
                       {item.label}
                       {isExpanded && item.isPrimary && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" aria-hidden="true" />
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-green-500"
+                          aria-hidden="true"
+                        />
                       )}
                     </span>
                   </Link>
@@ -105,13 +135,15 @@ export function Navigation({ className }: NavigationProps) {
             "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
           )}
           aria-label={settingsItem.label}
-          onClick={() => toast.info('施工中')}
+          onClick={() => toast.info("施工中")}
         >
-          {React.createElement(iconMap[settingsItem.icon], { className: "h-5 w-5 flex-shrink-0" })}
+          {React.createElement(iconMap[settingsItem.icon], {
+            className: "h-5 w-5 flex-shrink-0",
+          })}
           <span
             className={cn(
               "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
-              isExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
+              isExpanded ? "w-auto opacity-100" : "w-0 opacity-0",
             )}
           >
             {settingsItem.label}

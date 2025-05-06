@@ -1,18 +1,32 @@
 'use client';
 
-import React, { useState } from 'react';
 import { FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Clock, Lightbulb, Tags, ListChecks, FileCheck, Target, GitMerge, Sparkles as SparklesIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  FileCheck,
+  GitMerge,
+  Lightbulb,
+  Tags,
+  Target
+} from 'lucide-react';
 
 // Removed V1 and Recommendation buttons
 import {
   AnalyzeContentSummaryButton,
+  AnalyzeRankingFactorsRecommendationButton,
   // AnalyzeRankingFactorsButton, // Removed V1
-  AnalyzeRankingFactorsV2Button,
-  AnalyzeRankingFactorsRecommendationButton, // Restore import
+  AnalyzeRankingFactorsV2Button, // Restore import
   GenerateGraphButton,
   OrganizeTextContentButton // Import the new button
 } from '@/app/actions/actions-buttons';
@@ -42,7 +56,10 @@ interface ScrapeResultDisplayProps {
   scrapeId: string;
 }
 
-export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResultDisplayProps) {
+export default function ScrapeResultDisplay({
+  scrapeData,
+  scrapeId
+}: ScrapeResultDisplayProps) {
   if (!scrapeData) {
     return (
       <Card className="border-destructive">
@@ -52,7 +69,10 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load scrape data for ID: {scrapeId}. It might not exist or there was an error fetching it.</p>
+          <p>
+            Could not load scrape data for ID: {scrapeId}. It might not exist or
+            there was an error fetching it.
+          </p>
         </CardContent>
       </Card>
     );
@@ -61,11 +81,23 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'complete':
-        return <Badge variant="secondary"><CheckCircle2 className="h-3 w-3 mr-1"/> Complete</Badge>;
+        return (
+          <Badge variant="secondary">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Complete
+          </Badge>
+        );
       case 'processing':
-        return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1"/> Processing</Badge>;
+        return (
+          <Badge variant="secondary">
+            <Clock className="h-3 w-3 mr-1" /> Processing
+          </Badge>
+        );
       case 'failed':
-        return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1"/> Failed</Badge>;
+        return (
+          <Badge variant="destructive">
+            <AlertCircle className="h-3 w-3 mr-1" /> Failed
+          </Badge>
+        );
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -76,26 +108,47 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
       {/* --- Header Card --- */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl md:text-2xl break-words">{scrapeData.title || 'No Title Extracted'}</CardTitle>
+          <CardTitle className="text-xl md:text-2xl break-words">
+            {scrapeData.title || 'No Title Extracted'}
+          </CardTitle>
           <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2">
-            <span>URL: <a href={scrapeData.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{scrapeData.url}</a></span>
+            <span>
+              URL:{' '}
+              <a
+                href={scrapeData.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline break-all"
+              >
+                {scrapeData.url}
+              </a>
+            </span>
             <Separator orientation="vertical" className="h-4 hidden md:block" />
             <span>Status: {getStatusBadge(scrapeData.status)}</span>
             {scrapeData.siteName && (
               <>
-                <Separator orientation="vertical" className="h-4 hidden md:block" />
+                <Separator
+                  orientation="vertical"
+                  className="h-4 hidden md:block"
+                />
                 <span>Site: {scrapeData.siteName}</span>
               </>
             )}
             {scrapeData.byline && (
               <>
-                <Separator orientation="vertical" className="h-4 hidden md:block" />
+                <Separator
+                  orientation="vertical"
+                  className="h-4 hidden md:block"
+                />
                 <span>Author: {scrapeData.byline}</span>
               </>
             )}
             {typeof scrapeData.length === 'number' && (
               <>
-                <Separator orientation="vertical" className="h-4 hidden md:block" />
+                <Separator
+                  orientation="vertical"
+                  className="h-4 hidden md:block"
+                />
                 <span>Length: {scrapeData.length.toLocaleString()} chars</span>
               </>
             )}
@@ -114,14 +167,16 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
           </pre>
           {/* Add the Organize Text button below the content */}
           <div className="mt-4">
-             <OrganizeTextContentButton
-               docId={scrapeId}
-               variant="outline"
-               size="sm"
-               hasTextContent={!!scrapeData?.textContent || !!scrapeData?.originalTextContent} // Enable if either current or original text exists
-               hasOriginalTextContent={!!scrapeData?.originalTextContent} // Base button text on whether original exists
-               className="text-xs"
-             />
+            <OrganizeTextContentButton
+              docId={scrapeId}
+              variant="outline"
+              size="sm"
+              hasTextContent={
+                !!scrapeData?.textContent || !!scrapeData?.originalTextContent
+              } // Enable if either current or original text exists
+              hasOriginalTextContent={!!scrapeData?.originalTextContent} // Base button text on whether original exists
+              className="text-xs"
+            />
           </div>
         </CardContent>
       </Card>
@@ -145,12 +200,18 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
       <Card>
         <CardHeader>
           <CardTitle>On-Page AI Analysis</CardTitle>
-          <CardDescription>Run AI analyses on the extracted text content.</CardDescription>
+          <CardDescription>
+            Run AI analyses on the extracted text content.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* --- Content Summary Analysis --- */}
           <div className="space-y-2">
-            <h4 className="font-semibold text-md mb-2 flex items-center"><Lightbulb className="h-4 w-4 mr-2 text-blue-500"/> Content Summary & <Tags className="h-4 w-4 ml-1 mr-2 text-green-600"/>Keywords Analysis</h4>
+            <h4 className="font-semibold text-md mb-2 flex items-center">
+              <Lightbulb className="h-4 w-4 mr-2 text-blue-500" /> Content
+              Summary & <Tags className="h-4 w-4 ml-1 mr-2 text-green-600" />
+              Keywords Analysis
+            </h4>
 
             {/* Display analysis results if available */}
             {scrapeData?.onPageContentAnalysisText ? (
@@ -163,9 +224,9 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
             ) : (
               // Show message if analysis hasn't run or failed
               scrapeData?.textContent && (
-                 <p className="text-sm text-muted-foreground italic mb-3">
-                   Analysis not yet run. Click the button below.
-                 </p>
+                <p className="text-sm text-muted-foreground italic mb-3">
+                  Analysis not yet run. Click the button below.
+                </p>
               )
             )}
 
@@ -181,11 +242,13 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
               className="text-xs"
             />
             {!scrapeData?.textContent && (
-              <p className="text-xs text-destructive mt-1">Cannot run analysis: No text content available.</p>
+              <p className="text-xs text-destructive mt-1">
+                Cannot run analysis: No text content available.
+              </p>
             )}
           </div>
 
-          <Separator/>
+          <Separator />
 
           {/* --- Ranking Factor Analysis (V1) --- REMOVED --- */}
           {/* 
@@ -205,76 +268,90 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
 
           {/* --- Ranking Factor Analysis V2 --- */}
           <div className="space-y-2">
-             <h4 className="font-semibold text-md mb-2 flex items-center"><FileCheck className="h-4 w-4 mr-2 text-blue-700"/> Ranking Factor Analysis (V2)</h4>
+            <h4 className="font-semibold text-md mb-2 flex items-center">
+              <FileCheck className="h-4 w-4 mr-2 text-blue-700" /> Ranking
+              Factor Analysis (V2)
+            </h4>
 
-             {/* Display V2 analysis results if available */} 
-             {scrapeData?.onPageRankingFactorAnalysisV2Text ? (
-                <div className="p-4 border rounded-md bg-muted/30 mb-3">
-                    {/* Display V2 Raw Text Output */} 
-                    <pre className="whitespace-pre-wrap text-sm font-sans">
-                        {scrapeData.onPageRankingFactorAnalysisV2Text}
-                    </pre>
-                </div>
-             ) : (
-                // Show message if analysis hasn't run 
-                scrapeData?.textContent && (
-                    <p className="text-sm text-muted-foreground italic mb-3">
-                        V2 Analysis not yet run. Click the button below.
-                    </p>
-                )
-             )}
+            {/* Display V2 analysis results if available */}
+            {scrapeData?.onPageRankingFactorAnalysisV2Text ? (
+              <div className="p-4 border rounded-md bg-muted/30 mb-3">
+                {/* Display V2 Raw Text Output */}
+                <pre className="whitespace-pre-wrap text-sm font-sans">
+                  {scrapeData.onPageRankingFactorAnalysisV2Text}
+                </pre>
+              </div>
+            ) : (
+              // Show message if analysis hasn't run
+              scrapeData?.textContent && (
+                <p className="text-sm text-muted-foreground italic mb-3">
+                  V2 Analysis not yet run. Click the button below.
+                </p>
+              )
+            )}
 
-             {/* V2 Button (triggers ONLY analysis now) */} 
-             <AnalyzeRankingFactorsV2Button 
-                docId={scrapeId}
-                variant="outline"
-                size="sm"
-                disabled={!scrapeData?.textContent}
-                // Base Re-analyze label on V2 analysis text existing
-                hasExistingResult={!!scrapeData?.onPageRankingFactorAnalysisV2Text}
-                className="text-xs"
-             />
-             {!scrapeData?.textContent && (
-                <p className="text-xs text-destructive mt-1">Cannot run analysis: No text content available.</p>
-             )}
+            {/* V2 Button (triggers ONLY analysis now) */}
+            <AnalyzeRankingFactorsV2Button
+              docId={scrapeId}
+              variant="outline"
+              size="sm"
+              disabled={!scrapeData?.textContent}
+              // Base Re-analyze label on V2 analysis text existing
+              hasExistingResult={
+                !!scrapeData?.onPageRankingFactorAnalysisV2Text
+              }
+              className="text-xs"
+            />
+            {!scrapeData?.textContent && (
+              <p className="text-xs text-destructive mt-1">
+                Cannot run analysis: No text content available.
+              </p>
+            )}
           </div>
 
-          <Separator/>
+          <Separator />
 
           {/* --- Editing Tips Section (Formerly Recommendation) --- */}
           <div className="space-y-2">
-             <h4 className="font-semibold text-md mb-2 flex items-center"><Target className="h-4 w-4 mr-2 text-green-600"/> Specific Improvement Recommendations</h4>
+            <h4 className="font-semibold text-md mb-2 flex items-center">
+              <Target className="h-4 w-4 mr-2 text-green-600" /> Specific
+              Improvement Recommendations
+            </h4>
 
-             {/* Display tips list if available */} 
-             {scrapeData?.onPageRankingFactorRecommendationText ? (
-                <div className="space-y-3 p-4 border rounded-md bg-muted/30 mb-3">
-                    <pre className="whitespace-pre-wrap text-sm font-sans">
-                        {scrapeData.onPageRankingFactorRecommendationText}
-                    </pre>
-                </div>
-             ) : (
-                // Show message if recommendation hasn't run 
-                scrapeData?.onPageRankingFactorAnalysisV2Text && (
-                    <p className="text-sm text-muted-foreground italic mb-3">
-                        Recommendation not yet generated. Click the button below.
-                    </p>
-                )
-             )}
+            {/* Display tips list if available */}
+            {scrapeData?.onPageRankingFactorRecommendationText ? (
+              <div className="space-y-3 p-4 border rounded-md bg-muted/30 mb-3">
+                <pre className="whitespace-pre-wrap text-sm font-sans">
+                  {scrapeData.onPageRankingFactorRecommendationText}
+                </pre>
+              </div>
+            ) : (
+              // Show message if recommendation hasn't run
+              scrapeData?.onPageRankingFactorAnalysisV2Text && (
+                <p className="text-sm text-muted-foreground italic mb-3">
+                  Recommendation not yet generated. Click the button below.
+                </p>
+              )
+            )}
 
-             {/* Add the button to trigger the recommendation */}
-             <AnalyzeRankingFactorsRecommendationButton
-                docId={scrapeId}
-                variant="outline"
-                size="sm"
-                // Disable if V2 analysis text is missing
-                disabled={!scrapeData?.onPageRankingFactorAnalysisV2Text}
-                hasPrerequisite={!!scrapeData?.onPageRankingFactorAnalysisV2Text}
-                hasExistingResult={!!scrapeData?.onPageRankingFactorRecommendationText}
-                className="text-xs"
-             />
-             {!scrapeData?.onPageRankingFactorAnalysisV2Text && (
-                <p className="text-xs text-destructive mt-1">Run V2 Analysis first to generate recommendations.</p>
-             )}
+            {/* Add the button to trigger the recommendation */}
+            <AnalyzeRankingFactorsRecommendationButton
+              docId={scrapeId}
+              variant="outline"
+              size="sm"
+              // Disable if V2 analysis text is missing
+              disabled={!scrapeData?.onPageRankingFactorAnalysisV2Text}
+              hasPrerequisite={!!scrapeData?.onPageRankingFactorAnalysisV2Text}
+              hasExistingResult={
+                !!scrapeData?.onPageRankingFactorRecommendationText
+              }
+              className="text-xs"
+            />
+            {!scrapeData?.onPageRankingFactorAnalysisV2Text && (
+              <p className="text-xs text-destructive mt-1">
+                Run V2 Analysis first to generate recommendations.
+              </p>
+            )}
           </div>
 
           {/* --- Placeholder for other analyses --- */}
@@ -284,9 +361,12 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
 
           {/* --- Paragraph Graph Generation --- */}
           <div className="space-y-2">
-            <h4 className="font-semibold text-md mb-2 flex items-center"><GitMerge className="h-4 w-4 mr-2 text-indigo-600"/> Paragraph Structure Graph</h4>
+            <h4 className="font-semibold text-md mb-2 flex items-center">
+              <GitMerge className="h-4 w-4 mr-2 text-indigo-600" /> Paragraph
+              Structure Graph
+            </h4>
 
-            {/* Display graph result if available */} 
+            {/* Display graph result if available */}
             {scrapeData?.paragraphGraphText ? (
               <div className="space-y-3 p-4 border rounded-md bg-muted/30 mb-3">
                 <pre className="whitespace-pre-wrap text-sm font-mono">
@@ -294,7 +374,7 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
                 </pre>
               </div>
             ) : (
-              // Show message if graph hasn't been generated 
+              // Show message if graph hasn't been generated
               scrapeData?.textContent && (
                 <p className="text-sm text-muted-foreground italic mb-3">
                   Graph not yet generated. Click the button below.
@@ -302,7 +382,7 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
               )
             )}
 
-            {/* Add the button to trigger the graph generation */} 
+            {/* Add the button to trigger the graph generation */}
             {scrapeData?.textContent && (
               <GenerateGraphButton
                 docId={scrapeId}
@@ -315,13 +395,13 @@ export default function ScrapeResultDisplay({ scrapeData, scrapeId }: ScrapeResu
               />
             )}
             {!scrapeData?.textContent && (
-              <p className="text-xs text-destructive mt-1">Cannot generate graph: No text content available.</p>
+              <p className="text-xs text-destructive mt-1">
+                Cannot generate graph: No text content available.
+              </p>
             )}
           </div>
-
         </CardContent>
       </Card>
-
     </div>
   );
-} 
+}

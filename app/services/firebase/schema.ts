@@ -1,5 +1,5 @@
-import { Timestamp } from 'firebase-admin/firestore'; // Import admin Timestamp
-import { z } from 'zod';
+import { Timestamp } from "firebase-admin/firestore"; // Import admin Timestamp
+import { z } from "zod";
 
 // Define a robust Firestore Timestamp schema that outputs a Date object
 // THIS SCHEMA IS FOR VALIDATING FIRESTORE DATA, NOT API RESPONSE
@@ -9,48 +9,48 @@ const FirestoreTimestampSchema = z
     | { seconds: number; nanoseconds: number }
     | { _seconds: number; _nanoseconds: number }
   >(
-    value => {
+    (value) => {
       if (value instanceof Timestamp) {
         return true;
       }
       // Handle raw timestamp data (seconds/nanoseconds)
       if (
-        typeof value === 'object' &&
+        typeof value === "object" &&
         value !== null &&
-        'seconds' in value &&
-        typeof value.seconds === 'number' &&
-        'nanoseconds' in value &&
-        typeof value.nanoseconds === 'number'
+        "seconds" in value &&
+        typeof value.seconds === "number" &&
+        "nanoseconds" in value &&
+        typeof value.nanoseconds === "number"
       ) {
         return true;
       }
       // Handle raw timestamp data (_seconds/_nanoseconds)
       if (
-        typeof value === 'object' &&
+        typeof value === "object" &&
         value !== null &&
-        '_seconds' in value &&
-        typeof value._seconds === 'number' &&
-        '_nanoseconds' in value &&
-        typeof value._nanoseconds === 'number'
+        "_seconds" in value &&
+        typeof value._seconds === "number" &&
+        "_nanoseconds" in value &&
+        typeof value._nanoseconds === "number"
       ) {
         return true;
       }
       return false;
     },
-    { message: 'Invalid Firestore Timestamp format' }
+    { message: "Invalid Firestore Timestamp format" },
   )
-  .transform(value => {
+  .transform((value) => {
     // Transform to JS Date object
     if (value instanceof Timestamp) {
       return value.toDate();
     }
     // Convert raw timestamp data to Timestamp instance, then to Date
-    const seconds = '_seconds' in value ? value._seconds : value.seconds;
+    const seconds = "_seconds" in value ? value._seconds : value.seconds;
     const nanoseconds =
-      '_nanoseconds' in value ? value._nanoseconds : value.nanoseconds;
+      "_nanoseconds" in value ? value._nanoseconds : value.nanoseconds;
     return new Timestamp(seconds, nanoseconds).toDate();
   })
-  .describe('Firestore Timestamp (validated and transformed to Date)');
+  .describe("Firestore Timestamp (validated and transformed to Date)");
 
 /**
  * 關鍵字搜索量項目 Schema
@@ -60,7 +60,7 @@ export const KeywordVolumeItemSchema = z.object({
   searchVolume: z.number().int().nonnegative().nullish(),
   competition: z.string().optional().nullish(), // Storing the string value (e.g., 'LOW', 'MEDIUM', 'HIGH')
   competitionIndex: z.number().int().min(0).max(100).optional().nullish(), // 0-100
-  cpc: z.number().positive().nullish() // Cost Per Click
+  cpc: z.number().positive().nullish(), // Cost Per Click
 });
 
 export const AiClusterItemSchema = z.object({
@@ -71,29 +71,29 @@ export const AiClusterItemSchema = z.object({
   longTailKeywords: z
     .array(z.string())
     .optional()
-    .describe('提取的長尾字詞部分'),
-  personaDescription: z.string().optional().describe('AI生成的用戶畫像描述')
+    .describe("提取的長尾字詞部分"),
+  personaDescription: z.string().optional().describe("AI生成的用戶畫像描述"),
 });
 
 // Consolidated schema for the full Keyword Research document in Firestore
 export const KeywordVolumeObjectSchema = z.object({
-  id: z.string().describe('記錄的唯一標識符'),
-  query: z.string().min(1, '主關鍵字不能為空').describe('主關鍵字'),
+  id: z.string().describe("記錄的唯一標識符"),
+  query: z.string().min(1, "主關鍵字不能為空").describe("主關鍵字"),
   createdAt: FirestoreTimestampSchema,
   updatedAt: FirestoreTimestampSchema,
   totalVolume: z.number().int().nonnegative().default(0),
   keywords: z
     .array(KeywordVolumeItemSchema)
     .optional()
-    .describe('Top-level list of keywords and their volume data'),
+    .describe("Top-level list of keywords and their volume data"),
   clustersWithVolume: z
     .array(AiClusterItemSchema)
     .optional()
-    .describe('Clusters with pre-calculated volumes'),
-  searchEngine: z.string().optional().describe('使用的搜尋引擎 (例如 google)'),
-  region: z.string().optional().describe('地區代碼 (例如 TW)'),
-  language: z.string().optional().describe('語言代碼 (例如 zh-TW)'),
-  tags: z.array(z.string()).optional().default([])
+    .describe("Clusters with pre-calculated volumes"),
+  searchEngine: z.string().optional().describe("使用的搜尋引擎 (例如 google)"),
+  region: z.string().optional().describe("地區代碼 (例如 TW)"),
+  language: z.string().optional().describe("語言代碼 (例如 zh-TW)"),
+  tags: z.array(z.string()).optional().default([]),
 });
 
 // Schema for the data needed specifically for the list view (subset of KeywordVolumeObjectSchema)
@@ -103,7 +103,7 @@ export const KeywordVolumeListItemSchema = KeywordVolumeObjectSchema.pick({
   createdAt: true,
   totalVolume: true,
   region: true,
-  language: true
+  language: true,
   // Removed: updatedAt, keywords, clustersWithVolume, searchEngine, tags
 });
 
@@ -113,7 +113,7 @@ export const KeywordVolumeListItemSchema = KeywordVolumeObjectSchema.pick({
 export const keywordSuggestionResultSchema = z.object({
   suggestions: z.array(z.string()),
   error: z.string().optional(),
-  sourceInfo: z.string().optional()
+  sourceInfo: z.string().optional(),
 });
 
 /**
@@ -125,11 +125,11 @@ export const keywordVolumeResultSchema = z.object({
   processingTime: z
     .object({
       estimated: z.number(),
-      actual: z.number()
+      actual: z.number(),
     })
     .optional(),
   sourceInfo: z.string().optional(),
-  researchId: z.string().nullable().optional()
+  researchId: z.string().nullable().optional(),
 });
 
 // --- SERP Schemas ---
@@ -142,7 +142,7 @@ export const OrganicResultSchema = z.object({
   title: z.string().optional(),
   url: z.string().url().optional(),
   displayedUrl: z.string().optional(),
-  description: z.string().optional()
+  description: z.string().optional(),
   // Add other fields returned by Apify if necessary
 });
 
@@ -152,13 +152,13 @@ export const SerpResultSchema = z.object({
   language: z.string().optional(),
   serpResults: z.array(OrganicResultSchema),
   retrievedAt: FirestoreTimestampSchema,
-  processedAt: FirestoreTimestampSchema
+  processedAt: FirestoreTimestampSchema,
 });
 
 // Schema for related queries
 export const SerpRelatedQuerySchema = z.object({
   query: z.string(),
-  url: z.string().url().optional().nullable()
+  url: z.string().url().optional().nullable(),
 });
 
 // Schema for People Also Ask
@@ -166,14 +166,14 @@ export const SerpPeopleAlsoAskSchema = z.object({
   question: z.string(),
   answer: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
-  title: z.string().optional().nullable()
+  title: z.string().optional().nullable(),
 });
 
 // --- Schemas for Analysis JSON Structures (Now part of SerpDataDoc) ---
 
 const PageReferenceSchema = z.object({
   position: z.number().int().positive(),
-  url: z.string().url()
+  url: z.string().url(),
 });
 
 // Schema for Content Type JSON structure - REMOVING
@@ -207,7 +207,7 @@ const ApiSearchQuerySchema = z
     countryCode: z.string().optional().nullable(),
     languageCode: z.string().optional().nullable(),
     locationUule: z.string().optional().nullable(),
-    resultsPerPage: z.string().optional().nullable() // API returns string here
+    resultsPerPage: z.string().optional().nullable(), // API returns string here
   })
   .optional()
   .nullable();
@@ -215,19 +215,19 @@ const ApiSearchQuerySchema = z
 const ApiRelatedQuerySchema = z.object({
   // API uses 'title', not 'query'
   title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
+  url: z.string().url().optional().nullable(),
 });
 
 const ApiAiOverviewSourceSchema = z.object({
   title: z.string().optional().nullable(),
-  url: z.string().url().optional().nullable()
+  url: z.string().url().optional().nullable(),
 });
 
 const ApiAiOverviewSchema = z
   .object({
     type: z.string().optional().nullable(),
     content: z.string().optional().nullable(),
-    sources: z.array(ApiAiOverviewSourceSchema).optional().nullable()
+    sources: z.array(ApiAiOverviewSourceSchema).optional().nullable(),
   })
   .optional()
   .nullable();
@@ -239,7 +239,7 @@ const ApiPeopleAlsoAskSchema = z.record(z.any()).optional().nullable(); // Keep 
 const ApiSiteLinkSchema = z.object({
   title: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
-  description: z.string().optional().nullable()
+  description: z.string().optional().nullable(),
 });
 
 const ApiProductInfoSchema = z.record(z.any()).optional().nullable();
@@ -260,7 +260,7 @@ const ApiOrganicResultSchema = z.object({
   commentsAmount: z.string().optional().nullable(), // API returns string
   followersAmount: z.string().optional().nullable(), // API returns string
   likes: z.string().optional().nullable(), // API returns string
-  channelName: z.string().optional().nullable()
+  channelName: z.string().optional().nullable(),
 });
 
 export const FirebaseSerpResultObjectSchema = z.object({
@@ -276,14 +276,14 @@ export const FirebaseSerpResultObjectSchema = z.object({
   paidProducts: z.array(ApiPaidProductSchema).optional().nullable(),
   peopleAlsoAsk: z.array(ApiPeopleAlsoAskSchema).optional().nullable(),
   organicResults: z.array(ApiOrganicResultSchema).optional().nullable(),
-  id: z.string().optional().describe('Firestore document ID (added on read)'),
+  id: z.string().optional().describe("Firestore document ID (added on read)"),
   createdAt: FirestoreTimestampSchema.optional().nullable(), // Added on write
   updatedAt: FirestoreTimestampSchema.optional().nullable(), // Added on write/update
   urlOutline: z
     .string()
     .nullable()
     .optional()
-    .describe('Scraped H2/H3 headings (added later potentially)'),
+    .describe("Scraped H2/H3 headings (added later potentially)"),
 
   contentTypeAnalysisText: z.string().nullable().optional(),
   userIntentAnalysisText: z.string().nullable().optional(),
@@ -293,7 +293,7 @@ export const FirebaseSerpResultObjectSchema = z.object({
   contentTypeRecommendationText: z.string().nullable().optional(),
   userIntentRecommendationText: z.string().nullable().optional(),
   titleRecommendationText: z.string().nullable().optional(), // ADDING FIELD
-  betterHaveRecommendationText: z.string().nullable().optional()
+  betterHaveRecommendationText: z.string().nullable().optional(),
 });
 
 export type KeywordVolumeItem = z.infer<typeof KeywordVolumeItemSchema>;

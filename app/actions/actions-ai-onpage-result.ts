@@ -1,15 +1,20 @@
 'use server';
 
-import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import { AI_MODELS } from '@/app/global-config';
-import { getOnPageResultById, FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result'; // Assuming this exists
+import {
+  FirebaseOnPageResultObject,
+  getOnPageResultById
+} from '@/app/services/firebase/data-onpage-result'; // Assuming this exists
+import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
 import { generateText } from 'ai';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * Prompt for generating a content summary and extracting keywords as PLAIN TEXT.
  */
-export const getOnPageContentSummaryPrompt = async (textContent: string): Promise<string> => {
+export const getOnPageContentSummaryPrompt = async (
+  textContent: string
+): Promise<string> => {
   // Construct prompt for plain text output
   const promptLines = [
     `You are an expert SEO analyst specializing in content summarization and keyword identification.`,
@@ -43,14 +48,13 @@ export const getOnPageContentSummaryPrompt = async (textContent: string): Promis
     `Respond ONLY with the formatted plain text.` // Final instruction
   ];
   return promptLines.join('\n');
-}
-
+};
 
 /**
  * Action: Perform On-Page Content Summary and Keyword Extraction Analysis (Plain Text Output).
  */
 export async function submitAiAnalysisOnPageSummary({
-  docId,
+  docId
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
@@ -62,24 +66,37 @@ export async function submitAiAnalysisOnPageSummary({
 
   try {
     // 0. Fetch OnPage data directly
-    const onPageData: FirebaseOnPageResultObject | null = await getOnPageResultById(docId);
+    const onPageData: FirebaseOnPageResultObject | null =
+      await getOnPageResultById(docId);
     if (!onPageData) {
-      console.error(`[Action: OnPage Summary TXT] OnPage data not found for Doc ID: ${docId}`);
-      return { success: false, error: `OnPage data not found for ID: ${docId}` };
+      console.error(
+        `[Action: OnPage Summary TXT] OnPage data not found for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: `OnPage data not found for ID: ${docId}`
+      };
     }
 
     // Check if textContent exists
     if (!onPageData.textContent || onPageData.textContent.trim().length === 0) {
-      console.error(`[Action: OnPage Summary TXT] textContent missing or empty for Doc ID: ${docId}`);
-      return { success: false, error: 'Text content is missing or empty in the document.' };
+      console.error(
+        `[Action: OnPage Summary TXT] textContent missing or empty for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: 'Text content is missing or empty in the document.'
+      };
     }
 
     // 1. Generate Text Analysis
     console.log(`[Action: OnPage Summary TXT] Calling AI for Text Analysis...`);
-    const analysisPrompt = await getOnPageContentSummaryPrompt(onPageData.textContent);
+    const analysisPrompt = await getOnPageContentSummaryPrompt(
+      onPageData.textContent
+    );
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: analysisPrompt,
+      prompt: analysisPrompt
     });
     console.log(`[Action: OnPage Summary TXT] Text Analysis successful.`);
 
@@ -98,16 +115,22 @@ export async function submitAiAnalysisOnPageSummary({
       id: docId
     };
   } catch (error) {
-    console.error(`[Action: OnPage Summary TXT] Failed for Doc ID ${docId}:`, error);
+    console.error(
+      `[Action: OnPage Summary TXT] Failed for Doc ID ${docId}:`,
+      error
+    );
     const errorMessage = error instanceof Error ? error.message : String(error);
-     try {
-         const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
-         await docRef.update({
-             updatedAt: FieldValue.serverTimestamp()
-         });
-     } catch (updateError) {
-         console.error(`[Action: OnPage Summary TXT] Failed to update status for Doc ID ${docId}:`, updateError);
-     }
+    try {
+      const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+      await docRef.update({
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    } catch (updateError) {
+      console.error(
+        `[Action: OnPage Summary TXT] Failed to update status for Doc ID ${docId}:`,
+        updateError
+      );
+    }
     return {
       success: false,
       error: `On-Page Content Summary Analysis failed: ${errorMessage}`
@@ -176,45 +199,51 @@ const RANKING_FACTORS_CHECKLIST_V3 = `
 /**
  * Prompt for V2 analyzing text content against a list of on-page ranking factors.
  */
-export const getOnPageRankingFactorPromptV2 = async (textContent: string): Promise<string> => {
+export const getOnPageRankingFactorPromptV2 = async (
+  textContent: string
+): Promise<string> => {
   const promptLines = [
     `You are an expert SEO analyst performing an in-depth review of a webpage's text content.`,
     `Your task is to meticulously analyze the PROVIDED TEXT CONTENT based *only* on the information present within it. Evaluate the content's likely **on-page SEO strengths and weaknesses** based on the relevant factors in the ON-PAGE RANKING FACTORS CHECKLIST below, as inferred *solely* from the text provided.`,
     ``,
-    `**ON-PAGE RANKING FACTORS CHECKLIST (Assess ONLY from Text):**`,`${RANKING_FACTORS_CHECKLIST_V3}`, 
-    ``, 
-    // --- Few-Shot Examples --- 
-    `**FEW-SHOT EXAMPLES OF DESIRED OUTPUT FORMAT & ANALYSIS:**`, 
-    ``, 
-    `*Example 1 (Hypothetical):*`, 
-    `### Table of Contents`, 
-    `State: The text appears lengthy and sectioned, but lacks clear hierarchical headings or mention of a table of contents, potentially hindering navigation.`, 
-    `Evidence: The document structure relies on simple paragraph breaks rather than distinct H2/H3 sections for its length.`, 
+    `**ON-PAGE RANKING FACTORS CHECKLIST (Assess ONLY from Text):**`,
+    `${RANKING_FACTORS_CHECKLIST_V3}`,
     ``,
-    `*Example 2 (Hypothetical - Entity/Keyword Nuance):*`, 
-    `### Keyword Appears in H1 Tag`, 
+    // --- Few-Shot Examples ---
+    `**FEW-SHOT EXAMPLES OF DESIRED OUTPUT FORMAT & ANALYSIS:**`,
+    ``,
+    `*Example 1 (Hypothetical):*`,
+    `### Table of Contents`,
+    `State: The text appears lengthy and sectioned, but lacks clear hierarchical headings or mention of a table of contents, potentially hindering navigation.`,
+    `Evidence: The document structure relies on simple paragraph breaks rather than distinct H2/H3 sections for its length.`,
+    ``,
+    `*Example 2 (Hypothetical - Entity/Keyword Nuance):*`,
+    `### Keyword Appears in H1 Tag`,
     `State: The inferred H1 likely focuses on "Song Hye-kyo's Short Hairstyles", effectively integrating the main entity (Song Hye-kyo) with the specific ranking keyword concept (short hair).`,
-    `Evidence: The initial paragraphs and subsequent headings (like "Boyish Short Hair X Suit") immediately address specific short hairstyles attributed to Song Hye-kyo.`, 
+    `Evidence: The initial paragraphs and subsequent headings (like "Boyish Short Hair X Suit") immediately address specific short hairstyles attributed to Song Hye-kyo.`,
     ``,
-    `*Example 3 (Hypothetical):*`, 
-    `### E-A-T (Expertise, Authoritativeness, Trustworthiness)`, 
-    `State: The content mentions the author, [Author Name], a recognized expert in the field, and cites several research papers, suggesting strong E-A-T signals within the text.`, 
+    `*Example 3 (Hypothetical):*`,
+    `### E-A-T (Expertise, Authoritativeness, Trustworthiness)`,
+    `State: The content mentions the author, [Author Name], a recognized expert in the field, and cites several research papers, suggesting strong E-A-T signals within the text.`,
     `Evidence: The text explicitly states "Authored by [Author Name]" and includes phrases like "according to a study published in [Journal Name]...".`,
     ``,
-    `*Example 4 (Hypothetical):*`, 
-    `### Keyword in H2, H3 Tags`, 
-    `State: Cannot Assess from Text`, 
+    `*Example 4 (Hypothetical):*`,
+    `### Keyword in H2, H3 Tags`,
+    `State: Cannot Assess from Text`,
     `Evidence: Determining the specific keywords within HTML heading tags requires analysis of the full HTML structure, not just the extracted text content.`,
-    ``, 
+    ``,
     // --- End Few-Shot Examples ---
-    `**PROVIDED TEXT CONTENT:**`,`---`,`${textContent.substring(0, 20000)}`,`---`, 
+    `**PROVIDED TEXT CONTENT:**`,
+    `---`,
+    `${textContent.substring(0, 20000)}`,
+    `---`,
     ``,
     `**ANALYSIS TASK:**`,
     // Add Guideline about Entity-Keyword Relationship
     `*   **Important Context:** Recognize that a page might be about a broader entity (e.g., a person) but rank well for a more specific keyword (e.g., a specific hairstyle). Your analysis should assess how well the text addresses the likely *specific keyword* context within the framework of the main entity.`,
     `For each factor listed in the ON-PAGE RANKING FACTORS CHECKLIST (excluding the 'NOT Assessable' list):`,
     `1.  **Describe State:** Write 1-2 sentences describing the observed state or characteristics of this factor *as inferred solely from the PROVIDED TEXT CONTENT*. Focus on describing *what is present* or *what seems implied* by the text, considering the likely specific keyword context.`,
-    `    *   Example (Keyword in H1): Describe how effectively the inferred H1 likely incorporates the *specific keyword concept* alongside the main entity.`, 
+    `    *   Example (Keyword in H1): Describe how effectively the inferred H1 likely incorporates the *specific keyword concept* alongside the main entity.`,
     `    *   Example (Entity Match): Describe how well the page likely satisfies a user searching for the *specific keyword*, given the page's focus on the main entity.`,
     `2.  **Provide Evidence:** Write 1 sentence citing specific evidence or examples *from the text* (e.g., structure, phrasing, formatting, mentioned elements, keyword usage related to the *specific topic*) that supports your description.`,
     `    *   Special Guideline (Reading Level): When assessing Reading Level, estimate a specific grade level appropriateness (e.g., \"Suitable for 9th grade and above\") and comment on the detail level (e.g., \"comparable to standard journalistic writing\").`,
@@ -245,16 +274,16 @@ export const getOnPageRankingFactorPromptV2 = async (textContent: string): Promi
     `    *   Do *not* write any introductory or concluding text.`,
     `    *   Do *not* use qualitative judgment words like "Strong", "Weak", "Good", "Bad" unless directly quoting or describing user experience implications (e.g., "potentially hindering navigation"). Focus on description.`,
     `    *   Do *not* use JSON, code blocks, or any other formatting besides Markdown H3 headings.`,
-    `    *   Do *not* repeat these instructions or the checklist provided above.`,
+    `    *   Do *not* repeat these instructions or the checklist provided above.`
   ];
   return promptLines.join('\n');
-}
+};
 
 /**
  * Action: Perform On-Page Ranking Factor Analysis V2 AND Generate Recommendation.
  */
 export async function submitAiAnalysisOnPageRankingFactorV2({
-  docId,
+  docId
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
@@ -265,47 +294,70 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
   console.log(`[Action: OnPage Factors V2] Starting for Doc ID: ${docId}`);
 
   try {
-    const onPageData: FirebaseOnPageResultObject | null = await getOnPageResultById(docId);
+    const onPageData: FirebaseOnPageResultObject | null =
+      await getOnPageResultById(docId);
     if (!onPageData) {
-      console.error(`[Action: OnPage Factors V2] OnPage data not found for Doc ID: ${docId}`);
-      return { success: false, error: `OnPage data not found for ID: ${docId}` };
+      console.error(
+        `[Action: OnPage Factors V2] OnPage data not found for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: `OnPage data not found for ID: ${docId}`
+      };
     }
 
     if (!onPageData.textContent || onPageData.textContent.trim().length === 0) {
-      console.error(`[Action: OnPage Factors V2] textContent missing or empty for Doc ID: ${docId}`);
-      return { success: false, error: 'Text content is missing or empty for the document.' };
+      console.error(
+        `[Action: OnPage Factors V2] textContent missing or empty for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: 'Text content is missing or empty for the document.'
+      };
     }
 
-    // --- 1. Generate V2 Analysis Text ONLY --- 
-    console.log(`[Action: OnPage Factors V2] Calling AI for V2 Text Analysis...`);
-    const analysisPrompt = await getOnPageRankingFactorPromptV2(onPageData.textContent);
+    // --- 1. Generate V2 Analysis Text ONLY ---
+    console.log(
+      `[Action: OnPage Factors V2] Calling AI for V2 Text Analysis...`
+    );
+    const analysisPrompt = await getOnPageRankingFactorPromptV2(
+      onPageData.textContent
+    );
     const { text: rawAnalysisText } = await generateText({
-      model: AI_MODELS.BASE, 
-      prompt: analysisPrompt,
+      model: AI_MODELS.BASE,
+      prompt: analysisPrompt
     });
     console.log(`[Action: OnPage Factors V2] V2 Text Analysis successful.`);
 
-    // --- Update Firestore with ONLY V2 Analysis --- 
+    // --- Update Firestore with ONLY V2 Analysis ---
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
-      onPageRankingFactorAnalysisV2Text: rawAnalysisText, 
+      onPageRankingFactorAnalysisV2Text: rawAnalysisText,
       updatedAt: FieldValue.serverTimestamp()
     });
-    console.log(`[Action: OnPage Factors V2] Firestore updated with V2 Analysis.`);
+    console.log(
+      `[Action: OnPage Factors V2] Firestore updated with V2 Analysis.`
+    );
 
     return {
       success: true,
       id: docId
     };
   } catch (error) {
-    console.error(`[Action: OnPage Factors V2] Failed for Doc ID ${docId}:`, error);
+    console.error(
+      `[Action: OnPage Factors V2] Failed for Doc ID ${docId}:`,
+      error
+    );
     const errorMessage = error instanceof Error ? error.message : String(error);
     // Update timestamp on error
     try {
       const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
       await docRef.update({ updatedAt: FieldValue.serverTimestamp() });
     } catch (updateError) {
-      console.error(`[Action: OnPage Factors V2] Failed to update timestamp on error for Doc ID ${docId}:`, updateError);
+      console.error(
+        `[Action: OnPage Factors V2] Failed to update timestamp on error for Doc ID ${docId}:`,
+        updateError
+      );
     }
     return {
       success: false,
@@ -357,16 +409,16 @@ export const getOnPageRankingFactorRecommendationPrompt = async (
     `*   Strictly adhere to the "Because [Finding], you should [Action], Specifically [How]." format for *every* recommendation.`,
     `*   Output *only* the recommendations, one per line.`,
     `*   Do NOT include introductory/concluding text, numbering, bullet points, or Markdown formatting.`,
-    `*   Do NOT mention the ANALYSIS REPORT or ORIGINAL TEXT explicitly in your output recommendations.`,
+    `*   Do NOT mention the ANALYSIS REPORT or ORIGINAL TEXT explicitly in your output recommendations.`
   ];
   return promptLines.join('\n');
-}
+};
 
 /**
  * Action: Perform On-Page Ranking Factor Recommendation Analysis (Based on V2).
  */
 export async function submitAiAnalysisOnPageRankingFactorRecommendation({
-  docId,
+  docId
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
@@ -378,33 +430,56 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
 
   try {
     // 0. Fetch OnPage data directly
-    const onPageData: FirebaseOnPageResultObject | null = await getOnPageResultById(docId);
+    const onPageData: FirebaseOnPageResultObject | null =
+      await getOnPageResultById(docId);
     if (!onPageData) {
-      console.error(`[Action: OnPage Rec V1] OnPage data not found for Doc ID: ${docId}`);
-      return { success: false, error: `OnPage data not found for ID: ${docId}` };
+      console.error(
+        `[Action: OnPage Rec V1] OnPage data not found for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: `OnPage data not found for ID: ${docId}`
+      };
     }
 
     // Check if V2 Analysis text exists
-    if (!onPageData.onPageRankingFactorAnalysisV2Text || onPageData.onPageRankingFactorAnalysisV2Text.trim().length === 0) {
-      console.error(`[Action: OnPage Rec V1] Prerequisite V2 Analysis text missing for Doc ID: ${docId}`);
-      return { success: false, error: 'V2 Ranking Factor Analysis text is missing. Please run V2 analysis first.' };
+    if (
+      !onPageData.onPageRankingFactorAnalysisV2Text ||
+      onPageData.onPageRankingFactorAnalysisV2Text.trim().length === 0
+    ) {
+      console.error(
+        `[Action: OnPage Rec V1] Prerequisite V2 Analysis text missing for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error:
+          'V2 Ranking Factor Analysis text is missing. Please run V2 analysis first.'
+      };
     }
 
     // Check if original textContent exists (ADDED)
     if (!onPageData.textContent || onPageData.textContent.trim().length === 0) {
-        console.error(`[Action: OnPage Rec V1] textContent missing or empty for Doc ID: ${docId}`);
-        return { success: false, error: 'Original text content is missing or empty in the document.' };
+      console.error(
+        `[Action: OnPage Rec V1] textContent missing or empty for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: 'Original text content is missing or empty in the document.'
+      };
     }
 
     // 1. Generate Recommendation Analysis
-    console.log(`[Action: OnPage Rec V1] Calling AI for Recommendation Analysis...`);
-    const recommendationPrompt = await getOnPageRankingFactorRecommendationPrompt(
+    console.log(
+      `[Action: OnPage Rec V1] Calling AI for Recommendation Analysis...`
+    );
+    const recommendationPrompt =
+      await getOnPageRankingFactorRecommendationPrompt(
         onPageData.onPageRankingFactorAnalysisV2Text,
         onPageData.textContent // Pass textContent here
-    );
+      );
     const { text: recommendationText } = await generateText({
       model: AI_MODELS.FAST, // Use fast model for recommendations
-      prompt: recommendationPrompt,
+      prompt: recommendationPrompt
     });
     console.log(`[Action: OnPage Rec V1] Recommendation Analysis successful.`);
 
@@ -425,14 +500,17 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
   } catch (error) {
     console.error(`[Action: OnPage Rec V1] Failed for Doc ID ${docId}:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-     try {
-         const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
-         await docRef.update({
-             updatedAt: FieldValue.serverTimestamp()
-         });
-     } catch (updateError) {
-         console.error(`[Action: OnPage Rec V1] Failed to update status for Doc ID ${docId}:`, updateError);
-     }
+    try {
+      const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+      await docRef.update({
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    } catch (updateError) {
+      console.error(
+        `[Action: OnPage Rec V1] Failed to update status for Doc ID ${docId}:`,
+        updateError
+      );
+    }
     return {
       success: false,
       error: `On-Page Recommendation Generation failed: ${errorMessage}`
@@ -510,46 +588,66 @@ export async function generateSingleParagraphGraph({
 
   try {
     if (!textContent || textContent.trim().length === 0) {
-      console.error('[Action: Single Paragraph Graph] Input text content is missing or empty.');
+      console.error(
+        '[Action: Single Paragraph Graph] Input text content is missing or empty.'
+      );
       return { success: false, error: 'Input text content cannot be empty.' };
     }
 
-    console.log('[Action: Single Paragraph Graph] Generating graph visualization...');
+    console.log(
+      '[Action: Single Paragraph Graph] Generating graph visualization...'
+    );
     // Create the prompt
-    const prompt = getSingleParagraphGraphPrompt(textContent.substring(0, 30000)); // Apply truncation similar to other actions
+    const prompt = getSingleParagraphGraphPrompt(
+      textContent.substring(0, 30000)
+    ); // Apply truncation similar to other actions
 
     // Call the AI model
     const { text: graphText } = await generateText({
       model: AI_MODELS.BASE, // Or potentially a more powerful model if needed
-      prompt: prompt,
+      prompt: prompt
       // maxTokens: 30000 // Consider setting maxTokens if needed, but BASE model might handle length well
     });
 
-    console.log('[Action: Single Paragraph Graph] Graph visualization generated successfully.');
+    console.log(
+      '[Action: Single Paragraph Graph] Graph visualization generated successfully.'
+    );
 
-    // --- Update Firestore --- 
-    console.log(`[Action: Single Paragraph Graph] Updating Firestore for Doc ID: ${docId}...`);
+    // --- Update Firestore ---
+    console.log(
+      `[Action: Single Paragraph Graph] Updating Firestore for Doc ID: ${docId}...`
+    );
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
       paragraphGraphText: graphText || '', // Save the generated graph text
       updatedAt: FieldValue.serverTimestamp()
     });
-    console.log(`[Action: Single Paragraph Graph] Firestore updated for Doc ID: ${docId}.`);
+    console.log(
+      `[Action: Single Paragraph Graph] Firestore updated for Doc ID: ${docId}.`
+    );
     // ------------------------
 
     // Return the full text, assuming the AI follows the requested H2 structure
     return { success: true, result: graphText || '' }; // Still return result for potential immediate use
-
   } catch (error) {
-    console.error('[Action: Single Paragraph Graph] Error generating graph visualization:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during graph generation';
+    console.error(
+      '[Action: Single Paragraph Graph] Error generating graph visualization:',
+      error
+    );
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : 'Unknown error occurred during graph generation';
 
     // Attempt to update timestamp even on error
     try {
       const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
       await docRef.update({ updatedAt: FieldValue.serverTimestamp() });
     } catch (updateError) {
-      console.error(`[Action: Single Paragraph Graph] Failed to update timestamp on error for Doc ID ${docId}:`, updateError);
+      console.error(
+        `[Action: Single Paragraph Graph] Failed to update timestamp on error for Doc ID ${docId}:`,
+        updateError
+      );
     }
 
     return {
@@ -564,7 +662,9 @@ export async function generateSingleParagraphGraph({
 // == Text Content Organization (New Action)
 // ==========================================================================
 
-async function getOrganizeTextContentPrompt(rawTextContent: string): Promise<string> {
+async function getOrganizeTextContentPrompt(
+  rawTextContent: string
+): Promise<string> {
   const promptLines = [
     `You are an expert content extractor and formatter. Your task is to analyze the provided raw text content extracted from a webpage and extract ONLY the main article or core content.`,
     ``,
@@ -585,7 +685,7 @@ async function getOrganizeTextContentPrompt(rawTextContent: string): Promise<str
     ``,
     `**OUTPUT REQUIREMENTS:**`,
     `*   Respond ONLY with the cleaned, extracted main content as plain text.`,
-    `*   Do NOT include explanations, introductions, or the "OUTPUT REQUIREMENTS" section in your response.`,
+    `*   Do NOT include explanations, introductions, or the "OUTPUT REQUIREMENTS" section in your response.`
   ];
   return promptLines.join('\\n');
 }
@@ -594,7 +694,7 @@ async function getOrganizeTextContentPrompt(rawTextContent: string): Promise<str
  * Action: Organize and clean the extracted text content using AI.
  */
 export async function submitAiOrganizeTextContent({
-  docId,
+  docId
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
@@ -606,10 +706,16 @@ export async function submitAiOrganizeTextContent({
 
   try {
     // 0. Fetch OnPage data
-    const onPageData: FirebaseOnPageResultObject | null = await getOnPageResultById(docId);
+    const onPageData: FirebaseOnPageResultObject | null =
+      await getOnPageResultById(docId);
     if (!onPageData) {
-      console.error(`[Action: Organize Text] OnPage data not found for Doc ID: ${docId}`);
-      return { success: false, error: `OnPage data not found for ID: ${docId}` };
+      console.error(
+        `[Action: Organize Text] OnPage data not found for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: `OnPage data not found for ID: ${docId}`
+      };
     }
 
     // Determine the source text: use original if available, otherwise current
@@ -617,8 +723,13 @@ export async function submitAiOrganizeTextContent({
 
     // Check if source text exists
     if (!sourceText || sourceText.trim().length === 0) {
-      console.error(`[Action: Organize Text] Source textContent (or originalTextContent) missing or empty for Doc ID: ${docId}`);
-      return { success: false, error: 'Source text content is missing or empty.' };
+      console.error(
+        `[Action: Organize Text] Source textContent (or originalTextContent) missing or empty for Doc ID: ${docId}`
+      );
+      return {
+        success: false,
+        error: 'Source text content is missing or empty.'
+      };
     }
 
     // 1. Generate Organized Text
@@ -626,21 +737,20 @@ export async function submitAiOrganizeTextContent({
     const organizePrompt = await getOrganizeTextContentPrompt(sourceText);
     const { text: organizedText } = await generateText({
       model: AI_MODELS.BASE, // Or a more suitable model if needed
-      prompt: organizePrompt,
+      prompt: organizePrompt
     });
     console.log(`[Action: Organize Text] Text Organization successful.`);
 
     // 2. Prepare Firestore update data
     const updateData: { [key: string]: any } = {
       textContent: organizedText, // Update textContent with the organized version
-      updatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     };
 
     // Backup original text ONLY if it hasn't been backed up before
     if (!onPageData.originalTextContent && onPageData.textContent) {
-       updateData.originalTextContent = onPageData.textContent; // Backup the original
+      updateData.originalTextContent = onPageData.textContent; // Backup the original
     }
-
 
     // 3. Update Firestore directly
     console.log(`[Action: Organize Text] Updating Firestore...`);
@@ -656,17 +766,20 @@ export async function submitAiOrganizeTextContent({
   } catch (error) {
     console.error(`[Action: Organize Text] Failed for Doc ID ${docId}:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-     try {
-         const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
-         await docRef.update({
-             updatedAt: FieldValue.serverTimestamp() // Still update timestamp on error
-         });
-     } catch (updateError) {
-         console.error(`[Action: Organize Text] Failed to update status on error for Doc ID ${docId}:`, updateError);
-     }
+    try {
+      const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
+      await docRef.update({
+        updatedAt: FieldValue.serverTimestamp() // Still update timestamp on error
+      });
+    } catch (updateError) {
+      console.error(
+        `[Action: Organize Text] Failed to update status on error for Doc ID ${docId}:`,
+        updateError
+      );
+    }
     return {
       success: false,
       error: `Text Organization failed: ${errorMessage}`
     };
   }
-} 
+}

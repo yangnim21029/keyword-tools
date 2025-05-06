@@ -1,65 +1,65 @@
-'use client';
+"use client";
 
-import { MEDIASITE_DATA } from '@/app/global-config';
+import { MEDIASITE_DATA } from "@/app/global-config";
 import {
   LANGUAGE_FINE_TUNE_DATA,
   MEDIA_SITE_FINE_TUNE_DATA,
-  THEME_FINE_TUNE_DATA
-} from '@/app/prompt/fine-tune';
-import { useClientStorage } from '@/components/hooks/use-client-storage';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+  THEME_FINE_TUNE_DATA,
+} from "@/app/prompt/fine-tune";
+import { useClientStorage } from "@/components/hooks/use-client-storage";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandList
-} from '@/components/ui/command';
-import { Label } from '@/components/ui/label';
+  CommandList,
+} from "@/components/ui/command";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger
-} from '@/components/ui/popover';
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
   Check,
   ChevronsUpDown,
   Layers,
   Loader2,
   Settings2,
-  TerminalSquare
-} from 'lucide-react';
-import Image from 'next/image';
-import type React from 'react';
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { ErrorDisplay } from './components/error-display';
-import { ProgressChecklistDisplay } from './components/progress-checklist-display';
-import { ResultDisplay } from './components/result-display';
-import { RevalidateButton } from '@/app/actions/actions-buttons';
+  TerminalSquare,
+} from "lucide-react";
+import Image from "next/image";
+import type React from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ErrorDisplay } from "./components/error-display";
+import { ProgressChecklistDisplay } from "./components/progress-checklist-display";
+import { ResultDisplay } from "./components/result-display";
+import { RevalidateButton } from "@/app/actions/actions-buttons";
 
 // --- Import Corrected Types from Schema ---
 import type {
   KeywordVolumeListItem, // Renamed from KeywordResearchSummaryItem
-  KeywordVolumeObject // Renamed from ProcessedKeywordResearchData
-} from '@/app/services/firebase/schema';
+  KeywordVolumeObject, // Renamed from ProcessedKeywordResearchData
+} from "@/app/services/firebase/schema";
 // --- Import Server Actions ---
-import { submitGetKeywordVolumeObj } from '@/app/actions/actions-keyword-volume';
-import { getSerpDataAction } from '@/app/actions/actions-ai-serp-result'; // SERP actions
+import { submitGetKeywordVolumeObj } from "@/app/actions/actions-keyword-volume";
+import { getSerpDataAction } from "@/app/actions/actions-ai-serp-result"; // SERP actions
 // --- End Import ---
 
 // --- Define New API Endpoints ---
-const API_BASE_URL = '/api/writing';
+const API_BASE_URL = "/api/writing";
 const API_OUTLINE_URL = `${API_BASE_URL}/outline`; // Keep outline separate for now
 const API_STEP1_FETCH_SERP_URL = `${API_BASE_URL}/1-fetch-serp`;
 const API_STEP2_ANALYZE_CONTENT_TYPE_URL = `${API_BASE_URL}/2-analyze-content-type`;
@@ -71,53 +71,53 @@ const API_STEP7_GENERATE_FINAL_PROMPT_URL = `${API_BASE_URL}/7-generate-final-pr
 const API_KEYWORD_LIST_URL = `${API_BASE_URL}/keyword-list`;
 
 // --- Define New Step IDs ---
-const STEP_ID_FETCH_SERP = 'fetch-serp';
-const STEP_ID_ANALYZE_CONTENT_TYPE = 'analyze-content-type';
-const STEP_ID_ANALYZE_USER_INTENT = 'analyze-user-intent';
-const STEP_ID_ANALYZE_TITLE = 'analyze-title';
-const STEP_ID_ANALYZE_BETTER_HAVE = 'analyze-better-have';
-const STEP_ID_GENERATE_ACTION_PLAN = 'generate-action-plan';
-const STEP_ID_GENERATE_FINAL_PROMPT = 'generate-final-prompt';
+const STEP_ID_FETCH_SERP = "fetch-serp";
+const STEP_ID_ANALYZE_CONTENT_TYPE = "analyze-content-type";
+const STEP_ID_ANALYZE_USER_INTENT = "analyze-user-intent";
+const STEP_ID_ANALYZE_TITLE = "analyze-title";
+const STEP_ID_ANALYZE_BETTER_HAVE = "analyze-better-have";
+const STEP_ID_GENERATE_ACTION_PLAN = "generate-action-plan";
+const STEP_ID_GENERATE_FINAL_PROMPT = "generate-final-prompt";
 
 // Combine all fine-tune data names
 const allFineTuneNames = [
-  ...THEME_FINE_TUNE_DATA.map(item => item.name),
-  ...MEDIA_SITE_FINE_TUNE_DATA.map(item => item.name),
-  ...LANGUAGE_FINE_TUNE_DATA.map(item => item.name)
+  ...THEME_FINE_TUNE_DATA.map((item) => item.name),
+  ...MEDIA_SITE_FINE_TUNE_DATA.map((item) => item.name),
+  ...LANGUAGE_FINE_TUNE_DATA.map((item) => item.name),
 ];
 
 // --- UPDATED: Step Checklist Component ---
 interface Step {
   id: string;
   name: string;
-  status: 'pending' | 'loading' | 'completed' | 'error';
+  status: "pending" | "loading" | "completed" | "error";
   durationMs?: number; // Add optional duration
 }
 
 export default function WritingPage() {
   // Use useClientStorage for persistent state
-  const [keyword, setKeyword] = useClientStorage('writing:keyword', '');
+  const [keyword, setKeyword] = useClientStorage("writing:keyword", "");
   const [mediaSiteName, setMediaSiteName] = useClientStorage(
-    'writing:mediaSiteName',
-    ''
+    "writing:mediaSiteName",
+    "",
   );
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>(
-    'writing:researchPrompt',
-    null
+    "writing:researchPrompt",
+    null,
   );
   const [selectedFineTunes, setSelectedFineTunes] = useClientStorage<string[]>(
-    'writing:selectedFineTunes',
-    []
+    "writing:selectedFineTunes",
+    [],
   );
   const [selectedKeywordReport, setSelectedKeywordReport] =
     useClientStorage<KeywordVolumeObject | null>(
-      'writing:selectedKeywordReport',
-      null
+      "writing:selectedKeywordReport",
+      null,
     );
 
   // --- Cluster Selection State ---
   const [selectedClusterName, setSelectedClusterName] =
-    useState<string>('__ALL_CLUSTERS__');
+    useState<string>("__ALL_CLUSTERS__");
 
   // --- UPDATED: State for the displayed Persona description ---
   const [displayedPersona, setDisplayedPersona] = useState<string | null>(null);
@@ -137,8 +137,8 @@ export default function WritingPage() {
 
   // --- State to track if generation was attempted ---
   const [generationAttempted, setGenerationAttempted] = useClientStorage(
-    'writing:generationAttempted',
-    false
+    "writing:generationAttempted",
+    false,
   );
 
   // Keep local state for UI elements like loading, error, copied status, and visibility toggle
@@ -150,41 +150,41 @@ export default function WritingPage() {
   const [comboboxOpen, setComboboxOpen] = useState(false); // State for Combobox popover
   const [generatedOutlineText, setGeneratedOutlineText] = useClientStorage<
     string | null
-  >('writing:generatedOutlineText', null);
+  >("writing:generatedOutlineText", null);
 
   // --- UPDATED: New state for 7-step tracking --- (plus Outline)
   const initialSteps: Step[] = [
-    { id: STEP_ID_FETCH_SERP, name: 'Step 1: Fetch SERP', status: 'pending' },
+    { id: STEP_ID_FETCH_SERP, name: "Step 1: Fetch SERP", status: "pending" },
     {
       id: STEP_ID_ANALYZE_CONTENT_TYPE,
-      name: 'Step 2: Analyze Content Type',
-      status: 'pending'
+      name: "Step 2: Analyze Content Type",
+      status: "pending",
     },
     {
       id: STEP_ID_ANALYZE_USER_INTENT,
-      name: 'Step 3: Analyze User Intent',
-      status: 'pending'
+      name: "Step 3: Analyze User Intent",
+      status: "pending",
     },
     {
       id: STEP_ID_ANALYZE_TITLE,
-      name: 'Step 4: Analyze Title',
-      status: 'pending'
+      name: "Step 4: Analyze Title",
+      status: "pending",
     },
     {
       id: STEP_ID_ANALYZE_BETTER_HAVE,
-      name: 'Step 5: Analyze Better Have',
-      status: 'pending'
+      name: "Step 5: Analyze Better Have",
+      status: "pending",
     },
     {
       id: STEP_ID_GENERATE_ACTION_PLAN,
-      name: 'Step 6: Generate Action Plan',
-      status: 'pending'
+      name: "Step 6: Generate Action Plan",
+      status: "pending",
     },
     {
       id: STEP_ID_GENERATE_FINAL_PROMPT,
-      name: 'Step 7: Generate Final Prompt',
-      status: 'pending'
-    }
+      name: "Step 7: Generate Final Prompt",
+      status: "pending",
+    },
   ];
   // Use regular useState for steps to test incremental updates
   const [steps, setSteps] = useState<Step[]>(initialSteps);
@@ -203,40 +203,40 @@ export default function WritingPage() {
       try {
         // Keep fetching list via API route
         console.log(
-          '[API Fetch] Fetching keyword list from:',
-          API_KEYWORD_LIST_URL
+          "[API Fetch] Fetching keyword list from:",
+          API_KEYWORD_LIST_URL,
         );
-        const response = await fetch(API_KEYWORD_LIST_URL, { method: 'GET' });
+        const response = await fetch(API_KEYWORD_LIST_URL, { method: "GET" });
         if (!response.ok) {
           const errorText = await response.text();
           console.error(
-            `[API Fetch] Failed to fetch keywords: ${response.status} - ${errorText}`
+            `[API Fetch] Failed to fetch keywords: ${response.status} - ${errorText}`,
           );
           throw new Error(
             `Failed to fetch keywords: ${
               response.statusText || response.status
-            }`
+            }`,
           );
         }
         const summaries = await response.json();
 
         if (!Array.isArray(summaries)) {
           console.error(
-            '[API Fetch] Unexpected format from keyword list API:',
-            summaries
+            "[API Fetch] Unexpected format from keyword list API:",
+            summaries,
           );
-          throw new Error('Failed to fetch keywords: Invalid response format.');
+          throw new Error("Failed to fetch keywords: Invalid response format.");
         }
         setRealKeywordList(summaries);
         console.log(
-          `[API Fetch] Successfully loaded ${summaries.length} keywords.`
+          `[API Fetch] Successfully loaded ${summaries.length} keywords.`,
         );
       } catch (error: any) {
         console.error(
-          '[API Fetch] Error fetching keyword research list:',
-          error
+          "[API Fetch] Error fetching keyword research list:",
+          error,
         );
-        setListFetchError(error.message || 'Unknown error');
+        setListFetchError(error.message || "Unknown error");
       } finally {
         setIsListLoading(false);
       }
@@ -247,14 +247,14 @@ export default function WritingPage() {
 
   // --- Effect to reset cluster selection when keyword report changes ---
   useEffect(() => {
-    setSelectedClusterName('__ALL_CLUSTERS__');
+    setSelectedClusterName("__ALL_CLUSTERS__");
   }, [selectedKeywordReport]);
   // --- End Cluster Reset Effect ---
 
   // --- UPDATED: Effect to find and set the displayed Persona description ---
   useEffect(() => {
     if (
-      selectedClusterName === '__ALL_CLUSTERS__' ||
+      selectedClusterName === "__ALL_CLUSTERS__" ||
       !selectedKeywordReport?.clustersWithVolume
     ) {
       setDisplayedPersona(null);
@@ -262,17 +262,17 @@ export default function WritingPage() {
     }
     // Find the cluster with the matching name
     const foundCluster = selectedKeywordReport.clustersWithVolume.find(
-      (c: any) => c.clusterName === selectedClusterName
+      (c: any) => c.clusterName === selectedClusterName,
     );
     // Set the persona description from the found cluster, or null if not found/no description
     setDisplayedPersona(foundCluster?.personaDescription || null);
 
     if (
-      selectedClusterName !== '__ALL_CLUSTERS__' &&
+      selectedClusterName !== "__ALL_CLUSTERS__" &&
       !foundCluster?.personaDescription
     ) {
       console.warn(
-        `[UI Persona Sync] Persona description not found for selected cluster: ${selectedClusterName}`
+        `[UI Persona Sync] Persona description not found for selected cluster: ${selectedClusterName}`,
       );
     }
   }, [selectedClusterName, selectedKeywordReport]);
@@ -285,14 +285,14 @@ export default function WritingPage() {
     selectedKeywordReport.clustersWithVolume.length > 0;
   useEffect(() => {
     console.log(
-      '[UI Debug] selectedKeywordReport updated:',
-      selectedKeywordReport
+      "[UI Debug] selectedKeywordReport updated:",
+      selectedKeywordReport,
     );
-    console.log('[UI Debug] hasClusters calculated:', hasClusters);
+    console.log("[UI Debug] hasClusters calculated:", hasClusters);
   }, [selectedKeywordReport, hasClusters]);
 
   useEffect(() => {
-    const key = `writing:stepsState:${keyword || 'default'}`;
+    const key = `writing:stepsState:${keyword || "default"}`;
     const storedSteps = localStorage.getItem(key);
     if (!generationAttempted || !storedSteps) {
       setSteps(initialSteps);
@@ -308,22 +308,22 @@ export default function WritingPage() {
       try {
         await navigator.clipboard.writeText(researchPrompt);
         setCopied(true);
-        toast.success('Prompt copied to clipboard!');
+        toast.success("Prompt copied to clipboard!");
         setTimeout(() => setCopied(false), 2000);
       } catch (err) {
-        console.error('Failed to copy text: ', err);
-        toast.error('Failed to copy prompt.');
+        console.error("Failed to copy text: ", err);
+        toast.error("Failed to copy prompt.");
         setCopied(false);
       }
     }
   };
 
   const handleFineTuneChange = (checked: boolean | string, name: string) => {
-    setSelectedFineTunes(prev => {
+    setSelectedFineTunes((prev) => {
       if (checked === true) {
         return [...prev, name];
       } else {
-        return prev.filter(item => item !== name);
+        return prev.filter((item) => item !== name);
       }
     });
   };
@@ -331,13 +331,13 @@ export default function WritingPage() {
   // Helper to update step status
   const updateStepStatus = (
     stepId: string,
-    status: Step['status'],
-    durationMs?: number
+    status: Step["status"],
+    durationMs?: number,
   ) => {
-    setSteps(prevSteps =>
-      prevSteps.map(step =>
-        step.id === stepId ? { ...step, status, durationMs } : step
-      )
+    setSteps((prevSteps) =>
+      prevSteps.map((step) =>
+        step.id === stepId ? { ...step, status, durationMs } : step,
+      ),
     );
   };
 
@@ -345,16 +345,16 @@ export default function WritingPage() {
   const callApi = async <T,>(
     stepId: string,
     url: string,
-    payload: any
+    payload: any,
   ): Promise<T> => {
-    updateStepStatus(stepId, 'loading');
+    updateStepStatus(stepId, "loading");
     const startTime = performance.now();
     let durationMs = 0;
     try {
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       durationMs = performance.now() - startTime;
@@ -367,11 +367,11 @@ export default function WritingPage() {
         } catch {}
         if (errorBody && (errorBody.details || errorBody.error)) {
           errorDetails =
-            typeof errorBody.details === 'string'
+            typeof errorBody.details === "string"
               ? errorBody.details
-              : typeof errorBody.error === 'string'
-              ? errorBody.error
-              : JSON.stringify(errorBody);
+              : typeof errorBody.error === "string"
+                ? errorBody.error
+                : JSON.stringify(errorBody);
         } else {
           try {
             const textError = await response.text();
@@ -379,19 +379,19 @@ export default function WritingPage() {
           } catch {}
         }
         console.error(
-          `[API Call Error - ${stepId}] Status: ${response.status}, Details: ${errorDetails}`
+          `[API Call Error - ${stepId}] Status: ${response.status}, Details: ${errorDetails}`,
         );
         throw new Error(errorDetails);
       }
 
       const result = await response.json();
-      updateStepStatus(stepId, 'completed', durationMs);
+      updateStepStatus(stepId, "completed", durationMs);
       console.log(
-        `[API Call Success - ${stepId}] (${(durationMs / 1000).toFixed(1)}s).`
+        `[API Call Success - ${stepId}] (${(durationMs / 1000).toFixed(1)}s).`,
       );
       return result as T;
     } catch (error) {
-      updateStepStatus(stepId, 'error');
+      updateStepStatus(stepId, "error");
       console.error(`[API Call Error - ${stepId}] Catch block:`, error);
       // Re-throw the error to be caught by handleSubmit
       throw error;
@@ -403,56 +403,56 @@ export default function WritingPage() {
   // 1. Fetch SERP (Now returns minimal data)
   const callFetchSerpApi = async (
     keyword: string,
-    mediaSiteName: string
+    mediaSiteName: string,
   ): Promise<{ id: string; originalKeyword: string }> => {
     return await callApi<{ id: string; originalKeyword: string }>(
       STEP_ID_FETCH_SERP,
       API_STEP1_FETCH_SERP_URL,
-      { keyword, mediaSiteName }
+      { keyword, mediaSiteName },
     );
   };
 
   // 2. Analyze Content Type (Now only needs serpId)
   const callAnalyzeContentTypeApi = async (
-    serpDocId: string
+    serpDocId: string,
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_CONTENT_TYPE,
       API_STEP2_ANALYZE_CONTENT_TYPE_URL,
-      { serpDocId }
+      { serpDocId },
     );
   };
 
   // 3. Analyze User Intent (Now only needs serpId)
   const callAnalyzeUserIntentApi = async (
-    serpDocId: string
+    serpDocId: string,
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_USER_INTENT,
       API_STEP3_ANALYZE_USER_INTENT_URL,
-      { serpDocId }
+      { serpDocId },
     );
   };
 
   // 4. Analyze Title (Now only needs serpId)
   const callAnalyzeTitleApi = async (
-    serpDocId: string
+    serpDocId: string,
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_TITLE,
       API_STEP4_ANALYZE_TITLE_URL,
-      { serpDocId }
+      { serpDocId },
     );
   };
 
   // 5. Analyze Better Have (Now only needs serpId)
   const callAnalyzeBetterHaveApi = async (
-    serpDocId: string
+    serpDocId: string,
   ): Promise<{ recommendationText: string }> => {
     return await callApi<{ recommendationText: string }>(
       STEP_ID_ANALYZE_BETTER_HAVE,
       API_STEP5_ANALYZE_BETTER_HAVE_URL,
-      { serpDocId }
+      { serpDocId },
     );
   };
 
@@ -465,7 +465,7 @@ export default function WritingPage() {
     titleRecommendationText: string,
     betterHaveRecommendationText: string,
     keywordReport: KeywordVolumeObject | any | null,
-    selectedClusterName: string | null
+    selectedClusterName: string | null,
   ): Promise<{ actionPlanText: string }> => {
     return await callApi<{ actionPlanText: string }>(
       STEP_ID_GENERATE_ACTION_PLAN,
@@ -478,8 +478,8 @@ export default function WritingPage() {
         titleRecommendationText,
         betterHaveRecommendationText,
         keywordReport,
-        selectedClusterName
-      }
+        selectedClusterName,
+      },
     );
   };
 
@@ -510,9 +510,9 @@ export default function WritingPage() {
         keywordReport,
         selectedClusterName,
         articleTemplate,
-        contentMarketingSuggestion: contentMarketingSuggestion || '', // Ensure default empty string if null
+        contentMarketingSuggestion: contentMarketingSuggestion || "", // Ensure default empty string if null
         fineTuneNames,
-      }
+      },
     );
   };
 
@@ -527,19 +527,21 @@ export default function WritingPage() {
     setSteps(initialSteps); // Reset steps state
 
     if (!keyword || !mediaSiteName) {
-      setError('Please provide both a keyword and select a media site.');
+      setError("Please provide both a keyword and select a media site.");
       setIsLoading(false);
       return;
     }
 
-    const firstKeyword = keyword.split(',')[0].trim();
+    const firstKeyword = keyword.split(",")[0].trim();
     if (!firstKeyword) {
-      setError('Please provide a valid keyword.');
+      setError("Please provide a valid keyword.");
       setIsLoading(false);
       return;
     }
 
-    const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
+    const mediaSite = MEDIASITE_DATA.find(
+      (site) => site.name === mediaSiteName,
+    );
     if (!mediaSite) {
       setError(`Media site configuration not found for name: ${mediaSiteName}`);
       setIsLoading(false);
@@ -549,14 +551,14 @@ export default function WritingPage() {
 
     // Get outline template (ensure it defaults if null)
     const outlineTemplate =
-      generatedOutlineText || '<!-- Default Outline/Template -->';
+      generatedOutlineText || "<!-- Default Outline/Template -->";
 
     console.log(
       `Submitting: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName}, FineTunes=${selectedFineTunes.join(
-        ', '
+        ", ",
       )}, TargetCluster=${
-        selectedClusterName === '__ALL_CLUSTERS__' ? 'All' : selectedClusterName
-      }`
+        selectedClusterName === "__ALL_CLUSTERS__" ? "All" : selectedClusterName
+      }`,
     );
 
     try {
@@ -568,23 +570,23 @@ export default function WritingPage() {
       // --- Filter Report Data if Cluster is Selected ---
       const currentSelectedCluster = selectedClusterName; // Read latest state here
       if (
-        currentSelectedCluster !== '__ALL_CLUSTERS__' &&
+        currentSelectedCluster !== "__ALL_CLUSTERS__" &&
         selectedKeywordReport
       ) {
         const clusterData = selectedKeywordReport.clustersWithVolume?.find(
-          (c: any) => c.clusterName === currentSelectedCluster
+          (c: any) => c.clusterName === currentSelectedCluster,
         );
         if (clusterData) {
           reportForStep6 = {
             query: selectedKeywordReport.query,
             language: selectedKeywordReport.language,
             region: selectedKeywordReport.region,
-            clustersWithVolume: [clusterData]
+            clustersWithVolume: [clusterData],
           };
           reportForStep7 = null;
         } else {
           console.warn(
-            `[handleSubmit] Selected cluster '${currentSelectedCluster}' not found in report. Using full report.`
+            `[handleSubmit] Selected cluster '${currentSelectedCluster}' not found in report. Using full report.`,
           );
           reportForStep6 = selectedKeywordReport;
           reportForStep7 = selectedKeywordReport;
@@ -598,11 +600,11 @@ export default function WritingPage() {
       const serpInfo = await callFetchSerpApi(firstKeyword, mediaSiteName);
       if (!serpInfo || !serpInfo.id || !serpInfo.originalKeyword) {
         console.error(
-          '[handleSubmit] Missing critical SERP info after Step 1:',
-          serpInfo
+          "[handleSubmit] Missing critical SERP info after Step 1:",
+          serpInfo,
         );
         throw new Error(
-          'Failed to fetch or validate initial SERP info (missing ID or keyword).'
+          "Failed to fetch or validate initial SERP info (missing ID or keyword).",
         );
       }
       const serpId = serpInfo.id;
@@ -615,19 +617,19 @@ export default function WritingPage() {
       const betterHaveResult = await callAnalyzeBetterHaveApi(serpId);
 
       // --- !! NEW: Fetch Updated SERP Data After Analysis !! ---
-      updateStepStatus('fetch-updated-serp', 'loading'); // Add a temporary step for UI if needed
+      updateStepStatus("fetch-updated-serp", "loading"); // Add a temporary step for UI if needed
       console.log(
-        `[handleSubmit] Fetching updated SERP data using ID: ${serpId}`
+        `[handleSubmit] Fetching updated SERP data using ID: ${serpId}`,
       );
       const updatedSerpData = await getSerpDataAction(serpId);
       if (!updatedSerpData) {
-        updateStepStatus('fetch-updated-serp', 'error');
+        updateStepStatus("fetch-updated-serp", "error");
         console.error(
-          `[handleSubmit] Failed to fetch updated SERP data for ID: ${serpId}`
+          `[handleSubmit] Failed to fetch updated SERP data for ID: ${serpId}`,
         );
-        throw new Error('Failed to retrieve updated SERP data after analysis.');
+        throw new Error("Failed to retrieve updated SERP data after analysis.");
       }
-      updateStepStatus('fetch-updated-serp', 'completed');
+      updateStepStatus("fetch-updated-serp", "completed");
       console.log(`[handleSubmit] Successfully fetched updated SERP data.`);
       // --- End Fetch Updated SERP Data ---
 
@@ -635,12 +637,14 @@ export default function WritingPage() {
       const actionPlanResult = await callGenerateActionPlanApi(
         serpKeyword, // Use keyword obtained from step 1
         mediaSiteName,
-        updatedSerpData.contentTypeRecommendationText ?? '', // <-- Use fetched data
-        updatedSerpData.userIntentRecommendationText ?? '', // <-- Use fetched data
-        updatedSerpData.titleRecommendationText ?? '', // <-- Use fetched top-level recommendation text
-        updatedSerpData.betterHaveRecommendationText ?? '', // <-- Use fetched data
+        updatedSerpData.contentTypeRecommendationText ?? "", // <-- Use fetched data
+        updatedSerpData.userIntentRecommendationText ?? "", // <-- Use fetched data
+        updatedSerpData.titleRecommendationText ?? "", // <-- Use fetched top-level recommendation text
+        updatedSerpData.betterHaveRecommendationText ?? "", // <-- Use fetched data
         reportForStep6,
-        currentSelectedCluster === '__ALL_CLUSTERS__' ? null : currentSelectedCluster // Corrected ternary again
+        currentSelectedCluster === "__ALL_CLUSTERS__"
+          ? null
+          : currentSelectedCluster, // Corrected ternary again
       );
 
       // Step 7: Generate Final Prompt (Use data from updatedSerpData)
@@ -648,34 +652,34 @@ export default function WritingPage() {
         serpKeyword, // Use keyword obtained from step 1
         actionPlanResult.actionPlanText,
         mediaSiteName,
-        updatedSerpData.contentTypeRecommendationText ?? '', // <-- Use fetched data
-        updatedSerpData.userIntentRecommendationText ?? '', // <-- Use fetched data
+        updatedSerpData.contentTypeRecommendationText ?? "", // <-- Use fetched data
+        updatedSerpData.userIntentRecommendationText ?? "", // <-- Use fetched data
         updatedSerpData.betterHaveRecommendationText ?? null, // <-- Use fetched data
         reportForStep7,
-        currentSelectedCluster === '__ALL_CLUSTERS__'
+        currentSelectedCluster === "__ALL_CLUSTERS__"
           ? null
           : currentSelectedCluster,
-        generatedOutlineText || '<!-- Default Outline -->',
+        generatedOutlineText || "<!-- Default Outline -->",
         null, // contentMarketingSuggestion
         selectedFineTunes,
       );
 
       // --- Process Complete ---
       setResearchPrompt(finalPromptResult.finalPrompt);
-      console.log('[UI] Process Complete. Final Research Prompt Generated.');
+      console.log("[UI] Process Complete. Final Research Prompt Generated.");
     } catch (err) {
-      console.error('[UI Debug] Error caught in handleSubmit:', err);
+      console.error("[UI Debug] Error caught in handleSubmit:", err);
       if (!error) {
         // Avoid overwriting specific API errors
         setError(
           err instanceof Error
             ? err.message
-            : 'An unexpected error occurred during generation.'
+            : "An unexpected error occurred during generation.",
         );
       }
     } finally {
       console.log(
-        '[UI Debug] handleSubmit finally block reached. Setting isLoading=false.'
+        "[UI Debug] handleSubmit finally block reached. Setting isLoading=false.",
       );
       setIsLoading(false);
     }
@@ -684,7 +688,7 @@ export default function WritingPage() {
   // Add handler for starting over to pass to ResultDisplay
   const handleStartOver = () => {
     setResearchPrompt(null);
-    setMediaSiteName('');
+    setMediaSiteName("");
     setSelectedFineTunes([]);
     setSelectedKeywordReport(null);
     setSteps(initialSteps);
@@ -697,8 +701,8 @@ export default function WritingPage() {
   // Add logging for final state before render
   console.log(
     `[UI Render State] isLoading=${isLoading}, hasResearchPrompt=${!!researchPrompt}, currentStep=${
-      steps.find(step => step.status === 'loading')?.name
-    }`
+      steps.find((step) => step.status === "loading")?.name
+    }`,
   );
 
   return (
@@ -759,7 +763,7 @@ export default function WritingPage() {
                         >
                           <span className="truncate">
                             {!isMounted || !keyword
-                              ? 'Select or type keyword...'
+                              ? "Select or type keyword..."
                               : keyword}
                           </span>
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -768,7 +772,7 @@ export default function WritingPage() {
                       <PopoverContent
                         align="start"
                         className="p-0"
-                        style={{ width: 'var(--radix-popover-trigger-width)' }}
+                        style={{ width: "var(--radix-popover-trigger-width)" }}
                       >
                         <Command shouldFilter={false} className="p-0">
                           <CommandInput
@@ -807,18 +811,18 @@ export default function WritingPage() {
                               !listFetchError &&
                               realKeywordList.length > 0 && (
                                 <CommandGroup>
-                                  {realKeywordList.map(item => (
+                                  {realKeywordList.map((item) => (
                                     <CommandItem
                                       key={item.id}
                                       value={item.query} // Use query for value
                                       onSelect={async (
-                                        currentValue: string
+                                        currentValue: string,
                                       ) => {
                                         const selectedItem =
                                           realKeywordList.find(
-                                            i =>
+                                            (i) =>
                                               i.query.toLowerCase() ===
-                                              currentValue.toLowerCase()
+                                              currentValue.toLowerCase(),
                                           );
                                         if (!selectedItem) return;
 
@@ -832,45 +836,45 @@ export default function WritingPage() {
                                         // --- UPDATED: Fetch and set the detailed keyword report using SERVER ACTION ---
                                         try {
                                           console.log(
-                                            `[UI] Calling Server Action for Keyword ID: ${selectedItem.id}`
+                                            `[UI] Calling Server Action for Keyword ID: ${selectedItem.id}`,
                                           );
                                           // Call the Server Action directly
                                           const detailResult =
                                             await submitGetKeywordVolumeObj({
-                                              researchId: selectedItem.id
+                                              researchId: selectedItem.id,
                                             });
 
                                           if (!detailResult) {
                                             console.warn(
-                                              `[UI] No details returned for ID: ${selectedItem.id}`
+                                              `[UI] No details returned for ID: ${selectedItem.id}`,
                                             );
                                             setSelectedKeywordReport(null); // Ensure it's null if fetch fails/returns null
                                             toast.error(
-                                              'Could not fetch keyword details.'
+                                              "Could not fetch keyword details.",
                                             );
                                           } else {
                                             setSelectedKeywordReport(
-                                              detailResult as KeywordVolumeObject
+                                              detailResult as KeywordVolumeObject,
                                             );
                                             console.log(
-                                              `[UI] Details fetched successfully for ID: ${selectedItem.id}`
+                                              `[UI] Details fetched successfully for ID: ${selectedItem.id}`,
                                             );
                                           }
                                         } catch (error) {
                                           console.error(
                                             `[UI] Error fetching keyword details for ID ${selectedItem.id}:`,
-                                            error
+                                            error,
                                           );
                                           setSelectedKeywordReport(null); // Clear report on error
                                           toast.error(
                                             error instanceof Error
                                               ? `Error fetching details: ${error.message}`
-                                              : 'An unknown error occurred while fetching details.'
+                                              : "An unknown error occurred while fetching details.",
                                           );
                                         } finally {
                                           setIsDetailLoading(false); // Stop loading indicator
                                           console.log(
-                                            '[UI] Detail fetching attempt complete.'
+                                            "[UI] Detail fetching attempt complete.",
                                           );
                                         }
                                         // ----- End Fetch ---
@@ -879,17 +883,17 @@ export default function WritingPage() {
                                     >
                                       <Check
                                         className={cn(
-                                          'mr-2 h-4 w-4',
+                                          "mr-2 h-4 w-4",
                                           keyword.toLowerCase() ===
                                             item.query.toLowerCase()
-                                            ? 'opacity-100'
-                                            : 'opacity-0'
+                                            ? "opacity-100"
+                                            : "opacity-0",
                                         )}
                                       />
                                       {item.query}
-                                      {typeof item.totalVolume === 'number' && (
+                                      {typeof item.totalVolume === "number" && (
                                         <span className="ml-auto text-xs text-muted-foreground">
-                                          Vol:{' '}
+                                          Vol:{" "}
                                           {item.totalVolume.toLocaleString()}
                                         </span>
                                       )}
@@ -910,10 +914,10 @@ export default function WritingPage() {
                         type="submit"
                         disabled={isLoading || isDetailLoading}
                         className={cn(
-                          'flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full',
-                          'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700',
+                          "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
+                          "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700",
                           (isLoading || isDetailLoading) &&
-                            'opacity-50 cursor-not-allowed'
+                            "opacity-50 cursor-not-allowed",
                         )}
                       >
                         {isLoading ? (
@@ -928,16 +932,16 @@ export default function WritingPage() {
                         (isMounted && mediaSiteName ? (
                           (() => {
                             const site = MEDIASITE_DATA.find(
-                              s => s.name === mediaSiteName
+                              (s) => s.name === mediaSiteName,
                             );
-                            let hostname = '';
+                            let hostname = "";
                             try {
-                              hostname = new URL(site?.url || '.').hostname;
+                              hostname = new URL(site?.url || ".").hostname;
                             } catch (e) {
                               /* ignore */
                             }
                             const faviconUrl =
-                              hostname && hostname !== '.'
+                              hostname && hostname !== "."
                                 ? `https://www.google.com/s2/favicons?sz=16&domain_url=${hostname}`
                                 : null;
                             return (
@@ -947,8 +951,8 @@ export default function WritingPage() {
                                 disabled={isLoading || isDetailLoading}
                                 title={`Selected: ${mediaSiteName}`}
                                 className={cn(
-                                  'flex items-center gap-1.5 px-2 text-xs font-mono transition-colors border h-full',
-                                  'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700'
+                                  "flex items-center gap-1.5 px-2 text-xs font-mono transition-colors border h-full",
+                                  "bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700",
                                 )}
                               >
                                 {faviconUrl && (
@@ -973,8 +977,8 @@ export default function WritingPage() {
                             onClick={() => setShowMediaSiteOptions(true)}
                             disabled={isLoading || isDetailLoading}
                             className={cn(
-                              'flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full',
-                              'bg-gray-50 text-gray-500 border-gray-300 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-400 dark:border-neutral-700 dark:hover:bg-neutral-800'
+                              "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
+                              "bg-gray-50 text-gray-500 border-gray-300 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-400 dark:border-neutral-700 dark:hover:bg-neutral-800",
                             )}
                           >
                             [Select Site...]
@@ -1020,16 +1024,16 @@ export default function WritingPage() {
                                 cluster.clusterName || `Cluster ${index + 1}`
                               }
                             >
-                              {cluster.clusterName || `Cluster ${index + 1}`}{' '}
-                              (Vol:{' '}
-                              {cluster.totalVolume?.toLocaleString() ?? 'N/A'})
+                              {cluster.clusterName || `Cluster ${index + 1}`}{" "}
+                              (Vol:{" "}
+                              {cluster.totalVolume?.toLocaleString() ?? "N/A"})
                             </SelectItem>
-                          )
+                          ),
                         )}
                       </SelectContent>
                     </Select>
                     {/* --- Display Area for Associated Persona --- */}
-                    {selectedClusterName !== '__ALL_CLUSTERS__' && (
+                    {selectedClusterName !== "__ALL_CLUSTERS__" && (
                       <div className="mt-2 p-3 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-md bg-indigo-50/50 dark:bg-indigo-900/10 text-sm text-indigo-800 dark:text-indigo-200">
                         {displayedPersona ? (
                           <>
@@ -1060,8 +1064,8 @@ export default function WritingPage() {
                         SELECT_MEDIA_SITE:
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {MEDIASITE_DATA.map(site => {
-                          let hostname = '';
+                        {MEDIASITE_DATA.map((site) => {
+                          let hostname = "";
                           try {
                             hostname = new URL(site.url).hostname;
                           } catch (e) {
@@ -1080,8 +1084,8 @@ export default function WritingPage() {
                               }}
                               disabled={isLoading || isDetailLoading} // Also disable if detail is loading
                               className={cn(
-                                'flex items-center gap-2 px-3 py-1.5 text-xs font-mono transition-colors border',
-                                'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900'
+                                "flex items-center gap-2 px-3 py-1.5 text-xs font-mono transition-colors border",
+                                "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:bg-neutral-900",
                               )}
                             >
                               {faviconUrl && (
@@ -1111,7 +1115,7 @@ export default function WritingPage() {
                         SELECT_FINE_TUNE_SETS (Experimental):
                       </p>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {allFineTuneNames.map(name => (
+                        {allFineTuneNames.map((name) => (
                           <div
                             key={name}
                             className="flex items-center space-x-2"
@@ -1119,7 +1123,7 @@ export default function WritingPage() {
                             <Checkbox
                               id={`fine-tune-${name}`}
                               checked={selectedFineTunes.includes(name)}
-                              onCheckedChange={checked =>
+                              onCheckedChange={(checked) =>
                                 handleFineTuneChange(checked, name)
                               }
                               disabled={isLoading || isDetailLoading} // Also disable if detail is loading
