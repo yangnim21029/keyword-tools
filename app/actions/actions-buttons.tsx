@@ -76,14 +76,14 @@ export function ClusterAnalysisButton({
       });
       if (result.success) {
         toast.success(
-          `Keyword clustering completed successfully for ${researchId}!`,
+          `Keyword clustering completed successfully for ${researchId}!`
         );
         // Revalidation should happen within the server action
       } else {
         toast.error(
           `Keyword clustering failed for ${researchId}: ${
             result.error ?? "Unknown error"
-          }`,
+          }`
         );
       }
     });
@@ -141,7 +141,7 @@ export function GeneratePersonaButton({
         toast.error(
           `Failed to generate persona for "${clusterName}": ${
             result.error ?? "Unknown error"
-          }`,
+          }`
         );
       }
     });
@@ -207,14 +207,14 @@ export function SubmitKeywordResearchButton({
           toast.error(errorMsg);
           if (result.researchId) {
             toast.info(
-              `研究記錄可能已部分創建 (ID: ${result.researchId})，但後續步驟失敗。`,
+              `研究記錄可能已部分創建 (ID: ${result.researchId})，但後續步驟失敗。`
             );
           }
         }
       } catch (err) {
         console.error(
           "[SubmitKeywordResearchButton] Error calling server action:",
-          err,
+          err
         );
         const message =
           err instanceof Error ? err.message : "處理請求時發生意外錯誤。";
@@ -280,7 +280,7 @@ export function DeleteKeywordVolumeButton({
         toast.success(`Research ${researchId} deleted.`);
       } else {
         toast.error(
-          `Failed to delete ${researchId}: ${result.error ?? "Unknown error"}`,
+          `Failed to delete ${researchId}: ${result.error ?? "Unknown error"}`
         );
       }
     });
@@ -292,7 +292,7 @@ export function DeleteKeywordVolumeButton({
       size={size}
       className={cn(
         "flex-shrink-0 text-muted-foreground hover:text-destructive",
-        className,
+        className
       )}
       onClick={handleDelete}
       isLoading={isPending}
@@ -356,7 +356,7 @@ export function CreateNewSerpButton({
       } catch (err) {
         console.error(
           "[CreateNewSerpButton] Error calling server action:",
-          err,
+          err
         );
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred.";
@@ -402,7 +402,7 @@ export function AnalyzeContentTypeButton({
           toast.success(`Content Type analysis complete.`);
         } else {
           toast.error(
-            `Content Type analysis failed: ${result.error ?? "Unknown error"}`,
+            `Content Type analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -446,7 +446,7 @@ export function AnalyzeUserIntentButton({
           toast.success(`User Intent analysis complete.`);
         } else {
           toast.error(
-            `User Intent analysis failed: ${result.error ?? "Unknown error"}`,
+            `User Intent analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -490,7 +490,7 @@ export function AnalyzeTitleButton({
           toast.success(`Title analysis complete.`);
         } else {
           toast.error(
-            `Title analysis failed: ${result.error ?? "Unknown error"}`,
+            `Title analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -535,7 +535,7 @@ export function AnalyzeBetterHaveButton({
           toast.success(`Better Have analysis complete.`);
         } else {
           toast.error(
-            `Better Have analysis failed: ${result.error ?? "Unknown error"}`,
+            `Better Have analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -587,7 +587,7 @@ export function AnalyzeContentSummaryButton({
           toast.success(`On-Page Content Summary analysis complete.`);
         } else {
           toast.error(
-            `On-Page Content Summary analysis failed: ${result.error ?? "Unknown error"}`,
+            `On-Page Content Summary analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -640,7 +640,7 @@ export function AnalyzeRankingFactorsV2Button({
       toast.info(
         hasExistingResult
           ? "Re-running V2 Ranking Factor analysis..."
-          : "Starting V2 Ranking Factor analysis...",
+          : "Starting V2 Ranking Factor analysis..."
       );
       try {
         const result = await submitAiAnalysisOnPageRankingFactorV2({ docId }); // Call the V2 action
@@ -648,7 +648,7 @@ export function AnalyzeRankingFactorsV2Button({
           toast.success(`V2 Ranking Factor analysis complete.`);
         } else {
           toast.error(
-            `V2 Ranking Factor analysis failed: ${result.error ?? "Unknown error"}`,
+            `V2 Ranking Factor analysis failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -706,7 +706,7 @@ export function AnalyzeRankingFactorsRecommendationButton({
       toast.info(
         hasExistingResult
           ? "Re-generating Recommendations..."
-          : "Generating Recommendations...",
+          : "Generating Recommendations..."
       );
       try {
         const result = await submitAiAnalysisOnPageRankingFactorRecommendation({
@@ -716,7 +716,7 @@ export function AnalyzeRankingFactorsRecommendationButton({
           toast.success(`Recommendations generated successfully.`);
         } else {
           toast.error(
-            `Recommendations generation failed: ${result.error ?? "Unknown error"}`,
+            `Recommendations generation failed: ${result.error ?? "Unknown error"}`
           );
         }
         router.refresh();
@@ -932,7 +932,7 @@ export function RephraseButton({
         const result = await rephraseParagraph(
           step1Result,
           aSections,
-          bSection,
+          bSection
         );
         if (result.success) {
           onResult(result.result);
@@ -1000,7 +1000,7 @@ export function GenerateGraphButton({
       toast.info(
         hasExistingResult
           ? "Re-generating paragraph graph..."
-          : "Generating paragraph graph...",
+          : "Generating paragraph graph..."
       );
       try {
         const result = await generateSingleParagraphGraph({
@@ -1012,7 +1012,7 @@ export function GenerateGraphButton({
           router.refresh();
         } else {
           toast.error(
-            `Graph generation failed: ${result.error ?? "Unknown error"}`,
+            `Graph generation failed: ${result.error ?? "Unknown error"}`
           );
         }
       } catch (err) {
@@ -1077,7 +1077,7 @@ export function GenerateArticleButton({
       className={cn("w-full md:w-auto", className)} // Default responsive width
       loadingIcon={<Loader2 className="h-4 w-4 animate-spin" />}
     >
-      {!isLoading && icon} {/* Show icon only when not loading */} 
+      {!isLoading && icon} {/* Show icon only when not loading */}
       {buttonText}
     </LoadingButton>
   );
@@ -1122,7 +1122,7 @@ export function OrganizeTextContentButton({
           router.refresh(); // Refresh data on the page
         } else {
           toast.error(
-            `Text content organization failed: ${result.error ?? "Unknown error"}`,
+            `Text content organization failed: ${result.error ?? "Unknown error"}`
           );
         }
       } catch (err) {

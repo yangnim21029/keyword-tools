@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Dispatch, SetStateAction } from 'react';
+import React, { Dispatch, SetStateAction } from "react";
 import { ErrorDisplay } from "@/app/writing/components/error-display";
 import { GenerateArticleButton } from "@/app/actions/actions-buttons";
 
@@ -21,7 +21,6 @@ export function FinalArticleGeneratorControls({
   articleError,
   setArticleError,
 }: FinalArticleGeneratorControlsProps) {
-
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold leading-none tracking-tight mb-4">
@@ -29,8 +28,8 @@ export function FinalArticleGeneratorControls({
       </h3>
 
       {articleError && (
-        <ErrorDisplay 
-          error={articleError} 
+        <ErrorDisplay
+          error={articleError}
           onDismiss={() => setArticleError(null)}
         />
       )}
@@ -42,7 +41,6 @@ export function FinalArticleGeneratorControls({
           disabled={isLoadingPrompt || isGeneratingArticle || !researchPrompt}
         />
       </div>
-
     </div>
   );
-} 
+}

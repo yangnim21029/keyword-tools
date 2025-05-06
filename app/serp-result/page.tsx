@@ -83,7 +83,7 @@ export default async function SerpAnalysisListPage() {
                   <TableRow key={serp.id}>
                     <TableCell className="font-medium">
                       <Link
-                        href={`/serp-ai/${serp.id}`}
+                        href={`/serp-result/${serp.id}`}
                         className="hover:underline text-blue-600"
                       >
                         {serp.keyword || "N/A"}

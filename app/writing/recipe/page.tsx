@@ -1,40 +1,60 @@
 "use client";
 
-import { MEDIASITE_DATA } from "@/app/global-config";
+// Removed MEDIASITE_DATA import as mediaSiteName is fixed
+// import { MEDIASITE_DATA } from "@/app/global-config";
 import {
   LANGUAGE_FINE_TUNE_DATA,
   MEDIA_SITE_FINE_TUNE_DATA,
   THEME_FINE_TUNE_DATA,
 } from "@/app/prompt/fine-tune";
-import { useClientStorage } from "@/components/hooks/use-client-storage";
+// Removed useClientStorage import
+// import { useClientStorage } from "@/components/hooks/use-client-storage";
 import { Button } from "@/components/ui/button";
-// Removed Checkbox import as it's no longer used for fine-tunes
-// Removed Command imports as combobox is replaced
-import { Label } from "@/components/ui/label";
-// Removed Popover imports as combobox is replaced
+// Removed Label import (no longer needed for single keyword select)
+// import { Label } from "@/components/ui/label";
+// Removed Select imports
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from "@/components/ui/select";
+// Shadcn Table components
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge"; // For status display
 import { cn } from "@/lib/utils";
 import {
   // Removed Check, ChevronsUpDown, Layers as they are no longer needed
   Loader2,
   // Removed Settings2 as fine-tune button is removed
   TerminalSquare,
+  ClipboardCopy, // For copy button
+  Trash2, // For potential future delete/reset
+  Info, // For showing errors/results
 } from "lucide-react";
 // Removed Image import as media site selector is removed
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react"; // Added useCallback
 import { toast } from "sonner";
-// Adjusted import paths relative to the new file location if needed (assuming they are correct)
-import { ErrorDisplay } from "../components/error-display";
-import { ProgressChecklistDisplay } from "../components/progress-checklist-display";
-import { ResultDisplay } from "../components/result-display";
+// Removed unused display components
+// import { ErrorDisplay } from "../components/error-display";
+// import { ProgressChecklistDisplay } from "../components/progress-checklist-display";
+// import { ResultDisplay } from "../components/result-display";
 import { RevalidateButton } from "@/app/actions/actions-buttons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"; // For showing full prompt/error
 
 // --- Import Corrected Types from Schema ---
 // Removed KeywordVolumeListItem and KeywordVolumeObject types as they are no longer used
@@ -312,133 +332,91 @@ const allFineTuneNames = [
   ...LANGUAGE_FINE_TUNE_DATA.map((item) => item.name),
 ];
 
-// --- UPDATED: Step Checklist Component ---
-interface Step {
-  id: string;
-  name: string;
-  status: "pending" | "loading" | "completed" | "error";
-  durationMs?: number; // Add optional duration
+// --- NEW: Interface for individual keyword task state ---
+type TaskStatus = "pending" | "loading" | "completed" | "error";
+
+interface KeywordTaskState {
+  keyword: string;
+  status: TaskStatus;
+  resultPrompt: string | null;
+  errorMessage: string | null;
+  // Add other fields later if needed (e.g., generatedArticleText, editedArticleText, publishedUrl)
 }
 
 // --- RENAMED Component ---
-export default function WritingRecipePage() {
-  // Use useClientStorage for keyword and report state
-  const [keyword, setKeyword] = useClientStorage("writingRecipe:keyword", ""); // Use different key for recipe page
-  // Removed selectedKeywordReport state
-  const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>(
-    "writingRecipe:researchPrompt", // Use different key
-    null
-  );
-  const [generationAttempted, setGenerationAttempted] = useClientStorage(
-    "writingRecipe:generationAttempted", // Use different key
-    false
-  );
-  const [generatedOutlineText, setGeneratedOutlineText] = useClientStorage<
-    string | null
-  >("writingRecipe:generatedOutlineText", null); // Use different key
+export default function WritingQueuePage() {
+  // --- State for Keyword Tasks ---
+  const [keywordTasks, setKeywordTasks] = useState<KeywordTaskState[]>([]);
 
-  // --- FIXED State for Media Site and Fine-tunes ---
-  const [mediaSiteName, setMediaSiteName] = useState<string>("urbanlife"); // Fixed value
-  const [selectedFineTunes, setSelectedFineTunes] =
-    useState<string[]>(allFineTuneNames); // Pre-selected all
-
-  // --- State for loading/UI ---
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // --- FIXED State for Media Site and Fine-tunes (used by generation logic) ---
+  const [mediaSiteName] = useState<string>("urbanlife"); // Fixed value
+  const [selectedFineTunes] = useState<string[]>(allFineTuneNames); // Pre-selected all
 
   // --- State for hydration fix ---
   const [isMounted, setIsMounted] = useState(false);
 
-  // --- State for steps ---
-  const initialSteps: Step[] = [
-    { id: STEP_ID_FETCH_SERP, name: "Step 1: Fetch SERP", status: "pending" },
-    {
-      id: STEP_ID_ANALYZE_CONTENT_TYPE,
-      name: "Step 2: Analyze Content Type",
-      status: "pending",
-    },
-    {
-      id: STEP_ID_ANALYZE_USER_INTENT,
-      name: "Step 3: Analyze User Intent",
-      status: "pending",
-    },
-    {
-      id: STEP_ID_ANALYZE_TITLE,
-      name: "Step 4: Analyze Title",
-      status: "pending",
-    },
-    {
-      id: STEP_ID_ANALYZE_BETTER_HAVE,
-      name: "Step 5: Analyze Better Have",
-      status: "pending",
-    },
-    {
-      id: STEP_ID_GENERATE_ACTION_PLAN,
-      name: "Step 6: Generate Action Plan",
-      status: "pending",
-    },
-    {
-      id: STEP_ID_GENERATE_FINAL_PROMPT,
-      name: "Step 7: Generate Final Prompt",
-      status: "pending",
-    },
-  ];
-  const [steps, setSteps] = useState<Step[]>(initialSteps);
+  // --- State for clipboard copy status (per keyword) ---
+  const [copiedKeyword, setCopiedKeyword] = useState<string | null>(null);
+
+  // --- REMOVED Unused Global State & Initial Steps ---
 
   // --- Effects ---
   useEffect(() => {
     setIsMounted(true);
+    // Initialize keyword tasks from the hardcoded list
+    setKeywordTasks(
+      hardcodedKeywords.map((kw) => ({
+        keyword: kw,
+        status: "pending", // Initial status
+        resultPrompt: null,
+        errorMessage: null,
+      }))
+    );
     // No need to set mediaSiteName or selectedFineTunes here, initialized above
-  }, []);
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   // Removed useEffect for loading keywords from API
   // Removed useEffect for syncing selectedClusterName with selectedKeywordReport
   // Removed useEffect for syncing persona with selectedClusterName
   // Removed hasClusters calculation
 
-  if (!isMounted) {
-    return null;
-  }
-
   // --- Handlers ---
-  const handleCopyToClipboard = async () => {
-    // ... (copy logic remains the same) ...
-    if (researchPrompt) {
-      try {
-        await navigator.clipboard.writeText(researchPrompt);
-        setCopied(true);
-        toast.success("Prompt copied to clipboard!");
-        setTimeout(() => setCopied(false), 2000);
-      } catch (err) {
-        console.error("Failed to copy text: ", err);
-        toast.error("Failed to copy prompt.");
-        setCopied(false);
-      }
+  const handleCopyToClipboard = async (textToCopy: string, keyword: string) => {
+    // Updated to accept text and keyword directly
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedKeyword(keyword);
+      toast.success(`Prompt for "${keyword}" copied!`);
+      setTimeout(() => setCopiedKeyword(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+      toast.error("Failed to copy prompt.");
+      setCopiedKeyword(null);
     }
   };
 
   // Removed handleFineTuneChange
 
-  const updateStepStatus = (
-    stepId: string,
-    status: Step["status"],
-    durationMs?: number
-  ) => {
-    setSteps((prevSteps) =>
-      prevSteps.map((step) =>
-        step.id === stepId ? { ...step, status, durationMs } : step
-      )
-    );
-  };
+  // --- Utility Function to Update Task State ---
+  const updateTaskState = useCallback(
+    (targetKeyword: string, updates: Partial<KeywordTaskState>) => {
+      setKeywordTasks((prevTasks) =>
+        prevTasks.map((task) =>
+          task.keyword === targetKeyword ? { ...task, ...updates } : task
+        )
+      );
+    },
+    [] // No dependencies needed for setKeywordTasks with functional update
+  );
 
-  // --- API Call Helpers (remain the same) ---
+  // --- API Call Helpers (modified to not update global steps) ---
+  // Note: The step tracking (`updateStepStatus`) is removed as it's not needed for the batch UI.
   const callApi = async <T,>(
-    stepId: string,
+    _stepId: string, // No longer used for global state update
     url: string,
     payload: any
   ): Promise<T> => {
-    updateStepStatus(stepId, "loading");
     const startTime = performance.now();
     let durationMs = 0;
     try {
@@ -449,7 +427,7 @@ export default function WritingRecipePage() {
       });
       durationMs = performance.now() - startTime;
       if (!response.ok) {
-        let errorDetails = `API Error (${stepId}): ${response.statusText}`;
+        let errorDetails = `API Error (${_stepId}): ${response.statusText}`;
         try {
           const errorBody = await response.json();
           errorDetails =
@@ -463,15 +441,11 @@ export default function WritingRecipePage() {
         throw new Error(errorDetails);
       }
       const result = await response.json();
-      updateStepStatus(stepId, "completed", durationMs);
       return result as T;
     } catch (error) {
-      updateStepStatus(stepId, "error");
       throw error; // Re-throw
     }
   };
-
-  // Specific API call functions (callFetchSerpApi, etc.) remain the same
 
   // 1. Fetch SERP
   const callFetchSerpApi = async (
@@ -585,241 +559,332 @@ export default function WritingRecipePage() {
     );
   };
 
-  // --- handleSubmit (Updated for fixed values) ---
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setGenerationAttempted(true);
-    setError(null);
-    setResearchPrompt(null);
-    // setGeneratedOutlineText(null); // Keep outline? Or reset? Let's reset for now.
-    setGeneratedOutlineText(null);
-    setSteps(initialSteps);
+  // --- handleGenerate (Replaces handleSubmit) ---
+  const handleGenerate = useCallback(
+    async (targetKeyword: string) => {
+      console.log(`[UI] Starting generation for keyword: ${targetKeyword}`);
+      updateTaskState(targetKeyword, {
+        status: "loading",
+        errorMessage: null,
+        resultPrompt: null,
+      });
+      // Use fixed mediaSiteName and selectedFineTunes from state
 
-    // Use the fixed mediaSiteName directly
-    if (!keyword) {
-      setError("Please select a keyword."); // Updated error message
-      setIsLoading(false);
-      return;
-    }
+      // TODO: Define how outlineTemplate is obtained for each keyword if needed. Using default.
+      const outlineTemplate = "<!-- Default Outline/Template -->";
 
-    const firstKeyword = keyword.split(",")[0].trim();
-    if (!firstKeyword) {
-      setError("Please provide a valid keyword.");
-      setIsLoading(false);
-      return;
-    }
+      try {
+        // --- Execute Steps Sequentially for the targetKeyword ---
+        console.log(`[${targetKeyword}] Step 1: Fetching SERP...`);
+        const serpInfo = await callFetchSerpApi(targetKeyword, mediaSiteName);
+        const serpId = serpInfo.id;
+        const serpKeyword = serpInfo.originalKeyword; // Use the keyword returned by SERP API
+        console.log(`[${serpKeyword}] Step 1 Done (SERP ID: ${serpId}).`);
 
-    // No need to find mediaSite, use fixed value
-    // const mediaSite = MEDIASITE_DATA.find(site => site.name === mediaSiteName);
-    // if (!mediaSite) { ... } // This check is less critical now
+        console.log(`[${serpKeyword}] Steps 2-5: Analyzing SERP...`);
+        // Run analysis steps (could potentially run in parallel if independent)
+        await Promise.all([
+          callAnalyzeContentTypeApi(serpId),
+          callAnalyzeUserIntentApi(serpId),
+          callAnalyzeTitleApi(serpId),
+          callAnalyzeBetterHaveApi(serpId),
+        ]);
+        console.log(`[${serpKeyword}] Steps 2-5 Done.`);
 
-    const outlineTemplate =
-      generatedOutlineText || "<!-- Default Outline/Template -->";
+        // Fetch Updated SERP Data after analysis
+        console.log(`[${serpKeyword}] Fetching updated SERP data...`);
+        // Ensure getSerpDataAction is correctly imported and used
+        const updatedSerpData = await getSerpDataAction(serpId);
+        if (!updatedSerpData) {
+          throw new Error(
+            "Failed to retrieve updated SERP data after analysis."
+          );
+        }
+        console.log(`[${serpKeyword}] Fetched updated SERP data.`);
 
-    console.log(
-      `Submitting Recipe: Keyword=${firstKeyword}, MediaSiteName=${mediaSiteName} (Fixed), FineTunes=All (${selectedFineTunes.length}) (Fixed)` // Removed TargetCluster log
-    );
+        // Step 6: Generate Action Plan
+        console.log(`[${serpKeyword}] Step 6: Generating Action Plan...`);
+        const actionPlanResult = await callGenerateActionPlanApi(
+          serpKeyword,
+          mediaSiteName,
+          updatedSerpData.contentTypeRecommendationText ?? "",
+          updatedSerpData.userIntentRecommendationText ?? "",
+          updatedSerpData.titleRecommendationText ?? "",
+          updatedSerpData.betterHaveRecommendationText ?? ""
+        );
+        console.log(`[${serpKeyword}] Step 6 Done.`);
 
-    try {
-      // --- Execute Steps Sequentially (logic remains mostly the same) ---
+        // Step 7: Generate Final Prompt
+        console.log(`[${serpKeyword}] Step 7: Generating Final Prompt...`);
+        const finalPromptResult = await callGenerateFinalPromptApi(
+          serpKeyword,
+          actionPlanResult.actionPlanText,
+          mediaSiteName,
+          updatedSerpData.contentTypeRecommendationText ?? "",
+          updatedSerpData.userIntentRecommendationText ?? "",
+          updatedSerpData.betterHaveRecommendationText ?? null,
+          outlineTemplate,
+          null, // No content marketing suggestion for now
+          selectedFineTunes
+        );
+        console.log(`[${serpKeyword}] Step 7 Done.`);
 
-      // Step 1: Fetch SERP
-      const serpInfo = await callFetchSerpApi(firstKeyword, mediaSiteName); // Use fixed mediaSiteName
-      const serpId = serpInfo.id;
-      const serpKeyword = serpInfo.originalKeyword;
-
-      // Steps 2-5: Analysis
-      const contentTypeResult = await callAnalyzeContentTypeApi(serpId);
-      const userIntentResult = await callAnalyzeUserIntentApi(serpId);
-      const titleResult = await callAnalyzeTitleApi(serpId);
-      const betterHaveResult = await callAnalyzeBetterHaveApi(serpId);
-
-      // Fetch Updated SERP Data
-      updateStepStatus("fetch-updated-serp", "loading");
-      const updatedSerpData = await getSerpDataAction(serpId);
-      if (!updatedSerpData) {
-        updateStepStatus("fetch-updated-serp", "error");
-        throw new Error("Failed to retrieve updated SERP data after analysis.");
+        // --- Update Task State on Success ---
+        updateTaskState(targetKeyword, {
+          status: "completed",
+          resultPrompt: finalPromptResult.finalPrompt,
+          errorMessage: null,
+        });
+        toast.success(`Successfully generated prompt for "${targetKeyword}"`);
+        console.log(`[UI] Generation complete for: ${targetKeyword}`);
+      } catch (err) {
+        console.error(
+          `[UI Debug] Error during generation for ${targetKeyword}:`,
+          err
+        );
+        const errorMessage =
+          err instanceof Error ? err.message : "An unexpected error occurred.";
+        // --- Update Task State on Error ---
+        updateTaskState(targetKeyword, {
+          status: "error",
+          errorMessage: errorMessage,
+          resultPrompt: null,
+        });
+        toast.error(
+          `Generation failed for "${targetKeyword}": ${errorMessage}`
+        );
       }
-      updateStepStatus("fetch-updated-serp", "completed");
+    },
+    [updateTaskState, mediaSiteName, selectedFineTunes]
+  ); // Dependencies for useCallback
 
-      // Step 6: Generate Action Plan
-      const actionPlanResult = await callGenerateActionPlanApi(
-        serpKeyword,
-        mediaSiteName, // Use fixed mediaSiteName
-        updatedSerpData.contentTypeRecommendationText ?? "",
-        updatedSerpData.userIntentRecommendationText ?? "",
-        updatedSerpData.titleRecommendationText ?? "",
-        updatedSerpData.betterHaveRecommendationText ?? ""
-      );
+  // --- handleResetTask (Optional: For resetting a specific task) ---
+  const handleResetTask = useCallback(
+    (targetKeyword: string) => {
+      updateTaskState(targetKeyword, {
+        status: "pending",
+        resultPrompt: null,
+        errorMessage: null,
+      });
+      toast.info(`Task for "${targetKeyword}" reset.`);
+    },
+    [updateTaskState]
+  ); // Dependency
 
-      // Step 7: Generate Final Prompt
-      const finalPromptResult = await callGenerateFinalPromptApi(
-        serpKeyword,
-        actionPlanResult.actionPlanText,
-        mediaSiteName, // Use fixed mediaSiteName
-        updatedSerpData.contentTypeRecommendationText ?? "",
-        updatedSerpData.userIntentRecommendationText ?? "",
-        updatedSerpData.betterHaveRecommendationText ?? null,
-        outlineTemplate,
-        null,
-        selectedFineTunes // Use fixed selectedFineTunes
-      );
-
-      setResearchPrompt(finalPromptResult.finalPrompt);
-      console.log("[UI] Recipe Process Complete. Final Prompt Generated.");
-    } catch (err) {
-      console.error("[UI Debug] Error in recipe handleSubmit:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "An unexpected error occurred during recipe generation."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // --- handleStartOver (Updated) ---
-  const handleStartOver = () => {
-    setResearchPrompt(null);
-    // Don't reset mediaSiteName or selectedFineTunes
-    setKeyword(""); // Reset keyword as well
-    setSteps(initialSteps);
-    setGenerationAttempted(false);
-    setGeneratedOutlineText(null); // Reset outline
-    setError(null);
-    setCopied(false);
-  };
+  if (!isMounted) {
+    return null;
+  }
 
   // --- Render ---
   return (
-    <div className="min-h-screen dark:from-neutral-950 dark:to-black">
-      <div className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 max-w-4xl">
-        {/* --- Add a title for the recipe page --- */}
-        <h1 className="text-2xl font-semibold mb-6 text-center text-gray-800 dark:text-gray-200">
-          Writing Recipe: UrbanLife Special
-        </h1>
-        <div className="space-y-8">
-          <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden">
-            {/* Header - Simplified */}
-            <div className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 border-b border-gray-300 dark:border-neutral-700 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                {/* Window controls */}
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-red-400 dark:bg-red-500"></div>
-                  <div className="w-2 h-2 rounded-full bg-yellow-400 dark:bg-yellow-500"></div>
-                  <div className="w-2 h-2 rounded-full bg-green-400 dark:bg-green-500"></div>
-                </div>
-                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">
-                  URBANLIFE_RECIPE_INPUT
+    <TooltipProvider>
+      {" "}
+      {/* Needed for Tooltip components */}
+      <div className="min-h-screen dark:from-neutral-950 dark:to-black">
+        <div className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 max-w-6xl">
+          {" "}
+          {/* Increased max-width */}
+          <h1 className="text-2xl font-semibold mb-6 text-center text-gray-800 dark:text-gray-200">
+            AI Writing Queue - UrbanLife {/* Updated Title */}
+          </h1>
+          <div className="space-y-8">
+            <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden rounded-lg">
+              {" "}
+              {/* Added rounded-lg */}
+              {/* Header */}
+              <div className="px-4 py-3 bg-gray-50 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700 flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Keyword Tasks ({keywordTasks.length})
                 </span>
-              </div>
-              {/* Right side controls - Removed Fine-Tune button */}
-              <div className="flex items-center gap-4">
-                {/* Optionally show fixed site/fine-tune count here if needed */}
-                <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
-                  Site: urbanlife | Fine-Tunes: {selectedFineTunes.length} (All)
-                </span>
-                <RevalidateButton size="sm" variant="ghost" />
-              </div>
-            </div>
-            {/* Form Content Area */}
-            <div className="p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Keyword Input Section (Updated to use Select) */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="keyword-select" // Changed htmlFor
-                    className="text-base font-medium"
-                  >
-                    Keyword
-                  </Label>
-                  <div className="relative">
-                    {/* Replaced Popover/Command with Select */}
-                    <Select
-                      value={keyword}
-                      onValueChange={(value) => {
-                        setKeyword(value === "__PLACEHOLDER__" ? "" : value);
-                        // Clear dependent states if needed (though report/cluster are removed)
-                      }}
-                      disabled={isLoading}
-                    >
-                      <SelectTrigger
-                        id="keyword-select" // Changed id
-                        disabled={isLoading}
-                        className="w-full h-12 text-base bg-gray-50 dark:bg-neutral-900 border-gray-300 dark:border-neutral-700 focus-visible:ring-primary hover:bg-gray-100 dark:hover:bg-neutral-800 pr-28" // Adjusted padding right
-                      >
-                        <SelectValue placeholder="Select a keyword..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {/* Add placeholder if no keyword is selected initially */}
-                        {/* <SelectItem value="__PLACEHOLDER__" disabled>Select a keyword...</SelectItem> */}
-                        {hardcodedKeywords.map((kw) => (
-                          <SelectItem key={kw} value={kw}>
-                            {kw}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {/* Action Buttons - Simplified */}
-                    <div className="absolute right-2 top-2 h-8 flex items-center gap-2">
-                      <Button
-                        type="submit"
-                        disabled={isLoading || !keyword} // Disable if loading or no keyword selected
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 text-xs font-mono transition-colors border h-full",
-                          "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 dark:bg-neutral-800 dark:text-gray-300 dark:border-neutral-700 dark:hover:bg-neutral-700",
-                          (isLoading || !keyword) &&
-                            "opacity-50 cursor-not-allowed" // Updated disabled style check
-                        )}
-                      >
-                        {isLoading ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <TerminalSquare className="h-3.5 w-3.5" />
-                        )}
-                        Generate
-                      </Button>
-                      {/* Removed Media Site Button */}
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                    Site: {mediaSiteName} | Fine-Tunes:{" "}
+                    {selectedFineTunes.length} (All)
+                  </span>
+                  <RevalidateButton size="sm" variant="ghost" />
+                  {/* Maybe add a button to add new keywords later */}
                 </div>
-
-                {/* Cluster Selection Dropdown (Removed) */}
-                {/* {isMounted && hasClusters && ( ... )} */}
-
-                {/* Removed Media Site and Fine-Tune Selection Areas */}
-
-                {/* Progress Checklist */}
-                {generationAttempted && (
-                  <ProgressChecklistDisplay steps={steps} />
-                )}
-
-                {/* Error Display */}
-                {!isLoading && (
-                  <ErrorDisplay
-                    error={error}
-                    onDismiss={() => setError(null)}
-                  />
-                )}
-
-                {/* Result Display */}
-                {!isLoading && researchPrompt && (
-                  <ResultDisplay
-                    researchPrompt={researchPrompt}
-                    generatedOutlineText={generatedOutlineText}
-                    onCopyToClipboard={handleCopyToClipboard}
-                    onStartOver={handleStartOver}
-                    copied={copied}
-                  />
-                )}
-              </form>
+              </div>
+              {/* Table Content Area */}
+              <div className="p-0">
+                {" "}
+                {/* Remove padding for full-width table */}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50 dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-700/50">
+                      <TableHead className="w-[40%] px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                        Keyword
+                      </TableHead>
+                      <TableHead className="w-[15%] px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider text-center">
+                        Status
+                      </TableHead>
+                      <TableHead className="w-[30%] px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                        Result / Error
+                      </TableHead>
+                      <TableHead className="w-[15%] px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider text-right">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {keywordTasks.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="text-center text-gray-500 dark:text-gray-400 py-10"
+                        >
+                          No keyword tasks found. (Or initializing...)
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      keywordTasks.map((task) => (
+                        <TableRow
+                          key={task.keyword}
+                          className="hover:bg-gray-50 dark:hover:bg-neutral-800/50"
+                        >
+                          <TableCell className="px-4 py-3 font-medium text-sm text-gray-800 dark:text-gray-200 align-top">
+                            {task.keyword}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-center align-top">
+                            <Badge
+                              variant={
+                                task.status === "completed"
+                                  ? "default"
+                                  : task.status === "error"
+                                    ? "destructive"
+                                    : task.status === "loading"
+                                      ? "outline"
+                                      : "secondary"
+                              }
+                              className="text-xs capitalize"
+                            >
+                              {task.status === "loading" ? (
+                                <Loader2 className="h-3 w-3 animate-spin mr-1 inline-block" />
+                              ) : null}
+                              {task.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 align-top">
+                            {task.status === "completed" &&
+                              task.resultPrompt && (
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="truncate flex-1"
+                                    title={task.resultPrompt}
+                                  >
+                                    {" "}
+                                    {/* Add title for full text on hover */}
+                                    {task.resultPrompt}
+                                  </span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() =>
+                                          handleCopyToClipboard(
+                                            task.resultPrompt!,
+                                            task.keyword
+                                          )
+                                        }
+                                      >
+                                        <ClipboardCopy
+                                          className={`h-3.5 w-3.5 ${copiedKeyword === task.keyword ? "text-green-500" : ""}`}
+                                        />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Copy Prompt</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              )}
+                            {task.status === "error" && task.errorMessage && (
+                              <div className="flex items-center gap-2 text-red-600 dark:text-red-500">
+                                <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      className="truncate flex-1 cursor-help"
+                                      title={task.errorMessage}
+                                    >
+                                      {/* Add title */}
+                                      {task.errorMessage}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs break-words">
+                                    <p>{task.errorMessage}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            )}
+                            {(task.status === "pending" ||
+                              task.status === "loading") && (
+                              <span className="italic text-gray-400 dark:text-gray-600">
+                                -
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right space-x-1 align-top">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  onClick={() => handleGenerate(task.keyword)}
+                                  disabled={
+                                    task.status === "loading" ||
+                                    task.status === "completed"
+                                  }
+                                >
+                                  {task.status === "loading" ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <TerminalSquare className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {task.status === "completed"
+                                    ? "Generated"
+                                    : "Generate"}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                            {/* Optional Reset Button */}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-gray-500 hover:text-red-500"
+                                  onClick={() => handleResetTask(task.keyword)}
+                                  disabled={
+                                    task.status === "pending" ||
+                                    task.status === "loading"
+                                  }
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Reset Task</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
