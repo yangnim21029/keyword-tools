@@ -41,67 +41,114 @@ import type {
 import { submitGetKeywordVolumeObj } from "@/app/actions/actions-keyword-volume";
 import { toast } from "sonner";
 
-interface PromptGeneratorFormProps {
+// Define interfaces for grouped props
+interface KeywordConfig {
   keyword: string;
   setKeyword: (value: string) => void;
+  selectedKeywordReport: KeywordVolumeObject | null;
+  setSelectedKeywordReport: (value: KeywordVolumeObject | null) => void;
+  realKeywordList: KeywordVolumeListItem[];
+}
+
+interface MediaSiteConfig {
   mediaSiteName: string;
   setMediaSiteName: (value: string) => void;
+  showMediaSiteOptions: boolean;
+  setShowMediaSiteOptions: (value: boolean) => void;
+}
+
+interface FineTuneConfig {
   selectedFineTunes: string[];
   handleFineTuneChange: (checked: boolean | string, name: string) => void;
   allFineTuneNames: string[];
-  selectedKeywordReport: KeywordVolumeObject | null;
-  setSelectedKeywordReport: (value: KeywordVolumeObject | null) => void;
+  showFineTuneOptions: boolean;
+}
+
+interface ClusterConfig {
   selectedClusterName: string;
   setSelectedClusterName: (value: string) => void;
   displayedPersona: string | null;
-  realKeywordList: KeywordVolumeListItem[];
+  hasClusters: boolean;
+}
+
+interface LoadingState {
   isListLoading: boolean;
   listFetchError: string | null;
   isDetailLoading: boolean;
   setIsDetailLoading: (value: boolean) => void;
-  isMounted: boolean;
   isLoadingPrompt: boolean;
   isGeneratingArticle: boolean;
-  showMediaSiteOptions: boolean;
-  setShowMediaSiteOptions: (value: boolean) => void;
-  showFineTuneOptions: boolean;
+}
+
+interface UISharedState {
+  isMounted: boolean;
   comboboxOpen: boolean;
   setComboboxOpen: (value: boolean) => void;
-  hasClusters: boolean;
+}
+
+interface Handlers {
   handleSubmitPrompt: (
     event?: React.FormEvent<HTMLFormElement>
   ) => Promise<void>;
 }
 
+// Update Props definition
+interface PromptGeneratorFormProps {
+  keywordConfig: KeywordConfig;
+  mediaSiteConfig: MediaSiteConfig;
+  fineTuneConfig: FineTuneConfig;
+  clusterConfig: ClusterConfig;
+  loadingState: LoadingState;
+  uiState: UISharedState;
+  handlers: Handlers;
+}
+
 export const PromptGeneratorForm: React.FC<PromptGeneratorFormProps> = ({
-  keyword,
-  setKeyword,
-  mediaSiteName,
-  setMediaSiteName,
-  selectedFineTunes,
-  handleFineTuneChange,
-  allFineTuneNames,
-  selectedKeywordReport,
-  setSelectedKeywordReport,
-  selectedClusterName,
-  setSelectedClusterName,
-  displayedPersona,
-  realKeywordList,
-  isListLoading,
-  listFetchError,
-  isDetailLoading,
-  setIsDetailLoading,
-  isMounted,
-  isLoadingPrompt,
-  isGeneratingArticle,
-  showMediaSiteOptions,
-  setShowMediaSiteOptions,
-  showFineTuneOptions,
-  comboboxOpen,
-  setComboboxOpen,
-  hasClusters,
-  handleSubmitPrompt,
+  keywordConfig,
+  mediaSiteConfig,
+  fineTuneConfig,
+  clusterConfig,
+  loadingState,
+  uiState,
+  handlers,
 }) => {
+  // Destructure props from the grouped objects
+  const {
+    keyword,
+    setKeyword,
+    selectedKeywordReport,
+    setSelectedKeywordReport,
+    realKeywordList,
+  } = keywordConfig;
+  const {
+    mediaSiteName,
+    setMediaSiteName,
+    showMediaSiteOptions,
+    setShowMediaSiteOptions,
+  } = mediaSiteConfig;
+  const {
+    selectedFineTunes,
+    handleFineTuneChange,
+    allFineTuneNames,
+    showFineTuneOptions,
+  } = fineTuneConfig;
+  const {
+    selectedClusterName,
+    setSelectedClusterName,
+    displayedPersona,
+    hasClusters,
+  } = clusterConfig;
+  const {
+    isListLoading,
+    listFetchError,
+    isDetailLoading,
+    setIsDetailLoading,
+    isLoadingPrompt,
+    isGeneratingArticle,
+  } = loadingState;
+  const { isMounted, comboboxOpen, setComboboxOpen } = uiState;
+  const { handleSubmitPrompt } = handlers;
+
   if (!isMounted) return null; // Still needed for initial render consistency
 
   return (

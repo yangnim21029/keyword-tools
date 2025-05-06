@@ -4,7 +4,7 @@ import React from "react";
 import { ProgressChecklistDisplay } from "./progress-checklist-display";
 import { ErrorDisplay } from "./error-display";
 import { ResultDisplay } from "./result-display";
-import type { Step } from "../page"; // Assuming Step type is exported from page.tsx or moved to types file
+import type { Step } from "../types"; // Update import to use types file
 
 interface PromptGenerationResultProps {
   generationAttempted: boolean;
@@ -16,7 +16,7 @@ interface PromptGenerationResultProps {
   handleCopyToClipboard: (text: string | null) => void;
   handleStartOver: () => void;
   copiedPrompt: boolean;
-  setPromptError: (error: string | null) => void; // Add setter for dismissing error
+  clearPromptError: () => void; // Add new prop for clearing the error
 }
 
 export const PromptGenerationResult: React.FC<PromptGenerationResultProps> = ({
@@ -29,7 +29,7 @@ export const PromptGenerationResult: React.FC<PromptGenerationResultProps> = ({
   handleCopyToClipboard,
   handleStartOver,
   copiedPrompt,
-  setPromptError,
+  clearPromptError, // Destructure new prop
 }) => {
   if (!generationAttempted) {
     return null; // Don't show anything if generation hasn't started
@@ -46,7 +46,7 @@ export const PromptGenerationResult: React.FC<PromptGenerationResultProps> = ({
       {!isLoadingPrompt && promptError && (
         <ErrorDisplay
           error={promptError}
-          onDismiss={() => setPromptError(null)}
+          onDismiss={clearPromptError} // Use the new prop here
         />
       )}
 

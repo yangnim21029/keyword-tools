@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
 import type React from "react";
-import type { Step } from "../page";
+import type { Step } from "../types";
 
 const StepChecklist = ({ steps }: { steps: Step[] }) => {
   const getIcon = (status: Step["status"]) => {
@@ -32,7 +32,7 @@ const StepChecklist = ({ steps }: { steps: Step[] }) => {
               step.status === "loading" && "text-blue-600 dark:text-blue-400",
               step.status === "completed" &&
                 "text-green-700 dark:text-green-400",
-              step.status === "error" && "text-red-600 dark:text-red-400",
+              step.status === "error" && "text-red-600 dark:text-red-400"
             )}
           >
             {step.name}

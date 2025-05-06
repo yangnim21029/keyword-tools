@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Dispatch, SetStateAction } from "react";
+import React from "react";
 import { ErrorDisplay } from "@/app/writing/components/error-display";
 import { GenerateArticleButton } from "@/app/actions/actions-buttons";
 
@@ -10,7 +10,7 @@ interface FinalArticleGeneratorControlsProps {
   isGeneratingArticle: boolean;
   isLoadingPrompt: boolean;
   articleError: string | null;
-  setArticleError: Dispatch<SetStateAction<string | null>>;
+  clearArticleError: () => void;
 }
 
 export function FinalArticleGeneratorControls({
@@ -19,7 +19,7 @@ export function FinalArticleGeneratorControls({
   isGeneratingArticle,
   isLoadingPrompt,
   articleError,
-  setArticleError,
+  clearArticleError,
 }: FinalArticleGeneratorControlsProps) {
   return (
     <div className="space-y-4">
@@ -28,10 +28,7 @@ export function FinalArticleGeneratorControls({
       </h3>
 
       {articleError && (
-        <ErrorDisplay
-          error={articleError}
-          onDismiss={() => setArticleError(null)}
-        />
+        <ErrorDisplay error={articleError} onDismiss={clearArticleError} />
       )}
 
       <div className="flex justify-end pt-4">

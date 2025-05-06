@@ -14,7 +14,7 @@ import { generateSingleParagraphGraph } from "./actions-ai-onpage-result";
 /**
  * Constructs the prompt for revising an article based on graph suggestions.
  */
-async function getReviseArticlePrompt(
+async function getRefineArticlePrompt(
   inputText: string,
   graphText: string
 ): Promise<string> {
@@ -32,8 +32,6 @@ async function getReviseArticlePrompt(
     `*   Do NOT include introductory text, explanations, or the original prompt in the response.`, // Added instruction
     `*   If the graph text is empty or doesn't provide actionable suggestions, refine the original text for clarity and completeness as best as possible.`, // Added fallback
     `*   Markdown table format is not allowed. if you need to use table, table part should use html instead`, // Added instruction
-
-    `**OUTPUT FORMAT IS MARKDOWN, NOT HTML, ESPECIALLY FOR TABLES**`,
   ];
   return promptLines.join("\n");
 }
@@ -56,7 +54,7 @@ export async function generateRefinedArticleFromGraph({
     return { success: false, error: "Database not initialized" };
   }
 
-  console.log(`[Action: Revise Article] Starting for Doc ID: ${docId}`);
+  console.log(`[Action: Refine Article] Starting for Doc ID: ${docId}`);
 
   let generatedRefinedArticle: string | null = null; // Variable to store the generated text
 
@@ -66,7 +64,7 @@ export async function generateRefinedArticleFromGraph({
       await getOnPageResultById(docId);
     if (!onPageData) {
       console.error(
-        `[Action: Revise Article] OnPage data not found for Doc ID: ${docId}`
+        `[Action: Refine Article] OnPage data not found for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -82,7 +80,7 @@ export async function generateRefinedArticleFromGraph({
     // Check if source text exists
     if (!sourceText || sourceText.trim().length === 0) {
       console.error(
-        `[Action: Revise Article] Source textContent (or originalTextContent) missing or empty for Doc ID: ${docId}`
+        `[Action: Refine Article] Source textContent (or originalTextContent) missing or empty for Doc ID: ${docId}`
       );
       return {
         success: false,
@@ -91,36 +89,44 @@ export async function generateRefinedArticleFromGraph({
       };
     }
 
-    // Check if graph text exists (it's okay if it's empty, the prompt handles it)
-    if (typeof graphText === "undefined" || graphText === null) {
-      console.warn(
-        `[Action: Revise Article] Graph text (paragraphGraphText) missing for Doc ID: ${docId}. Proceeding without graph suggestions.`
+    // Check if graph text exists (it's now required)
+    if (
+      typeof graphText === "undefined" ||
+      graphText === null ||
+      graphText.trim().length === 0
+    ) {
+      console.error(
+        `[Action: Refine Article] Graph text (paragraphGraphText) missing or empty for Doc ID: ${docId}`
       );
-      // Still allow proceeding, the prompt has a fallback instruction
+      return {
+        success: false,
+        error: "Graph text content is missing or empty.",
+        id: docId,
+      };
     }
 
     // 1. Generate Refined Article
-    console.log(`[Action: Revise Article] Calling AI for Article Revision...`);
-    const revisePrompt = await getReviseArticlePrompt(
+    console.log(`[Action: Refine Article] Calling AI for Article Revision...`);
+    const refinePrompt = await getRefineArticlePrompt(
       sourceText,
-      graphText || ""
-    ); // Pass empty string if graph is null/undefined
+      graphText // Pass graphText directly, it's guaranteed to be a non-empty string here
+    ); // Pass empty string if graph is null/undefined -> Removed fallback
     const { text: refinedArticleText } = await generateText({
       model: AI_MODELS.BASE, // Use BASE model for better text generation
-      prompt: revisePrompt,
+      prompt: refinePrompt,
       // Consider adding parameters like maxTokens if needed
     });
     generatedRefinedArticle = refinedArticleText; // Store the generated text
-    console.log(`[Action: Revise Article] Article Revision successful.`);
+    console.log(`[Action: Refine Article] Article Revision successful.`);
 
     // 2. Update Firestore directly
-    console.log(`[Action: Revise Article] Updating Firestore...`);
+    console.log(`[Action: Refine Article] Updating Firestore...`);
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
       refinedTextContent: generatedRefinedArticle, // Use the stored variable
       updatedAt: FieldValue.serverTimestamp(),
     });
-    console.log(`[Action: Revise Article] Firestore updated.`);
+    console.log(`[Action: Refine Article] Firestore updated.`);
 
     // 3. Return success WITH the generated article text
     return {
@@ -130,7 +136,7 @@ export async function generateRefinedArticleFromGraph({
     };
   } catch (error) {
     console.error(
-      `[Action: Revise Article] Failed for Doc ID ${docId}:`,
+      `[Action: Refine Article] Failed for Doc ID ${docId}:`,
       error
     );
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -141,7 +147,7 @@ export async function generateRefinedArticleFromGraph({
       });
     } catch (updateError) {
       console.error(
-        `[Action: Revise Article] Failed to update timestamp on error for Doc ID ${docId}:`,
+        `[Action: Refine Article] Failed to update timestamp on error for Doc ID ${docId}:`,
         updateError
       );
     }
@@ -163,12 +169,12 @@ export async function generateRefinedArticleDirectly({
   inputText: string;
   graphText: string;
 }): Promise<{ success: boolean; refinedArticle?: string; error?: string }> {
-  console.log(`[Action: Revise Article Directly] Starting...`);
+  console.log(`[Action: Refine Article Directly] Starting...`);
 
   // Basic input validation
   if (!inputText || inputText.trim().length === 0) {
     console.error(
-      `[Action: Revise Article Directly] Input text is missing or empty.`
+      `[Action: Refine Article Directly] Input text is missing or empty.`
     );
     return { success: false, error: "Input text cannot be empty." };
   }
@@ -177,21 +183,21 @@ export async function generateRefinedArticleDirectly({
 
   try {
     // 1. Get the prompt
-    const revisePrompt = await getReviseArticlePrompt(
+    const refinePrompt = await getRefineArticlePrompt(
       inputText,
       effectiveGraphText
     );
 
     // 2. Generate Refined Article
     console.log(
-      `[Action: Revise Article Directly] Calling AI for Article Revision...`
+      `[Action: Refine Article Directly] Calling AI for Article Revision...`
     );
     const { text: refinedArticle } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: revisePrompt,
+      prompt: refinePrompt,
     });
     console.log(
-      `[Action: Revise Article Directly] Article Revision successful.`
+      `[Action: Refine Article Directly] Article Revision successful.`
     );
 
     // 3. Return success with the article
@@ -200,7 +206,7 @@ export async function generateRefinedArticleDirectly({
       refinedArticle: refinedArticle,
     };
   } catch (error) {
-    console.error(`[Action: Revise Article Directly] Failed:`, error);
+    console.error(`[Action: Refine Article Directly] Failed:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
@@ -334,13 +340,13 @@ export async function generateRevisionFromInputTextAndUrlGraph({
   targetUrl: string;
 }): Promise<{ success: boolean; refinedArticle?: string; error?: string }> {
   console.log(
-    `[Action: Revise from Input & URL Graph] Starting for URL: ${targetUrl}`
+    `[Action: Refine from Input & URL Graph] Starting for URL: ${targetUrl}`
   );
 
   // Validate inputs
   if (!inputText || inputText.trim().length === 0) {
     console.error(
-      `[Action: Revise from Input & URL Graph] Input text is missing.`
+      `[Action: Refine from Input & URL Graph] Input text is missing.`
     );
     return { success: false, error: "Your input text cannot be empty." };
   }
@@ -349,7 +355,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
     (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://"))
   ) {
     console.error(
-      `[Action: Revise from Input & URL Graph] Invalid target URL: ${targetUrl}`
+      `[Action: Refine from Input & URL Graph] Invalid target URL: ${targetUrl}`
     );
     return {
       success: false,
@@ -365,13 +371,13 @@ export async function generateRevisionFromInputTextAndUrlGraph({
   try {
     // 1. Scrape the target URL
     console.log(
-      `[Action: Revise from Input & URL Graph] Scraping target URL: ${targetUrl}`
+      `[Action: Refine from Input & URL Graph] Scraping target URL: ${targetUrl}`
     );
     const scrapeResult = await submitCreateScrape({ url: targetUrl });
 
     if (!scrapeResult.success || !scrapeResult.id) {
       console.error(
-        `[Action: Revise from Input & URL Graph] Scrape failed: ${scrapeResult.error}`
+        `[Action: Refine from Input & URL Graph] Scrape failed: ${scrapeResult.error}`
       );
       return {
         success: false,
@@ -380,12 +386,12 @@ export async function generateRevisionFromInputTextAndUrlGraph({
     }
     docId = scrapeResult.id;
     console.log(
-      `[Action: Revise from Input & URL Graph] Scrape successful. Doc ID: ${docId}`
+      `[Action: Refine from Input & URL Graph] Scrape successful. Doc ID: ${docId}`
     );
 
     // 2. Fetch the scraped content
     console.log(
-      `[Action: Revise from Input & URL Graph] Fetching scraped content...`
+      `[Action: Refine from Input & URL Graph] Fetching scraped content...`
     );
     const onPageData = await getOnPageResultById(docId);
     if (
@@ -394,7 +400,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
       onPageData.textContent.trim().length === 0
     ) {
       console.error(
-        `[Action: Revise from Input & URL Graph] Failed to fetch valid content for doc ${docId}`
+        `[Action: Refine from Input & URL Graph] Failed to fetch valid content for doc ${docId}`
       );
       return {
         success: false,
@@ -403,11 +409,11 @@ export async function generateRevisionFromInputTextAndUrlGraph({
     }
     scrapedTextContent = onPageData.textContent;
     console.log(
-      `[Action: Revise from Input & URL Graph] Fetched scraped content successfully.`
+      `[Action: Refine from Input & URL Graph] Fetched scraped content successfully.`
     );
 
     // 3. Generate the graph from scraped content
-    console.log(`[Action: Revise from Input & URL Graph] Generating graph...`);
+    console.log(`[Action: Refine from Input & URL Graph] Generating graph...`);
     const graphResult = await generateSingleParagraphGraph({
       docId,
       textContent: scrapedTextContent,
@@ -415,30 +421,30 @@ export async function generateRevisionFromInputTextAndUrlGraph({
 
     if (!graphResult.success) {
       console.warn(
-        `[Action: Revise from Input & URL Graph] Graph generation failed: ${graphResult.error}. Proceeding without graph suggestions.`
+        `[Action: Refine from Input & URL Graph] Graph generation failed: ${graphResult.error}. Proceeding without graph suggestions.`
       );
       graphText = null; // Proceed with null graph
     } else {
       graphText = graphResult.result || null;
       console.log(
-        `[Action: Revise from Input & URL Graph] Graph generated successfully.`
+        `[Action: Refine from Input & URL Graph] Graph generated successfully.`
       );
     }
 
     // 4. Generate the refined article using USER'S input text and the SCRAPED graph
     console.log(
-      `[Action: Revise from Input & URL Graph] Generating refined article...`
+      `[Action: Refine from Input & URL Graph] Generating refined article...`
     );
-    const revisePrompt = await getReviseArticlePrompt(
+    const refinePrompt = await getRefineArticlePrompt(
       inputText,
       graphText || ""
     );
     const { text: refinedArticle } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: revisePrompt,
+      prompt: refinePrompt,
     });
     console.log(
-      `[Action: Revise from Input & URL Graph] Refined article generated.`
+      `[Action: Refine from Input & URL Graph] Refined article generated.`
     );
 
     // 5. Optionally: Update the Firestore doc with the final refined text?
@@ -453,9 +459,9 @@ export async function generateRevisionFromInputTextAndUrlGraph({
                 finalRefinedTextFromInput: refinedArticle,
                 updatedAt: FieldValue.serverTimestamp(),
             });
-            console.log(`[Action: Revise from Input & URL Graph] Saved final revision to doc ${docId}.`);
+            console.log(`[Action: Refine from Input & URL Graph] Saved final revision to doc ${docId}.`);
         } catch (saveError) {
-            console.error(`[Action: Revise from Input & URL Graph] Failed to save final revision to doc ${docId}:`, saveError);
+            console.error(`[Action: Refine from Input & URL Graph] Failed to save final revision to doc ${docId}:`, saveError);
             // Don't fail the whole operation, just log the save error
         }
     }
@@ -468,7 +474,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
     };
   } catch (error) {
     console.error(
-      `[Action: Revise from Input & URL Graph] Unexpected error:`,
+      `[Action: Refine from Input & URL Graph] Unexpected error:`,
       error
     );
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -477,7 +483,7 @@ export async function generateRevisionFromInputTextAndUrlGraph({
       try {
         if (!db) {
           console.warn(
-            "[Action: Revise from Input & URL Graph] DB not initialized, cannot update timestamp on error."
+            "[Action: Refine from Input & URL Graph] DB not initialized, cannot update timestamp on error."
           );
           throw new Error("DB not initialized"); // Prevent proceeding
         }

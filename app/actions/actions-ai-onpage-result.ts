@@ -1,13 +1,13 @@
-'use server';
+"use server";
 
-import { AI_MODELS } from '@/app/global-config';
+import { AI_MODELS } from "@/app/global-config";
 import {
   FirebaseOnPageResultObject,
-  getOnPageResultById
-} from '@/app/services/firebase/data-onpage-result'; // Assuming this exists
-import { COLLECTIONS, db } from '@/app/services/firebase/db-config';
-import { generateText } from 'ai';
-import { FieldValue } from 'firebase-admin/firestore';
+  getOnPageResultById,
+} from "@/app/services/firebase/data-onpage-result"; // Assuming this exists
+import { COLLECTIONS, db } from "@/app/services/firebase/db-config";
+import { generateText } from "ai";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * Prompt for generating a content summary and extracting keywords as PLAIN TEXT.
@@ -45,21 +45,21 @@ export const getOnPageContentSummaryPrompt = async (
     `${textContent.substring(0, 15000)}`,
     `---`,
     ``,
-    `Respond ONLY with the formatted plain text.` // Final instruction
+    `Respond ONLY with the formatted plain text.`, // Final instruction
   ];
-  return promptLines.join('\n');
+  return promptLines.join("\n");
 };
 
 /**
  * Action: Perform On-Page Content Summary and Keyword Extraction Analysis (Plain Text Output).
  */
 export async function submitAiAnalysisOnPageSummary({
-  docId
+  docId,
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
   if (!db) {
-    return { success: false, error: 'Database not initialized' };
+    return { success: false, error: "Database not initialized" };
   }
 
   console.log(`[Action: OnPage Summary TXT] Starting for Doc ID: ${docId}`);
@@ -74,7 +74,7 @@ export async function submitAiAnalysisOnPageSummary({
       );
       return {
         success: false,
-        error: `OnPage data not found for ID: ${docId}`
+        error: `OnPage data not found for ID: ${docId}`,
       };
     }
 
@@ -85,7 +85,7 @@ export async function submitAiAnalysisOnPageSummary({
       );
       return {
         success: false,
-        error: 'Text content is missing or empty in the document.'
+        error: "Text content is missing or empty in the document.",
       };
     }
 
@@ -96,7 +96,7 @@ export async function submitAiAnalysisOnPageSummary({
     );
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: analysisPrompt
+      prompt: analysisPrompt,
     });
     console.log(`[Action: OnPage Summary TXT] Text Analysis successful.`);
 
@@ -105,14 +105,14 @@ export async function submitAiAnalysisOnPageSummary({
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
       onPageContentAnalysisText: rawAnalysisText, // Store the raw analysis text
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: OnPage Summary TXT] Firestore updated.`);
 
     // 3. Return success
     return {
       success: true,
-      id: docId
+      id: docId,
     };
   } catch (error) {
     console.error(
@@ -123,7 +123,7 @@ export async function submitAiAnalysisOnPageSummary({
     try {
       const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
       await docRef.update({
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp(),
       });
     } catch (updateError) {
       console.error(
@@ -133,7 +133,7 @@ export async function submitAiAnalysisOnPageSummary({
     }
     return {
       success: false,
-      error: `On-Page Content Summary Analysis failed: ${errorMessage}`
+      error: `On-Page Content Summary Analysis failed: ${errorMessage}`,
     };
   }
 }
@@ -274,21 +274,21 @@ export const getOnPageRankingFactorPromptV2 = async (
     `    *   Do *not* write any introductory or concluding text.`,
     `    *   Do *not* use qualitative judgment words like "Strong", "Weak", "Good", "Bad" unless directly quoting or describing user experience implications (e.g., "potentially hindering navigation"). Focus on description.`,
     `    *   Do *not* use JSON, code blocks, or any other formatting besides Markdown H3 headings.`,
-    `    *   Do *not* repeat these instructions or the checklist provided above.`
+    `    *   Do *not* repeat these instructions or the checklist provided above.`,
   ];
-  return promptLines.join('\n');
+  return promptLines.join("\n");
 };
 
 /**
  * Action: Perform On-Page Ranking Factor Analysis V2 AND Generate Recommendation.
  */
 export async function submitAiAnalysisOnPageRankingFactorV2({
-  docId
+  docId,
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
   if (!db) {
-    return { success: false, error: 'Database not initialized' };
+    return { success: false, error: "Database not initialized" };
   }
 
   console.log(`[Action: OnPage Factors V2] Starting for Doc ID: ${docId}`);
@@ -302,7 +302,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
       );
       return {
         success: false,
-        error: `OnPage data not found for ID: ${docId}`
+        error: `OnPage data not found for ID: ${docId}`,
       };
     }
 
@@ -312,7 +312,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
       );
       return {
         success: false,
-        error: 'Text content is missing or empty for the document.'
+        error: "Text content is missing or empty for the document.",
       };
     }
 
@@ -325,7 +325,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
     );
     const { text: rawAnalysisText } = await generateText({
       model: AI_MODELS.BASE,
-      prompt: analysisPrompt
+      prompt: analysisPrompt,
     });
     console.log(`[Action: OnPage Factors V2] V2 Text Analysis successful.`);
 
@@ -333,7 +333,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
       onPageRankingFactorAnalysisV2Text: rawAnalysisText,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(
       `[Action: OnPage Factors V2] Firestore updated with V2 Analysis.`
@@ -341,7 +341,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
 
     return {
       success: true,
-      id: docId
+      id: docId,
     };
   } catch (error) {
     console.error(
@@ -361,7 +361,7 @@ export async function submitAiAnalysisOnPageRankingFactorV2({
     }
     return {
       success: false,
-      error: `On-Page Ranking Factor Analysis V2 failed: ${errorMessage}`
+      error: `On-Page Ranking Factor Analysis V2 failed: ${errorMessage}`,
     };
   }
 }
@@ -409,21 +409,21 @@ export const getOnPageRankingFactorRecommendationPrompt = async (
     `*   Strictly adhere to the "Because [Finding], you should [Action], Specifically [How]." format for *every* recommendation.`,
     `*   Output *only* the recommendations, one per line.`,
     `*   Do NOT include introductory/concluding text, numbering, bullet points, or Markdown formatting.`,
-    `*   Do NOT mention the ANALYSIS REPORT or ORIGINAL TEXT explicitly in your output recommendations.`
+    `*   Do NOT mention the ANALYSIS REPORT or ORIGINAL TEXT explicitly in your output recommendations.`,
   ];
-  return promptLines.join('\n');
+  return promptLines.join("\n");
 };
 
 /**
  * Action: Perform On-Page Ranking Factor Recommendation Analysis (Based on V2).
  */
 export async function submitAiAnalysisOnPageRankingFactorRecommendation({
-  docId
+  docId,
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
   if (!db) {
-    return { success: false, error: 'Database not initialized' };
+    return { success: false, error: "Database not initialized" };
   }
 
   console.log(`[Action: OnPage Rec V1] Starting for Doc ID: ${docId}`);
@@ -438,7 +438,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
       );
       return {
         success: false,
-        error: `OnPage data not found for ID: ${docId}`
+        error: `OnPage data not found for ID: ${docId}`,
       };
     }
 
@@ -453,7 +453,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
       return {
         success: false,
         error:
-          'V2 Ranking Factor Analysis text is missing. Please run V2 analysis first.'
+          "V2 Ranking Factor Analysis text is missing. Please run V2 analysis first.",
       };
     }
 
@@ -464,7 +464,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
       );
       return {
         success: false,
-        error: 'Original text content is missing or empty in the document.'
+        error: "Original text content is missing or empty in the document.",
       };
     }
 
@@ -479,7 +479,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
       );
     const { text: recommendationText } = await generateText({
       model: AI_MODELS.FAST, // Use fast model for recommendations
-      prompt: recommendationPrompt
+      prompt: recommendationPrompt,
     });
     console.log(`[Action: OnPage Rec V1] Recommendation Analysis successful.`);
 
@@ -488,14 +488,14 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
       onPageRankingFactorRecommendationText: recommendationText, // Save the generated recommendations
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[Action: OnPage Rec V1] Firestore updated.`);
 
     // 3. Return success
     return {
       success: true,
-      id: docId
+      id: docId,
     };
   } catch (error) {
     console.error(`[Action: OnPage Rec V1] Failed for Doc ID ${docId}:`, error);
@@ -503,7 +503,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
     try {
       const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
       await docRef.update({
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp(),
       });
     } catch (updateError) {
       console.error(
@@ -513,7 +513,7 @@ export async function submitAiAnalysisOnPageRankingFactorRecommendation({
     }
     return {
       success: false,
-      error: `On-Page Recommendation Generation failed: ${errorMessage}`
+      error: `On-Page Recommendation Generation failed: ${errorMessage}`,
     };
   }
 }
@@ -572,30 +572,30 @@ ${textContent}
  */
 export async function generateSingleParagraphGraph({
   docId,
-  textContent
+  textContent,
 }: {
   docId: string;
   textContent: string;
 }): Promise<ParagraphGraphResponse> {
   if (!db) {
-    return { success: false, error: 'Database not initialized' };
+    return { success: false, error: "Database not initialized" };
   }
 
   if (!docId) {
-    console.error('[Action: Single Paragraph Graph] Missing document ID.');
-    return { success: false, error: 'Document ID is required.' };
+    console.error("[Action: Single Paragraph Graph] Missing document ID.");
+    return { success: false, error: "Document ID is required." };
   }
 
   try {
     if (!textContent || textContent.trim().length === 0) {
       console.error(
-        '[Action: Single Paragraph Graph] Input text content is missing or empty.'
+        "[Action: Single Paragraph Graph] Input text content is missing or empty."
       );
-      return { success: false, error: 'Input text content cannot be empty.' };
+      return { success: false, error: "Input text content cannot be empty." };
     }
 
     console.log(
-      '[Action: Single Paragraph Graph] Generating graph visualization...'
+      "[Action: Single Paragraph Graph] Generating graph visualization..."
     );
     // Create the prompt
     const prompt = getSingleParagraphGraphPrompt(
@@ -605,12 +605,12 @@ export async function generateSingleParagraphGraph({
     // Call the AI model
     const { text: graphText } = await generateText({
       model: AI_MODELS.BASE, // Or potentially a more powerful model if needed
-      prompt: prompt
+      prompt: prompt,
       // maxTokens: 30000 // Consider setting maxTokens if needed, but BASE model might handle length well
     });
 
     console.log(
-      '[Action: Single Paragraph Graph] Graph visualization generated successfully.'
+      "[Action: Single Paragraph Graph] Graph visualization generated successfully."
     );
 
     // --- Update Firestore ---
@@ -619,8 +619,8 @@ export async function generateSingleParagraphGraph({
     );
     const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
     await docRef.update({
-      paragraphGraphText: graphText || '', // Save the generated graph text
-      updatedAt: FieldValue.serverTimestamp()
+      paragraphGraphText: graphText || "", // Save the generated graph text
+      updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(
       `[Action: Single Paragraph Graph] Firestore updated for Doc ID: ${docId}.`
@@ -628,16 +628,16 @@ export async function generateSingleParagraphGraph({
     // ------------------------
 
     // Return the full text, assuming the AI follows the requested H2 structure
-    return { success: true, result: graphText || '' }; // Still return result for potential immediate use
+    return { success: true, result: graphText || "" }; // Still return result for potential immediate use
   } catch (error) {
     console.error(
-      '[Action: Single Paragraph Graph] Error generating graph visualization:',
+      "[Action: Single Paragraph Graph] Error generating graph visualization:",
       error
     );
     const errorMessage =
       error instanceof Error
         ? error.message
-        : 'Unknown error occurred during graph generation';
+        : "Unknown error occurred during graph generation";
 
     // Attempt to update timestamp even on error
     try {
@@ -652,8 +652,8 @@ export async function generateSingleParagraphGraph({
 
     return {
       success: false,
-      result: '',
-      error: errorMessage
+      result: "",
+      error: errorMessage,
     };
   }
 }
@@ -685,21 +685,21 @@ async function getOrganizeTextContentPrompt(
     ``,
     `**OUTPUT REQUIREMENTS:**`,
     `*   Respond ONLY with the cleaned, extracted main content as plain text.`,
-    `*   Do NOT include explanations, introductions, or the "OUTPUT REQUIREMENTS" section in your response.`
+    `*   Do NOT include explanations, introductions, or the "OUTPUT REQUIREMENTS" section in your response.`,
   ];
-  return promptLines.join('\\n');
+  return promptLines.join("\\n");
 }
 
 /**
  * Action: Organize and clean the extracted text content using AI.
  */
 export async function submitAiOrganizeTextContent({
-  docId
+  docId,
 }: {
   docId: string;
 }): Promise<{ success: boolean; error?: string; id?: string }> {
   if (!db) {
-    return { success: false, error: 'Database not initialized' };
+    return { success: false, error: "Database not initialized" };
   }
 
   console.log(`[Action: Organize Text] Starting for Doc ID: ${docId}`);
@@ -714,7 +714,7 @@ export async function submitAiOrganizeTextContent({
       );
       return {
         success: false,
-        error: `OnPage data not found for ID: ${docId}`
+        error: `OnPage data not found for ID: ${docId}`,
       };
     }
 
@@ -728,7 +728,7 @@ export async function submitAiOrganizeTextContent({
       );
       return {
         success: false,
-        error: 'Source text content is missing or empty.'
+        error: "Source text content is missing or empty.",
       };
     }
 
@@ -737,14 +737,14 @@ export async function submitAiOrganizeTextContent({
     const organizePrompt = await getOrganizeTextContentPrompt(sourceText);
     const { text: organizedText } = await generateText({
       model: AI_MODELS.BASE, // Or a more suitable model if needed
-      prompt: organizePrompt
+      prompt: organizePrompt,
     });
     console.log(`[Action: Organize Text] Text Organization successful.`);
 
     // 2. Prepare Firestore update data
     const updateData: { [key: string]: any } = {
       textContent: organizedText, // Update textContent with the organized version
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     // Backup original text ONLY if it hasn't been backed up before
@@ -761,7 +761,7 @@ export async function submitAiOrganizeTextContent({
     // 4. Return success
     return {
       success: true,
-      id: docId
+      id: docId,
     };
   } catch (error) {
     console.error(`[Action: Organize Text] Failed for Doc ID ${docId}:`, error);
@@ -769,7 +769,7 @@ export async function submitAiOrganizeTextContent({
     try {
       const docRef = db.collection(COLLECTIONS.ONPAGE_RESULT).doc(docId);
       await docRef.update({
-        updatedAt: FieldValue.serverTimestamp() // Still update timestamp on error
+        updatedAt: FieldValue.serverTimestamp(), // Still update timestamp on error
       });
     } catch (updateError) {
       console.error(
@@ -779,7 +779,7 @@ export async function submitAiOrganizeTextContent({
     }
     return {
       success: false,
-      error: `Text Organization failed: ${errorMessage}`
+      error: `Text Organization failed: ${errorMessage}`,
     };
   }
 }
