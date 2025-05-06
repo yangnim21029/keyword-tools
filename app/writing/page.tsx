@@ -16,16 +16,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import {
-  Loader2,
-  Wand2,
-  Settings2,
-} from "lucide-react";
+import { Loader2, Wand2, Settings2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ErrorDisplay } from "./components/error-display";
-import { RevalidateButton, FineTuneButton } from "@/app/actions/actions-buttons";
+import {
+  RevalidateButton,
+  FineTuneButton,
+} from "@/app/actions/actions-buttons";
 
 import type {
   KeywordVolumeListItem,
@@ -33,7 +32,7 @@ import type {
 } from "@/app/services/firebase/schema";
 import { submitGetKeywordVolumeObj } from "@/app/actions/actions-keyword-volume";
 import { getSerpDataAction } from "@/app/actions/actions-ai-serp-result";
-import { generateRevisionFromInputTextAndUrlGraph } from '@/app/actions/actions-ai-graph';
+import { generateRevisionFromInputTextAndUrlGraph } from "@/app/actions/actions-ai-graph";
 
 import { PromptGeneratorForm } from "./components/prompt-generator-form";
 import { PromptGenerationResult } from "./components/prompt-generation-result";
@@ -79,32 +78,34 @@ export default function WritingPage() {
   const [keyword, setKeyword] = useClientStorage("writing:keyword", "");
   const [mediaSiteName, setMediaSiteName] = useClientStorage(
     "writing:mediaSiteName",
-    "",
+    ""
   );
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>(
     "writing:researchPrompt",
-    null,
+    null
   );
   const [selectedFineTunes, setSelectedFineTunes] = useClientStorage<string[]>(
     "writing:selectedFineTunes",
-    [],
+    []
   );
   const [selectedKeywordReport, setSelectedKeywordReport] =
     useClientStorage<KeywordVolumeObject | null>(
       "writing:selectedKeywordReport",
-      null,
+      null
     );
   const [selectedClusterName, setSelectedClusterName] =
     useState<string>("__ALL_CLUSTERS__");
   const [displayedPersona, setDisplayedPersona] = useState<string | null>(null);
-  const [realKeywordList, setRealKeywordList] = useState<KeywordVolumeListItem[]>([]);
+  const [realKeywordList, setRealKeywordList] = useState<
+    KeywordVolumeListItem[]
+  >([]);
   const [isListLoading, setIsListLoading] = useState(true);
   const [listFetchError, setListFetchError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [generationAttempted, setGenerationAttempted] = useClientStorage(
     "writing:generationAttempted",
-    false,
+    false
   );
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -117,9 +118,18 @@ export default function WritingPage() {
   >("writing:generatedOutlineText", null);
   const [steps, setSteps] = useState<Step[]>([]);
 
-  const [inputText, setInputText] = useClientStorage<string>("writing:inputText", "");
-  const [targetUrl, setTargetUrl] = useClientStorage<string>("writing:targetUrl", "");
-  const [finalArticle, setFinalArticle] = useClientStorage<string | null>("writing:finalArticle", null);
+  const [inputText, setInputText] = useClientStorage<string>(
+    "writing:inputText",
+    ""
+  );
+  const [targetUrl, setTargetUrl] = useClientStorage<string>(
+    "writing:targetUrl",
+    ""
+  );
+  const [finalArticle, setFinalArticle] = useClientStorage<string | null>(
+    "writing:finalArticle",
+    null
+  );
   const [isGeneratingArticle, startArticleGeneration] = useTransition();
   const [articleError, setArticleError] = useState<string | null>(null);
 
@@ -160,13 +170,13 @@ export default function WritingPage() {
   useEffect(() => {
     setIsMounted(true);
     if (!generationAttempted) {
-        setSteps(initialSteps);
+      setSteps(initialSteps);
     }
   }, [generationAttempted]);
 
   useEffect(() => {
     if (generationAttempted) {
-        setSteps(initialSteps); 
+      setSteps(initialSteps);
     }
   }, [keyword]);
 
@@ -178,15 +188,20 @@ export default function WritingPage() {
         const response = await fetch(API_KEYWORD_LIST_URL, { method: "GET" });
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`Failed to fetch keywords: ${response.statusText || response.status} - ${errorText}`);
+          throw new Error(
+            `Failed to fetch keywords: ${response.statusText || response.status} - ${errorText}`
+          );
         }
         const summaries = await response.json();
         if (!Array.isArray(summaries)) {
           throw new Error("Failed to fetch keywords: Invalid response format.");
         }
         setRealKeywordList(summaries);
-      } catch (error: any) { setListFetchError(error.message || "Unknown error"); }
-      finally { setIsListLoading(false); }
+      } catch (error: any) {
+        setListFetchError(error.message || "Unknown error");
+      } finally {
+        setIsListLoading(false);
+      }
     };
     loadKeywordsFromApi();
   }, []);
@@ -196,18 +211,29 @@ export default function WritingPage() {
   }, [selectedKeywordReport]);
 
   useEffect(() => {
-    if (selectedClusterName === "__ALL_CLUSTERS__" || !selectedKeywordReport?.clustersWithVolume) {
+    if (
+      selectedClusterName === "__ALL_CLUSTERS__" ||
+      !selectedKeywordReport?.clustersWithVolume
+    ) {
       setDisplayedPersona(null);
       return;
     }
-    const foundCluster = selectedKeywordReport.clustersWithVolume.find((c: any) => c.clusterName === selectedClusterName);
+    const foundCluster = selectedKeywordReport.clustersWithVolume.find(
+      (c: any) => c.clusterName === selectedClusterName
+    );
     setDisplayedPersona(foundCluster?.personaDescription || null);
-    if (selectedClusterName !== "__ALL_CLUSTERS__" && !foundCluster?.personaDescription) {
-      console.warn(`Persona description not found for cluster: ${selectedClusterName}`);
+    if (
+      selectedClusterName !== "__ALL_CLUSTERS__" &&
+      !foundCluster?.personaDescription
+    ) {
+      console.warn(
+        `Persona description not found for cluster: ${selectedClusterName}`
+      );
     }
   }, [selectedClusterName, selectedKeywordReport]);
 
-  const hasClusters = (selectedKeywordReport?.clustersWithVolume ?? []).length > 0;
+  const hasClusters =
+    (selectedKeywordReport?.clustersWithVolume ?? []).length > 0;
 
   const handleCopyToClipboard = async (textToCopy: string | null) => {
     if (textToCopy) {
@@ -215,22 +241,38 @@ export default function WritingPage() {
         await navigator.clipboard.writeText(textToCopy);
         toast.success("Copied to clipboard!");
         if (textToCopy === researchPrompt) {
-            setCopiedPrompt(true);
-            setTimeout(() => setCopiedPrompt(false), 2000);
+          setCopiedPrompt(true);
+          setTimeout(() => setCopiedPrompt(false), 2000);
         }
-      } catch (err) { toast.error("Failed to copy."); }
+      } catch (err) {
+        toast.error("Failed to copy.");
+      }
     }
   };
 
   const handleFineTuneChange = (checked: boolean | string, name: string) => {
-    setSelectedFineTunes((prev) => checked === true ? [...prev, name] : prev.filter((item) => item !== name));
+    setSelectedFineTunes((prev) =>
+      checked === true ? [...prev, name] : prev.filter((item) => item !== name)
+    );
   };
 
-  const updateStepStatus = (stepId: string, status: Step["status"], durationMs?: number) => {
-    setSteps((prevSteps) => prevSteps.map((step) => step.id === stepId ? { ...step, status, durationMs } : step));
+  const updateStepStatus = (
+    stepId: string,
+    status: Step["status"],
+    durationMs?: number
+  ) => {
+    setSteps((prevSteps) =>
+      prevSteps.map((step) =>
+        step.id === stepId ? { ...step, status, durationMs } : step
+      )
+    );
   };
 
-  const callPromptApi = async <T,>(stepId: string, url: string, payload: any): Promise<T> => {
+  const callPromptApi = async <T,>(
+    stepId: string,
+    url: string,
+    payload: any
+  ): Promise<T> => {
     updateStepStatus(stepId, "loading");
     const startTime = performance.now();
     try {
@@ -242,8 +284,16 @@ export default function WritingPage() {
       const durationMs = performance.now() - startTime;
       if (!response.ok) {
         let errorDetails = `API Error (${stepId}): ${response.statusText}`;
-        try { const errorBody = await response.json(); errorDetails = errorBody.details || errorBody.error || JSON.stringify(errorBody); }
-        catch { try { const textError = await response.text(); if (textError) errorDetails += ` - ${textError}`; } catch {} }
+        try {
+          const errorBody = await response.json();
+          errorDetails =
+            errorBody.details || errorBody.error || JSON.stringify(errorBody);
+        } catch {
+          try {
+            const textError = await response.text();
+            if (textError) errorDetails += ` - ${textError}`;
+          } catch {}
+        }
         throw new Error(errorDetails);
       }
       const result = await response.json();
@@ -255,15 +305,52 @@ export default function WritingPage() {
     }
   };
 
-  const callFetchSerpApi = async (keyword: string, mediaSiteName: string) => callPromptApi<{ id: string; originalKeyword: string }>(STEP_ID_FETCH_SERP, API_STEP1_FETCH_SERP_URL, { keyword, mediaSiteName });
-  const callAnalyzeContentTypeApi = async (serpDocId: string) => callPromptApi<{ recommendationText: string }>(STEP_ID_ANALYZE_CONTENT_TYPE, API_STEP2_ANALYZE_CONTENT_TYPE_URL, { serpDocId });
-  const callAnalyzeUserIntentApi = async (serpDocId: string) => callPromptApi<{ recommendationText: string }>(STEP_ID_ANALYZE_USER_INTENT, API_STEP3_ANALYZE_USER_INTENT_URL, { serpDocId });
-  const callAnalyzeTitleApi = async (serpDocId: string) => callPromptApi<{ recommendationText: string }>(STEP_ID_ANALYZE_TITLE, API_STEP4_ANALYZE_TITLE_URL, { serpDocId });
-  const callAnalyzeBetterHaveApi = async (serpDocId: string) => callPromptApi<{ recommendationText: string }>(STEP_ID_ANALYZE_BETTER_HAVE, API_STEP5_ANALYZE_BETTER_HAVE_URL, { serpDocId });
-  const callGenerateActionPlanApi = async (payload: any) => callPromptApi<{ actionPlanText: string }>(STEP_ID_GENERATE_ACTION_PLAN, API_STEP6_GENERATE_ACTION_PLAN_URL, payload);
-  const callGenerateFinalPromptApi = async (payload: any) => callPromptApi<{ finalPrompt: string }>(STEP_ID_GENERATE_FINAL_PROMPT, API_STEP7_GENERATE_FINAL_PROMPT_URL, payload);
+  const callFetchSerpApi = async (keyword: string, mediaSiteName: string) =>
+    callPromptApi<{ id: string; originalKeyword: string }>(
+      STEP_ID_FETCH_SERP,
+      API_STEP1_FETCH_SERP_URL,
+      { keyword, mediaSiteName }
+    );
+  const callAnalyzeContentTypeApi = async (serpDocId: string) =>
+    callPromptApi<{ recommendationText: string }>(
+      STEP_ID_ANALYZE_CONTENT_TYPE,
+      API_STEP2_ANALYZE_CONTENT_TYPE_URL,
+      { serpDocId }
+    );
+  const callAnalyzeUserIntentApi = async (serpDocId: string) =>
+    callPromptApi<{ recommendationText: string }>(
+      STEP_ID_ANALYZE_USER_INTENT,
+      API_STEP3_ANALYZE_USER_INTENT_URL,
+      { serpDocId }
+    );
+  const callAnalyzeTitleApi = async (serpDocId: string) =>
+    callPromptApi<{ recommendationText: string }>(
+      STEP_ID_ANALYZE_TITLE,
+      API_STEP4_ANALYZE_TITLE_URL,
+      { serpDocId }
+    );
+  const callAnalyzeBetterHaveApi = async (serpDocId: string) =>
+    callPromptApi<{ recommendationText: string }>(
+      STEP_ID_ANALYZE_BETTER_HAVE,
+      API_STEP5_ANALYZE_BETTER_HAVE_URL,
+      { serpDocId }
+    );
+  const callGenerateActionPlanApi = async (payload: any) =>
+    callPromptApi<{ actionPlanText: string }>(
+      STEP_ID_GENERATE_ACTION_PLAN,
+      API_STEP6_GENERATE_ACTION_PLAN_URL,
+      payload
+    );
+  const callGenerateFinalPromptApi = async (payload: any) =>
+    callPromptApi<{ finalPrompt: string }>(
+      STEP_ID_GENERATE_FINAL_PROMPT,
+      API_STEP7_GENERATE_FINAL_PROMPT_URL,
+      payload
+    );
 
-  const handleSubmitPrompt = async (event?: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmitPrompt = async (
+    event?: React.FormEvent<HTMLFormElement>
+  ) => {
     event?.preventDefault();
     setIsLoadingPrompt(true);
     setGenerationAttempted(true);
@@ -285,17 +372,30 @@ export default function WritingPage() {
       return;
     }
 
-    const outlineTemplate = generatedOutlineText || "<!-- Default Outline/Template -->";
-    console.log(`Submitting Prompt Gen: Keyword=${firstKeyword}, MediaSite=${mediaSiteName}, Cluster=${selectedClusterName}`);
+    const outlineTemplate =
+      generatedOutlineText || "<!-- Default Outline/Template -->";
+    console.log(
+      `Submitting Prompt Gen: Keyword=${firstKeyword}, MediaSite=${mediaSiteName}, Cluster=${selectedClusterName}`
+    );
 
     try {
       let reportForStep6: any | null = selectedKeywordReport;
       let reportForStep7: any | null = selectedKeywordReport;
       const currentSelectedCluster = selectedClusterName;
-      if (currentSelectedCluster !== "__ALL_CLUSTERS__" && selectedKeywordReport) {
-          const clusterData = selectedKeywordReport.clustersWithVolume?.find((c: any) => c.clusterName === currentSelectedCluster);
+      if (
+        currentSelectedCluster !== "__ALL_CLUSTERS__" &&
+        selectedKeywordReport
+      ) {
+        const clusterData = selectedKeywordReport.clustersWithVolume?.find(
+          (c: any) => c.clusterName === currentSelectedCluster
+        );
         if (clusterData) {
-              reportForStep6 = { query: selectedKeywordReport.query, language: selectedKeywordReport.language, region: selectedKeywordReport.region, clustersWithVolume: [clusterData] };
+          reportForStep6 = {
+            query: selectedKeywordReport.query,
+            language: selectedKeywordReport.language,
+            region: selectedKeywordReport.region,
+            clustersWithVolume: [clusterData],
+          };
           reportForStep7 = null;
         } else {
           reportForStep6 = selectedKeywordReport;
@@ -315,7 +415,7 @@ export default function WritingPage() {
       await callAnalyzeTitleApi(serpId);
       await callAnalyzeBetterHaveApi(serpId);
 
-      updateStepStatus("fetch-updated-serp", "loading"); 
+      updateStepStatus("fetch-updated-serp", "loading");
       const updatedSerpData = await getSerpDataAction(serpId);
       if (!updatedSerpData) {
         updateStepStatus("fetch-updated-serp", "error");
@@ -324,80 +424,136 @@ export default function WritingPage() {
       updateStepStatus("fetch-updated-serp", "completed");
 
       const actionPlanResult = await callGenerateActionPlanApi({
-          keyword: serpKeyword, mediaSiteName,
-          contentTypeReportText: updatedSerpData.contentTypeRecommendationText ?? "",
-          userIntentReportText: updatedSerpData.userIntentRecommendationText ?? "",
-          titleRecommendationText: updatedSerpData.titleRecommendationText ?? "",
-          betterHaveRecommendationText: updatedSerpData.betterHaveRecommendationText ?? "",
-          keywordReport: reportForStep6,
-          selectedClusterName: currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster,
+        keyword: serpKeyword,
+        mediaSiteName,
+        contentTypeReportText:
+          updatedSerpData.contentTypeRecommendationText ?? "",
+        userIntentReportText:
+          updatedSerpData.userIntentRecommendationText ?? "",
+        titleRecommendationText: updatedSerpData.titleRecommendationText ?? "",
+        betterHaveRecommendationText:
+          updatedSerpData.betterHaveRecommendationText ?? "",
+        keywordReport: reportForStep6,
+        selectedClusterName:
+          currentSelectedCluster === "__ALL_CLUSTERS__"
+            ? null
+            : currentSelectedCluster,
       });
 
       const finalPromptResult = await callGenerateFinalPromptApi({
-          keyword: serpKeyword, actionPlan: actionPlanResult.actionPlanText, mediaSiteName,
-          contentTypeReportText: updatedSerpData.contentTypeRecommendationText ?? "",
-          userIntentReportText: updatedSerpData.userIntentRecommendationText ?? "",
-          betterHaveRecommendationText: updatedSerpData.betterHaveRecommendationText ?? null,
-          keywordReport: reportForStep7,
-          selectedClusterName: currentSelectedCluster === "__ALL_CLUSTERS__" ? null : currentSelectedCluster,
-          articleTemplate: outlineTemplate,
-          contentMarketingSuggestion: null,
-          fineTuneNames: selectedFineTunes,
+        keyword: serpKeyword,
+        actionPlan: actionPlanResult.actionPlanText,
+        mediaSiteName,
+        contentTypeReportText:
+          updatedSerpData.contentTypeRecommendationText ?? "",
+        userIntentReportText:
+          updatedSerpData.userIntentRecommendationText ?? "",
+        betterHaveRecommendationText:
+          updatedSerpData.betterHaveRecommendationText ?? "",
+        keywordReport: reportForStep7,
+        selectedClusterName:
+          currentSelectedCluster === "__ALL_CLUSTERS__"
+            ? null
+            : currentSelectedCluster,
+        articleTemplate: outlineTemplate,
+        contentMarketingSuggestion: "",
+        fineTuneNames: selectedFineTunes,
       });
 
       setResearchPrompt(finalPromptResult.finalPrompt);
       console.log("[UI] Prompt Generation Complete.");
-
     } catch (err) {
-        console.error("[UI Debug] Error caught in handleSubmitPrompt:", err);
-        setPromptError(err instanceof Error ? err.message : "An unexpected error occurred during prompt generation.");
+      console.error("[UI Debug] Error caught in handleSubmitPrompt:", err);
+      let errorMessage =
+        "An unexpected error occurred during prompt generation.";
+
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (err && typeof err === "object") {
+        try {
+          if ("message" in err && typeof err.message === "string") {
+            errorMessage = err.message;
+          } else if ("error" in err && typeof err.error === "string") {
+            errorMessage = err.error;
+          } else if ("details" in err && typeof err.details === "string") {
+            errorMessage = err.details;
+          } else {
+            errorMessage = JSON.stringify(err);
+          }
+        } catch (e) {
+          console.error("[UI Debug] Error stringifying error object:", e);
+        }
+      } else if (err !== undefined && err !== null) {
+        errorMessage = String(err);
+      }
+
+      setPromptError(errorMessage);
     } finally {
-        setIsLoadingPrompt(false);
+      setIsLoadingPrompt(false);
     }
   };
 
   const handleGenerateFinalArticle = () => {
-      if (!researchPrompt) {
-          setArticleError("Please generate a research prompt first.");
-          return;
-      }
-      if (!inputText && !targetUrl) {
-          setArticleError("Please provide either input text or a target URL for refinement.");
-          return;
-      }
-      if (targetUrl && !targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-          setArticleError('Target URL for refinement must start with http:// or https://');
-          return;
-      }
+    if (!researchPrompt) {
+      setArticleError("Please generate a research prompt first.");
+      return;
+    }
+    if (!inputText && !targetUrl) {
+      setArticleError(
+        "Please provide either input text or a target URL for refinement."
+      );
+      return;
+    }
+    if (
+      targetUrl &&
+      !targetUrl.startsWith("http://") &&
+      !targetUrl.startsWith("https://")
+    ) {
+      setArticleError(
+        "Target URL for refinement must start with http:// or https://"
+      );
+      return;
+    }
 
-      startArticleGeneration(async () => {
-          setArticleError(null);
-          setFinalArticle(null);
-          console.log("--- Starting Final Article Generation (using graph action) ---");
-          console.log("Input Text:", inputText ? inputText.substring(0, 100) + "..." : "(Not provided)");
-          console.log("Target URL:", targetUrl || "(Not provided)");
-          
-          try {
-              const result = await generateRevisionFromInputTextAndUrlGraph({ 
-                  inputText: inputText || "",
-                  targetUrl: targetUrl || ""
-              });
+    startArticleGeneration(async () => {
+      setArticleError(null);
+      setFinalArticle(null);
+      console.log(
+        "--- Starting Final Article Generation (using graph action) ---"
+      );
+      console.log(
+        "Input Text:",
+        inputText ? inputText.substring(0, 100) + "..." : "(Not provided)"
+      );
+      console.log("Target URL:", targetUrl || "(Not provided)");
 
-              if (result.success && result.revisedArticle) {
-                  setFinalArticle(result.revisedArticle);
-                  toast.success("Final article generated successfully!");
-              } else {
-                  const errorMsg = result.error || "An unknown error occurred generating the final article.";
-                  setArticleError(errorMsg);
-                  toast.error(`Article generation failed: ${errorMsg}`); 
-              }
-          } catch (err) {
-              console.error("[UI Debug] Error calling generateRevisionFromInputTextAndUrlGraph:", err);
-              const message = err instanceof Error ? err.message : "An unexpected error occurred.";
-              setArticleError(`Error: ${message}`);
-              toast.error(`Article generation error: ${message}`);
-          }
-      });
+      try {
+        const result = await generateRevisionFromInputTextAndUrlGraph({
+          inputText: inputText || "",
+          targetUrl: targetUrl || "",
+        });
+
+        if (result.success && result.revisedArticle) {
+          setFinalArticle(result.revisedArticle);
+          toast.success("Final article generated successfully!");
+        } else {
+          const errorMsg =
+            result.error ||
+            "An unknown error occurred generating the final article.";
+          setArticleError(errorMsg);
+          toast.error(`Article generation failed: ${errorMsg}`);
+        }
+      } catch (err) {
+        console.error(
+          "[UI Debug] Error calling generateRevisionFromInputTextAndUrlGraph:",
+          err
+        );
+        const message =
+          err instanceof Error ? err.message : "An unexpected error occurred.";
+        setArticleError(`Error: ${message}`);
+        toast.error(`Article generation error: ${message}`);
+      }
+    });
   };
 
   const handleStartOver = () => {
@@ -426,7 +582,6 @@ export default function WritingPage() {
     <div className="min-h-screen dark:from-neutral-950 dark:to-black">
       <div className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 max-w-7xl">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-          
           <div className="space-y-6 p-6 bg-white dark:bg-neutral-900 rounded-lg shadow-md overflow-hidden">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-neutral-700">
               <div className="flex items-center gap-2">
@@ -442,7 +597,9 @@ export default function WritingPage() {
               <div className="flex items-center gap-4">
                 <FineTuneButton
                   onClick={() => setShowFineTuneOptions(!showFineTuneOptions)}
-                  disabled={isLoadingPrompt || isDetailLoading || isGeneratingArticle}
+                  disabled={
+                    isLoadingPrompt || isDetailLoading || isGeneratingArticle
+                  }
                   count={selectedFineTunes.length}
                 />
                 <RevalidateButton size="sm" variant="ghost" />
@@ -494,7 +651,7 @@ export default function WritingPage() {
                 />
               </div>
             )}
-                </div>
+          </div>
 
           <div className="space-y-8 p-6 bg-white dark:bg-neutral-900 rounded-lg shadow-md overflow-hidden">
             <div className="flex items-center gap-2 pb-4 border-b border-gray-200 dark:border-neutral-700">
@@ -502,11 +659,11 @@ export default function WritingPage() {
                 <div className="w-2 h-2 rounded-full bg-blue-400 dark:bg-blue-500"></div>
                 <div className="w-2 h-2 rounded-full bg-orange-400 dark:bg-orange-500"></div>
                 <div className="w-2 h-2 rounded-full bg-purple-400 dark:bg-purple-500"></div>
-                        </div>
+              </div>
               <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase">
                 ARTICLE_REFINEMENT & GENERATION
               </span>
-                      </div>
+            </div>
 
             <ArticleRefinementInput
               inputText={inputText}
@@ -526,7 +683,7 @@ export default function WritingPage() {
                 articleError={articleError}
                 setArticleError={setArticleError}
               />
-                          </div>
+            </div>
 
             <FinalArticleDisplay
               finalArticle={finalArticle}
@@ -535,7 +692,6 @@ export default function WritingPage() {
               handleCopyToClipboard={handleCopyToClipboard}
             />
           </div>
-
         </div>
       </div>
     </div>

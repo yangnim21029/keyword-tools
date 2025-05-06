@@ -738,7 +738,7 @@ export async function submitAiAnalysisSerpTitle({
       serpString
     );
     const { text: rawAnalysisText } = await generateText({
-      model: AI_MODELS.BASE,
+      model: AI_MODELS.FAST,
       prompt: analysisPrompt,
     });
     console.log(`[Action: Analyze Title] Text Analysis successful.`);

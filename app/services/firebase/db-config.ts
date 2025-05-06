@@ -28,7 +28,7 @@ if (!getApps().length) {
       !process.env.FIREBASE_CLIENT_EMAIL
     ) {
       console.error(
-        "Firebase 環境變量未設置，請在 .env.local 中配置 FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY 和 FIREBASE_CLIENT_EMAIL",
+        "Firebase 環境變量未設置，請在 .env.local 中配置 FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY 和 FIREBASE_CLIENT_EMAIL"
       );
     }
 
@@ -50,7 +50,7 @@ if (!getApps().length) {
       !serviceAccount.clientEmail
     ) {
       throw new Error(
-        "Missing essential Firebase Admin credentials in environment variables.",
+        "Missing essential Firebase Admin credentials in environment variables."
       );
     }
 
@@ -73,7 +73,8 @@ if (!getApps().length) {
 export const COLLECTIONS = {
   KEYWORD_VOLUME: "keyword_volume",
   SERP_RESULT: "serp_result",
-  ONPAGE_RESULT: "onPageResults",
+  ONPAGE_RESULT: "on_page_result",
+  AI_WRITING_QUEUE: "ai_writing_queue",
 } as const;
 
 export { db };

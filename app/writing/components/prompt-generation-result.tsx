@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React from "react";
 import { ProgressChecklistDisplay } from "./progress-checklist-display";
 import { ErrorDisplay } from "./error-display";
 import { ResultDisplay } from "./result-display";
@@ -37,26 +37,33 @@ export const PromptGenerationResult: React.FC<PromptGenerationResultProps> = ({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">Prompt Generation Progress:</h3>
+      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">
+        Prompt Generation Progress:
+      </h3>
       <ProgressChecklistDisplay steps={steps} />
 
       {/* Error Display (Prompt) */}
       {!isLoadingPrompt && promptError && (
-        <ErrorDisplay error={promptError} onDismiss={() => setPromptError(null)} />
+        <ErrorDisplay
+          error={promptError}
+          onDismiss={() => setPromptError(null)}
+        />
       )}
 
       {/* Result Display (Prompt) - Ensure conditional rendering is correct */}
       {!isLoadingPrompt && researchPrompt && (
-         <div className="mt-6"> {/* Add margin-top */} 
-            <ResultDisplay
-                researchPrompt={researchPrompt}
-                generatedOutlineText={generatedOutlineText}
-                onCopyToClipboard={() => handleCopyToClipboard(researchPrompt)}
-                onStartOver={handleStartOver}
-                copied={copiedPrompt}
-            />
-         </div>
+        <div className="mt-6">
+          {" "}
+          {/* Add margin-top */}
+          <ResultDisplay
+            researchPrompt={researchPrompt}
+            generatedOutlineText={generatedOutlineText}
+            onCopyToClipboard={() => handleCopyToClipboard(researchPrompt)}
+            onStartOver={handleStartOver}
+            copied={copiedPrompt}
+          />
+        </div>
       )}
     </div>
   );
-}; 
+};

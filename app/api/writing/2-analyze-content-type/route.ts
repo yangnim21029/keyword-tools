@@ -16,11 +16,11 @@ export async function POST(request: NextRequest) {
     if (!validation.success) {
       console.error(
         "[API /writing/2-analyze-content-type] Invalid input:",
-        validation.error.errors,
+        validation.error.errors
       );
       return NextResponse.json(
         { error: "Invalid input", details: validation.error.format() },
-        { status: 400 },
+        { status: 400 }
       );
     }
     // --- End Validation ---
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error(
       "[API /writing/2-analyze-content-type] Error calling action step:",
-      error,
+      error
     );
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         error: "Failed during content type analysis step",
         details: errorMessage,
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -16,6 +16,10 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
 }) => {
   if (!error) return null;
 
+  // Since error is typed as string | null and we've already checked for null,
+  // we can safely treat it as just a string here
+  const errorText = error;
+
   return (
     <div className="border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-md overflow-hidden border-l-4 border-l-red-500">
       {/* Header */}
@@ -36,13 +40,13 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
       </div>
       <div className="p-6">
         <div className="bg-red-50 dark:bg-red-900/10 p-4 text-red-800 dark:text-red-300 text-sm mb-4">
-          {error}
+          {errorText}
         </div>
         <Button
           onClick={onDismiss}
           className={cn(
             "px-3 py-1.5 text-xs font-mono transition-colors border",
-            "bg-gray-50 text-gray-700 border-gray-300 hover:border-red-400 hover:bg-red-50/50 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:border-red-600 dark:hover:bg-red-900/20",
+            "bg-gray-50 text-gray-700 border-gray-300 hover:border-red-400 hover:bg-red-50/50 dark:bg-neutral-950 dark:text-gray-300 dark:border-neutral-800 dark:hover:border-red-600 dark:hover:bg-red-900/20"
           )}
         >
           Dismiss
