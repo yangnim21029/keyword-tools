@@ -81,7 +81,7 @@ export function Navigation({ className }: NavigationProps) {
           </span>
         </Link>
       </div>
-      <nav className="flex flex-grow flex-col gap-1 px-2 py-4">
+      <nav className="flex flex-grow flex-col gap-2 px-2 py-6">
         <TooltipProvider delayDuration={0}>
           {navItems.map((item) => {
             const Icon = iconMap[item.icon];
@@ -92,7 +92,7 @@ export function Navigation({ className }: NavigationProps) {
                   <Link
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-foreground",
+                      "flex items-center gap-3 rounded-lg px-3 py-3 transition-all hover:text-foreground",
                       isActive
                         ? "bg-muted text-foreground"
                         : item.isPrimary
@@ -128,11 +128,11 @@ export function Navigation({ className }: NavigationProps) {
           })}
         </TooltipProvider>
       </nav>
-      <nav className="mt-auto flex flex-col gap-1 border-t px-2 py-4">
+      <nav className="mt-auto flex flex-col gap-2 border-t px-2 py-6">
         <Button
           variant="ghost"
           className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
+            "flex items-center gap-3 rounded-lg px-3 py-3 text-muted-foreground transition-all hover:text-foreground",
           )}
           aria-label={settingsItem.label}
           onClick={() => toast.info("施工中")}

@@ -250,51 +250,36 @@ export const NAV_ITEMS: NavItem[] = [
   // Primary Items
   {
     href: "/keyword-volume",
-    label: "關鍵字工具",
+    label: "關鍵字研究",
     icon: "search",
     isPrimary: true,
   },
-  { href: "/writing", label: "Writing", icon: "pen", isPrimary: true },
+  { href: "/writing", label: "AI 寫作", icon: "pen", isPrimary: true },
+  { href: "/help", label: "說明", icon: "help", isPrimary: true },
   {
     href: "/on-page-result",
-    label: "On-Page 分析",
+    label: "頁面分析",
     icon: "bar-chart",
-    isPrimary: true,
+    isPrimary: false,
   },
   {
     href: "https://gsc-weekly-analyzer-241331030537.asia-east2.run.app",
-    label: "GSC Weekly API",
+    label: "GSC 每週報告",
     icon: "bar-chart",
-    isPrimary: true,
+    isPrimary: false,
   },
   {
     href: "/serp-result",
     label: "SERP 分析",
     icon: "bar-chart",
-    isPrimary: true,
-  },
-
-  {
-    href: "/paragraph-rephrase",
-    label: "Paragraph Rephrase",
-    icon: "pen",
-    isPrimary: true,
-  },
-  { href: "/help", label: "說明", icon: "help", isPrimary: true },
-  // Secondary Items (Less clicked - will be tagged)
-  {
-    href: "/demo-product-function",
-    label: "Demo 功能",
-    icon: "bar-chart",
     isPrimary: false,
   },
-  { href: "/api", label: "API Docs", icon: "bar-chart", isPrimary: false },
-  { href: "/dev", label: "各站成效", icon: "bar-chart", isPrimary: false },
+  // Secondary Items (Less clicked - will be tagged)
   {
-    href: "/graph",
-    label: "Graph Revision",
-    icon: "bar-chart",
-    isPrimary: true,
+    href: "/demo",
+    label: "功能演示",
+    icon: "box",
+    isPrimary: false,
   },
 ];
 
