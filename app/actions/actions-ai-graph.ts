@@ -31,7 +31,8 @@ async function getRefineArticlePrompt(
     `*   Output *only* the newly generated, complete article text.`, // Added instruction
     `*   Do NOT include introductory text, explanations, or the original prompt in the response.`, // Added instruction
     `*   If the graph text is empty or doesn't provide actionable suggestions, refine the original text for clarity and completeness as best as possible.`, // Added fallback
-    `*   Markdown table format is not allowed. if you need to use table, table part should use html instead`, // Added instruction
+    `---`,
+    `Do not use Markdown table format. If you need to use table, table part should use html instead`, // Added instruction
   ];
   return promptLines.join("\n");
 }
