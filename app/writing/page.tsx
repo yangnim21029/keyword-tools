@@ -81,6 +81,11 @@ export default function WritingPage() {
     "writing:targetUrl",
     ""
   );
+  const [referenceArticleTextManual, setReferenceArticleTextManual] =
+    useClientStorage<string>("writing:referenceArticleTextManual", "");
+  const [scrapeFailedForReferenceUrl, setScrapeFailedForReferenceUrl] =
+    useState(false);
+  const [targetUrlError, setTargetUrlError] = useState<string | null>(null);
 
   const [researchPrompt, setResearchPrompt] = useClientStorage<string | null>(
     "writing:researchPrompt",
@@ -129,12 +134,24 @@ export default function WritingPage() {
     isGeneratingArticle,
     articleError,
     generateArticle,
+    generateArticleFromPastedReference,
     resetArticleRefinement,
     clearArticleError,
   } = useArticleRefinement({
     onGenerationSuccess: (article: string) => {
       console.log("[UI] Article generation succeeded.");
       setFinalArticle(article);
+      setScrapeFailedForReferenceUrl(false);
+      setTargetUrlError(null);
+    },
+    onGenerationFailure: (error: string, type?: "scrape" | "ai") => {
+      if (type === "scrape") {
+        setScrapeFailedForReferenceUrl(true);
+        setTargetUrlError(error);
+        toast.error(
+          `Reference URL Error: ${error}. Please paste content manually.`
+        );
+      }
     },
   });
 
@@ -225,12 +242,57 @@ export default function WritingPage() {
     await generatePrompt();
   };
 
-  const handleGenerateFinalArticle = () => {
+  const handleGenerateFinalArticle = async () => {
+    clearArticleError();
+    if (targetUrl.trim() !== "" && !scrapeFailedForReferenceUrl) {
+      setTargetUrlError(null);
+    }
+
     if (!researchPrompt) {
       toast.error("Please generate a research prompt first.");
       return;
     }
-    generateArticle(inputText, targetUrl);
+
+    if (targetUrl.trim() !== "" && !scrapeFailedForReferenceUrl) {
+      console.log(
+        "[UI] Attempting article generation with Target URL:",
+        targetUrl
+      );
+      setScrapeFailedForReferenceUrl(false);
+      setTargetUrlError(null);
+      await generateArticle(inputText, targetUrl);
+    } else if (referenceArticleTextManual.trim() !== "") {
+      console.log(
+        "[UI] Attempting article generation with Manual Reference Text."
+      );
+      if (!inputText.trim()) {
+        toast.info(
+          "Please also provide your article draft in 'Paste Your Article' to refine."
+        );
+      }
+      await generateArticleFromPastedReference(
+        inputText,
+        referenceArticleTextManual
+      );
+    } else {
+      if (scrapeFailedForReferenceUrl) {
+        toast.error(
+          "Reference URL failed. Please paste the reference article content manually above, then try generating again."
+        );
+      } else if (
+        targetUrl.trim() === "" &&
+        referenceArticleTextManual.trim() === ""
+      ) {
+        toast.error(
+          "Please provide a Reference Article URL, or paste its content manually."
+        );
+      }
+      if (!inputText.trim()) {
+        toast.info(
+          "Please also provide your article draft in 'Paste Your Article'."
+        );
+      }
+    }
   };
 
   const handleStartOver = () => {
@@ -246,6 +308,9 @@ export default function WritingPage() {
     setCopiedPrompt(false);
     setResearchPrompt(null);
     setFinalArticle(null);
+    setReferenceArticleTextManual("");
+    setScrapeFailedForReferenceUrl(false);
+    setTargetUrlError(null);
 
     resetPromptGeneration();
     resetArticleRefinement();
@@ -384,6 +449,10 @@ export default function WritingPage() {
               setTargetUrl={setTargetUrl}
               isGeneratingArticle={isGeneratingArticle}
               isLoadingPrompt={isLoadingPrompt}
+              scrapeFailedForReferenceUrl={scrapeFailedForReferenceUrl}
+              referenceArticleTextManual={referenceArticleTextManual}
+              setReferenceArticleTextManual={setReferenceArticleTextManual}
+              targetUrlError={targetUrlError}
             />
 
             <div className="pt-6 border-t border-dashed dark:border-neutral-700">

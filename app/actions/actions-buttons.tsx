@@ -45,9 +45,13 @@ import {
   submitAiAnalysisOnPageSummary,
   submitAiAnalysisOnPageRankingFactorV2,
   submitAiAnalysisOnPageRankingFactorRecommendation,
-  generateSingleParagraphGraph,
   submitAiOrganizeTextContent,
 } from "./actions-ai-onpage-result";
+import {
+  generateRefinedArticleDirectly,
+  generateGraphFromText,
+  generateSingleParagraphGraph,
+} from "./actions-ai-graph";
 
 // === Cluster Analysis Button ===
 
@@ -1188,5 +1192,67 @@ export function FineTuneButton({
       <Settings2 className="h-3.5 w-3.5 mr-1" />
       Fine-Tune ({count})
     </Button>
+  );
+}
+
+// === Generate Graph From Text Button ===
+interface GenerateGraphFromTextButtonProps {
+  inputText: string;
+  onResult: (result: string) => void;
+  variant?: React.ComponentProps<typeof LoadingButton>["variant"];
+  size?: React.ComponentProps<typeof LoadingButton>["size"];
+  className?: string;
+  disabled?: boolean;
+}
+
+export function GenerateGraphFromTextButton({
+  inputText,
+  onResult,
+  variant = "outline",
+  size = "sm",
+  className = "",
+  disabled = false,
+}: GenerateGraphFromTextButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleGenerate = () => {
+    if (!inputText || isPending) {
+      if (!inputText) {
+        toast.warning("Please enter some text to generate graph.");
+      }
+      return;
+    }
+
+    startTransition(async () => {
+      toast.info("Generating graph from text...");
+      try {
+        const result = await generateGraphFromText(inputText);
+        if (result.success && result.result) {
+          onResult(result.result);
+          toast.success("Graph generated successfully.");
+        } else {
+          toast.error(
+            `Graph generation failed: ${result.error ?? "Unknown error"}`
+          );
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error(`Graph generation error: ${errorMsg}`);
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleGenerate}
+      isLoading={isPending}
+      disabled={disabled || isPending || !inputText}
+      loadingText="Generating Graph..."
+    >
+      Generate Graph
+    </LoadingButton>
   );
 }

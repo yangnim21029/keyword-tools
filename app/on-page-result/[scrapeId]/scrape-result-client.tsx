@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { FirebaseOnPageResultObject } from '@/app/services/firebase/data-onpage-result';
-import { Badge } from '@/components/ui/badge';
+import { FirebaseOnPageResultObject } from "@/app/services/firebase/data-onpage-result";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
-} from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,8 +18,9 @@ import {
   GitMerge,
   Lightbulb,
   Tags,
-  Target
-} from 'lucide-react';
+  Target,
+} from "lucide-react";
+import { useState, useEffect } from "react";
 
 // Removed V1 and Recommendation buttons
 import {
@@ -28,14 +29,14 @@ import {
   // AnalyzeRankingFactorsButton, // Removed V1
   AnalyzeRankingFactorsV2Button, // Restore import
   GenerateGraphButton,
-  OrganizeTextContentButton // Import the new button
-} from '@/app/actions/actions-buttons';
+  OrganizeTextContentButton, // Import the new button
+} from "@/app/actions/actions-buttons";
 
 // Define a type for the data expected by the client component
 // Convert server Timestamps to client-safe strings (e.g., ISO strings)
 export type ClientSafeScrapeData = Omit<
   FirebaseOnPageResultObject,
-  'createdAt' | 'updatedAt'
+  "createdAt" | "updatedAt"
 > & {
   createdAt: string | null;
   updatedAt: string | null;
@@ -58,8 +59,20 @@ interface ScrapeResultDisplayProps {
 
 export default function ScrapeResultDisplay({
   scrapeData,
-  scrapeId
+  scrapeId,
 }: ScrapeResultDisplayProps) {
+  // 將 Hooks 移到頂層
+  const [manualGraphText, setManualGraphText] = useState("");
+  useEffect(() => {
+    // 在 useEffect 內部安全地處理 scrapeData 可能為 null 的情況
+    if (scrapeData) {
+      setManualGraphText(scrapeData.textContent || "");
+    } else {
+      setManualGraphText(""); // 或者其他預設值
+    }
+  }, [scrapeData]); // 依賴 scrapeData 而不是 scrapeData.textContent，以處理 scrapeData 本身為 null 的情況
+
+  // 現在可以安全地進行條件返回
   if (!scrapeData) {
     return (
       <Card className="border-destructive">
@@ -80,19 +93,19 @@ export default function ScrapeResultDisplay({
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
-      case 'complete':
+      case "complete":
         return (
           <Badge variant="secondary">
             <CheckCircle2 className="h-3 w-3 mr-1" /> Complete
           </Badge>
         );
-      case 'processing':
+      case "processing":
         return (
           <Badge variant="secondary">
             <Clock className="h-3 w-3 mr-1" /> Processing
           </Badge>
         );
-      case 'failed':
+      case "failed":
         return (
           <Badge variant="destructive">
             <AlertCircle className="h-3 w-3 mr-1" /> Failed
@@ -109,11 +122,11 @@ export default function ScrapeResultDisplay({
       <Card>
         <CardHeader>
           <CardTitle className="text-xl md:text-2xl break-words">
-            {scrapeData.title || 'No Title Extracted'}
+            {scrapeData.title || "No Title Extracted"}
           </CardTitle>
           <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2">
             <span>
-              URL:{' '}
+              URL:{" "}
               <a
                 href={scrapeData.url}
                 target="_blank"
@@ -143,7 +156,7 @@ export default function ScrapeResultDisplay({
                 <span>Author: {scrapeData.byline}</span>
               </>
             )}
-            {typeof scrapeData.length === 'number' && (
+            {typeof scrapeData.length === "number" && (
               <>
                 <Separator
                   orientation="vertical"
@@ -163,7 +176,7 @@ export default function ScrapeResultDisplay({
         </CardHeader>
         <CardContent>
           <pre className="whitespace-pre-wrap text-sm font-mono bg-gray-50 dark:bg-neutral-800 p-4 rounded border border-gray-200 dark:border-neutral-700 max-h-[60vh] overflow-y-auto">
-            {scrapeData.textContent || 'No text content extracted.'}
+            {scrapeData.textContent || "No text content extracted."}
           </pre>
           {/* Add the Organize Text button below the content */}
           <div className="mt-4">
@@ -366,37 +379,69 @@ export default function ScrapeResultDisplay({
               Structure Graph
             </h4>
 
-            {/* Display graph result if available */}
+            {/* Textarea for manually providing/editing content for the graph */}
+            <div className="space-y-2 mb-3">
+              <label
+                htmlFor="manualGraphContentTextarea"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Content for Graph Generation (editable):
+              </label>
+              <textarea
+                id="manualGraphContentTextarea"
+                value={manualGraphText}
+                onChange={(e) => setManualGraphText(e.target.value)}
+                placeholder="Paste or edit text content here for graph generation..."
+                rows={8}
+                className="w-full p-2 border rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200"
+              />
+              {scrapeData?.textContent &&
+                scrapeData.textContent.trim() !== "" && // Check if original scrape had content
+                manualGraphText.trim() === "" && ( // And manual text is now empty (user might have cleared it)
+                  <p className="text-xs text-muted-foreground italic">
+                    Original scraped content has been cleared. Paste new content
+                    or restore original if needed.
+                  </p>
+                )}
+              {!scrapeData?.textContent && manualGraphText.trim() === "" && (
+                <p className="text-xs text-muted-foreground italic">
+                  Original scraped content was empty. You can paste content
+                  above.
+                </p>
+              )}
+            </div>
+
+            {/* Display graph result OR button/message */}
             {scrapeData?.paragraphGraphText ? (
               <div className="space-y-3 p-4 border rounded-md bg-muted/30 mb-3">
                 <pre className="whitespace-pre-wrap text-sm font-mono">
                   {scrapeData.paragraphGraphText}
                 </pre>
+                {/* Button to re-generate even if results exist */}
+                <GenerateGraphButton
+                  docId={scrapeId}
+                  textContent={manualGraphText} // Use the state variable for the button
+                  hasExistingResult={!!scrapeData?.paragraphGraphText}
+                  variant="outline"
+                  size="sm"
+                  disabled={!manualGraphText.trim()} // Disable if manualGraphText is empty or only whitespace
+                  className="text-xs mt-2" // Add margin top
+                />
               </div>
-            ) : (
-              // Show message if graph hasn't been generated
-              scrapeData?.textContent && (
-                <p className="text-sm text-muted-foreground italic mb-3">
-                  Graph not yet generated. Click the button below.
-                </p>
-              )
-            )}
-
-            {/* Add the button to trigger the graph generation */}
-            {scrapeData?.textContent && (
+            ) : manualGraphText.trim() !== "" ? (
               <GenerateGraphButton
                 docId={scrapeId}
-                textContent={scrapeData.textContent}
-                hasExistingResult={!!scrapeData?.paragraphGraphText}
+                textContent={manualGraphText} // Use the state variable for the button
+                hasExistingResult={!!scrapeData?.paragraphGraphText} // Will be false here
                 variant="outline"
                 size="sm"
-                disabled={!scrapeData?.textContent}
+                disabled={!manualGraphText.trim()} // Redundant check, but safe
                 className="text-xs"
               />
-            )}
-            {!scrapeData?.textContent && (
-              <p className="text-xs text-destructive mt-1">
-                Cannot generate graph: No text content available.
+            ) : (
+              <p className="text-sm text-muted-foreground italic mb-3">
+                No text content available in the editable field above to
+                generate graph.
               </p>
             )}
           </div>
