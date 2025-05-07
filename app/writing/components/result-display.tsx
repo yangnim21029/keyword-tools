@@ -28,14 +28,19 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
   return (
     <div className="space-y-4">
       <div className="relative">
-        <Label htmlFor="research-prompt-output" className="text-sm font-medium text-muted-foreground">Generated Prompt:</Label>
+        <Label
+          htmlFor="research-prompt-output"
+          className="text-sm font-medium text-muted-foreground"
+        >
+          Generated Prompt:
+        </Label>
         <Textarea
           id="research-prompt-output"
           readOnly
           value={researchPrompt}
           className={cn(
             "min-h-[250px] font-mono text-sm leading-relaxed p-4 resize-none border mt-1",
-            "bg-gray-50 dark:bg-neutral-950 border-gray-300 dark:border-neutral-800",
+            "bg-gray-50 dark:bg-neutral-950 border-gray-300 dark:border-neutral-800"
           )}
         />
         <Button
@@ -45,7 +50,7 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
           size="sm"
           className={cn(
             "absolute top-1 right-1 flex items-center gap-1.5 px-2 py-1 text-xs font-mono",
-            "text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-neutral-800",
+            "text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-neutral-800"
           )}
         >
           {copied ? (
@@ -59,17 +64,6 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
               Copy
             </>
           )}
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap gap-2 justify-start">
-        <Button
-          onClick={onStartOver}
-          variant="outline"
-          size="sm"
-          className="text-xs font-mono"
-        >
-          Start Over
         </Button>
       </div>
 

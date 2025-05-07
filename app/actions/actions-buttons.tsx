@@ -10,6 +10,7 @@ import {
   RefreshCw,
   TerminalSquare,
   Settings2,
+  X,
 } from "lucide-react"; // Add ArrowUp, Trash2, and ShieldAlert
 import { useRouter } from "next/navigation"; // Import useRouter
 import { useTransition } from "react";

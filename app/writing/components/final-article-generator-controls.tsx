@@ -23,10 +23,6 @@ export function FinalArticleGeneratorControls({
 }: FinalArticleGeneratorControlsProps) {
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold leading-none tracking-tight mb-4">
-        精修你的文章
-      </h3>
-
       {articleError && (
         <ErrorDisplay error={articleError} onDismiss={clearArticleError} />
       )}

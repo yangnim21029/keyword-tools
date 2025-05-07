@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,11 +28,14 @@ export const FinalArticleDisplay: React.FC<FinalArticleDisplayProps> = ({
         {finalArticle}
       </pre>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={handleStartOver}>Start Over</Button>
-        <Button variant="secondary" size="sm" onClick={() => handleCopyToClipboard(finalArticle)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleCopyToClipboard(finalArticle)}
+        >
           Copy Article
         </Button>
       </div>
     </div>
   );
-}; 
+};

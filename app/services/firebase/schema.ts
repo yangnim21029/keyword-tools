@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase-admin/firestore"; // Import admin Timestamp
 import { z } from "zod";
+import { GeoPoint } from "firebase-admin/firestore"; // For server-side
 
 // Define a robust Firestore Timestamp schema that outputs a Date object
 // THIS SCHEMA IS FOR VALIDATING FIRESTORE DATA, NOT API RESPONSE
@@ -37,7 +38,7 @@ const FirestoreTimestampSchema = z
       }
       return false;
     },
-    { message: "Invalid Firestore Timestamp format" },
+    { message: "Invalid Firestore Timestamp format" }
   )
   .transform((value) => {
     // Transform to JS Date object
@@ -310,4 +311,35 @@ export type KeywordVolumeListItem = z.infer<typeof KeywordVolumeListItemSchema>;
 
 export type KeywordSuggestionResult = z.infer<
   typeof keywordSuggestionResultSchema
+>;
+
+// Schema for Advice/Feedback Items
+export const AdviceItemSchema = z.object({
+  id: z.string(), // Document ID, usually added after fetching
+  adviceText: z.string().min(1, "Feedback message cannot be empty."),
+  pageUrl: z.string().url("Invalid URL format for page.").optional(),
+  userAgent: z.string().optional(),
+  createdAt: z.date(), // Handled as Date in client/server logic, converted to Timestamp for Firestore
+  // userId: z.string().optional(), // Uncomment if user authentication is integrated
+});
+
+export type AdviceItem = z.infer<typeof AdviceItemSchema>;
+
+// Schema for data as it's stored in Firestore (without ID, with Timestamp for createdAt)
+export const FirestoreAdviceItemDataSchema = AdviceItemSchema.omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  adviceText: z.string().min(1, "Feedback message cannot be empty."), // ensure adviceText is here
+  pageUrl: z.string().url("Invalid URL format for page.").optional(),
+  userAgent: z.string().optional(),
+  createdAt: z.custom<Timestamp>(
+    (val) => val instanceof Timestamp,
+    "Expected Firestore Timestamp for createdAt"
+  ),
+  // userId: z.string().optional(),
+});
+
+export type FirestoreAdviceItemData = z.infer<
+  typeof FirestoreAdviceItemDataSchema
 >;

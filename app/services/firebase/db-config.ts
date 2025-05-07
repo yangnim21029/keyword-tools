@@ -75,6 +75,7 @@ export const COLLECTIONS = {
   SERP_RESULT: "serp_result",
   ONPAGE_RESULT: "on_page_result",
   AI_WRITING_QUEUE: "ai_writing_queue",
+  ADVICES: "advices",
 } as const;
 
 export { db };
