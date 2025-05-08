@@ -9,7 +9,7 @@ import { ScrapedPageContent } from "./firebase/data-onpage-result";
  * @returns A promise that resolves to the scraped content or null if extraction fails.
  */
 export async function extractArticleContentFromUrl(
-  url: string,
+  url: string
 ): Promise<Omit<ScrapedPageContent, "extractedAt"> | null> {
   console.log(`[Scrape Service] Attempting to extract content from: ${url}`);
   try {
@@ -23,7 +23,7 @@ export async function extractArticleContentFromUrl(
 
     if (!response.ok) {
       console.error(
-        `[Scrape Service] Failed to fetch ${url}: ${response.status} ${response.statusText}`,
+        `[Scrape Service] Failed to fetch ${url}: ${response.status} ${response.statusText}`
       );
       return null;
     }
@@ -40,7 +40,7 @@ export async function extractArticleContentFromUrl(
 
     if (!article) {
       console.warn(
-        `[Scrape Service] Readability could not parse article from ${url}`,
+        `[Scrape Service] Readability could not parse article from ${url}`
       );
       return null;
     }
@@ -53,10 +53,10 @@ export async function extractArticleContentFromUrl(
       title: article.title ?? "",
       textContent: article.textContent ?? "",
       htmlContent: article.content ?? "",
-      excerpt: article.excerpt,
-      byline: article.byline,
-      length: article.length,
-      siteName: article.siteName,
+      excerpt: article.excerpt ?? undefined,
+      byline: article.byline ?? undefined,
+      length: article.length === null ? undefined : article.length,
+      siteName: article.siteName ?? undefined,
     };
 
     return scrapedData;

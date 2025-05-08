@@ -4,7 +4,7 @@ import { GeoPoint } from "firebase-admin/firestore"; // For server-side
 
 // Define a robust Firestore Timestamp schema that outputs a Date object
 // THIS SCHEMA IS FOR VALIDATING FIRESTORE DATA, NOT API RESPONSE
-const FirestoreTimestampSchema = z
+export const FirestoreTimestampSchema = z
   .custom<
     | Timestamp
     | { seconds: number; nanoseconds: number }
@@ -343,3 +343,18 @@ export const FirestoreAdviceItemDataSchema = AdviceItemSchema.omit({
 export type FirestoreAdviceItemData = z.infer<
   typeof FirestoreAdviceItemDataSchema
 >;
+
+// --- GSC Keyword Metrics Schema ---
+export const GscKeywordMetricsSchema = z.object({
+  keyword: z.string(),
+  mean_position: z.number(),
+  min_position: z.number(),
+  max_position: z.number(),
+  total_clicks: z.number(),
+  total_impressions: z.number(),
+  site_ids: z.array(z.string()),
+  overall_ctr: z.number(),
+  searchVolume: z.number().nullable().optional(),
+});
+
+export type GscKeywordMetrics = z.infer<typeof GscKeywordMetricsSchema>;

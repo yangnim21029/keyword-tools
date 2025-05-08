@@ -480,3 +480,168 @@ export async function getSearchVolume({
     return [];
   }
 }
+
+// --- NEW Exported Function for Related Ideas ---
+
+interface GetRelatedKeywordIdeasParams {
+  seedKeywords: string[];
+  region: string;
+  language: string;
+  maxResults?: number; // Optional limit on results
+}
+
+/**
+ * Gets related keyword ideas and their metrics from Google Ads API based on seed keywords.
+ * Processes ALL keyword ideas returned by the API, not just volume lookups for seeds.
+ */
+export async function getRelatedKeywordIdeas({
+  seedKeywords,
+  region,
+  language,
+  maxResults = 50, // Default limit
+}: GetRelatedKeywordIdeasParams): Promise<KeywordVolumeItem[]> {
+  console.log(
+    `[getRelatedKeywordIdeas] Received ${seedKeywords.length} seed keywords for region: ${region}, language: ${language}...`
+  );
+
+  // --- Parameter Validation and Setup (Similar to getSearchVolume) ---
+  const apiLanguageCode = language.replace("-", "_");
+  const languageId = LANGUAGE_CODES[apiLanguageCode];
+  if (!languageId) throw new Error(`Invalid language code: ${language}`);
+
+  const regionCode = region.toUpperCase();
+  const locationId = LOCATION_CODES[regionCode];
+  if (!locationId) throw new Error(`Invalid region code: ${region}.`);
+
+  if (!DEVELOPER_TOKEN || !CLIENT_ID /* ... other checks */) {
+    throw new Error("Missing Google Ads API credentials.");
+  }
+  // --- End Setup ---
+
+  const allResults: KeywordVolumeItem[] = [];
+  const processedKeywords = new Map<string, boolean>(); // For deduplication
+
+  try {
+    // No batching needed here as we usually seed with only one keyword in the fallback case.
+    // If seeding with many keywords becomes necessary, batching like in getSearchVolume could be added.
+    console.log(
+      `[getRelatedKeywordIdeas] Fetching ideas for seeds: ${seedKeywords.join(", ")}`
+    );
+
+    const response = await fetchKeywordIdeasWithRetry({
+      batchKeywords: seedKeywords, // Use seedKeywords here
+      locationId,
+      languageId,
+    });
+    const keywordIdeas = response.results || [];
+    console.log(
+      `[getRelatedKeywordIdeas] API returned ${keywordIdeas.length} ideas.`
+    );
+
+    // Process ALL results returned by the API
+    for (const idea of keywordIdeas) {
+      const originalText = idea.text || "";
+      if (!originalText) continue;
+
+      const normalizedText = originalText.toLowerCase().trim();
+      if (processedKeywords.has(normalizedText)) continue; // Skip duplicates
+
+      // Language check (same as in getSearchVolume)
+      if (apiLanguageCode !== "zh_CN" && hasSimplifiedChinese(originalText)) {
+        console.log(
+          `[getRelatedKeywordIdeas] Skipping simplified Chinese keyword: "${originalText}"`
+        );
+        continue;
+      }
+
+      // Extract metrics (same logic as in getSearchVolume)
+      const metrics = idea.keywordIdeaMetrics || {};
+      const searchVolumeRaw = metrics.avgMonthlySearches;
+      const cpcRaw = metrics.lowTopOfPageBidMicros;
+      const competitionRaw = metrics.competition;
+      const competitionIndexRaw = metrics.competitionIndex;
+
+      let searchVolumeNum: number | undefined | null = null;
+      if (searchVolumeRaw != null) {
+        const parsed = parseInt(String(searchVolumeRaw), 10);
+        if (!isNaN(parsed)) searchVolumeNum = parsed;
+      }
+
+      let cpcNum: number | undefined | null = null;
+      if (cpcRaw != null) {
+        const parsedCpc = Number(cpcRaw);
+        if (!isNaN(parsedCpc))
+          cpcNum = Number((parsedCpc / 1000000).toFixed(2));
+      }
+
+      let competitionIndexNum: number | undefined | null = null;
+      if (typeof competitionIndexRaw === "string") {
+        const parsed = parseInt(competitionIndexRaw, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 100)
+          competitionIndexNum = parsed;
+      } else if (typeof competitionIndexRaw === "number") {
+        if (competitionIndexRaw >= 0 && competitionIndexRaw <= 100)
+          competitionIndexNum = competitionIndexRaw;
+      }
+
+      let competitionString: string | undefined | null = null;
+      if (typeof competitionRaw === "number") {
+        switch (competitionRaw) {
+          case 2:
+            competitionString = "LOW";
+            break;
+          case 3:
+            competitionString = "MEDIUM";
+            break;
+          case 4:
+            competitionString = "HIGH";
+            break;
+          default:
+            competitionString = "UNKNOWN";
+        }
+      }
+
+      const itemToValidate = {
+        text: originalText,
+        searchVolume: searchVolumeNum,
+        competition: competitionString,
+        competitionIndex: competitionIndexNum,
+        cpc: cpcNum,
+      };
+      const validationResult =
+        KeywordVolumeItemSchema.safeParse(itemToValidate);
+
+      if (validationResult.success) {
+        // Add to results and mark as processed
+        allResults.push(validationResult.data);
+        processedKeywords.set(normalizedText, true);
+      } else {
+        console.warn(
+          `[getRelatedKeywordIdeas] Zod validation failed for keyword "${originalText}":`,
+          validationResult.error.flatten()
+        );
+      }
+
+      // Stop if we reach the max desired results
+      if (allResults.length >= maxResults) {
+        console.log(
+          `[getRelatedKeywordIdeas] Reached max results limit (${maxResults}).`
+        );
+        break;
+      }
+    }
+  } catch (error: unknown) {
+    console.error(
+      "[getRelatedKeywordIdeas] Error fetching or processing ideas:",
+      error
+    );
+    // Return empty array on error, letting the caller handle the fallback
+    return [];
+  }
+
+  console.log(
+    `[getRelatedKeywordIdeas] Returning ${allResults.length} related keyword ideas.`
+  );
+  // Return the collected and validated related keyword ideas (up to maxResults)
+  return allResults;
+}

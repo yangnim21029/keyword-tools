@@ -198,5 +198,96 @@ export const getTotalOnPageResultCount = unstable_cache(
   }
 );
 
+/**
+ * Fetches OnPage results by a specific author within the last week.
+ * @param author The author's name (byline).
+ * @param researchId Optional researchId, currently unused in query but passed for context.
+ * @returns A promise that resolves to an array of FirebaseOnPageResultObject.
+ */
+export const getOnPageResultsByAuthorAndWeek = async (
+  author: string,
+  researchId: string // researchId is not used in this specific query but kept for consistency
+): Promise<FirebaseOnPageResultObject[]> => {
+  if (!db) throw new Error("Firestore is not initialized.");
+  if (!author) {
+    console.warn(
+      "[Firestore] getOnPageResultsByAuthorAndWeek called with empty author."
+    );
+    return [];
+  }
+
+  console.log(
+    `[Firestore] Fetching OnPage Results for author: ${author} within the last week (Research ID: ${researchId}).`
+  );
+
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  const oneWeekAgoTimestamp = Timestamp.fromDate(oneWeekAgo);
+
+  try {
+    const querySnapshot = await db
+      .collection(ONPAGE_COLLECTION)
+      .where("byline", "==", author)
+      .where("createdAt", ">=", oneWeekAgoTimestamp)
+      // .orderBy("createdAt", "desc") // Optional: order by creation date
+      .get();
+
+    if (querySnapshot.empty) {
+      console.log(
+        `[Firestore] No OnPage Results found for author: ${author} in the last week.`
+      );
+      return [];
+    }
+
+    const results: FirebaseOnPageResultObject[] = [];
+    querySnapshot.forEach((doc) => {
+      results.push({
+        id: doc.id,
+        ...(doc.data() as Omit<FirebaseOnPageResultObject, "id">),
+      });
+    });
+
+    console.log(
+      `[Firestore] Found ${results.length} OnPage Results for author: ${author} in the last week.`
+    );
+    return results;
+  } catch (error) {
+    console.error(
+      `[Firestore] Error fetching OnPage Results for author ${author} in the last week: `,
+      error
+    );
+    // Depending on error handling strategy, you might want to throw or return empty array
+    return [];
+  }
+};
+
+/**
+ * Deletes a specific OnPage result document by its Firestore ID.
+ * @param docId The ID of the document to delete.
+ * @returns A promise that resolves to true if deletion was successful, false otherwise.
+ */
+export const deleteOnPageResultById = async (
+  docId: string
+): Promise<boolean> => {
+  if (!db) throw new Error("Firestore is not initialized.");
+  if (!docId) {
+    console.warn("[Firestore] deleteOnPageResultById called with empty docId.");
+    return false;
+  }
+  console.log(`[Firestore] Deleting OnPage Result by ID: ${docId}`);
+  try {
+    const docRef = db.collection(ONPAGE_COLLECTION).doc(docId);
+    await docRef.delete();
+    console.log(`[Firestore] Successfully deleted OnPage Result ID: ${docId}`);
+    return true;
+  } catch (error) {
+    console.error(
+      `[Firestore] Error deleting OnPage Result for ID ${docId}:`,
+      error
+    );
+    return false;
+  }
+};
+
 // TODO: Define COLLECTIONS.ONPAGE_RESULT in db-config.ts
 // e.g., export const COLLECTIONS = { ..., ONPAGE_RESULT: 'onPageResults' };
