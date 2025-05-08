@@ -5,29 +5,30 @@ import {
   saveProcessedOpportunity,
   getAllProcessedOpportunities,
   markUrlAsUnavailable,
-  updateProcessedOppourtunity,
-  // FirebaseOppourtunity, // Raw type, actions will use the processed type
+  updateProcessedOpportunity,
+  // FirebaseOpportunity, // Raw type, actions will use the processed type
   OpportunityFromCsv,
-  OppourtunityStatus,
-  ProcessedFirebaseOppourtunity, // Import the type with Date objects
+  OpportunityStatus,
+  ProcessedFirebaseOpportunity, // Import the type with Date objects
   getProcessedOpportunitiesCountByAuthorAndWeek, // <-- Import new helper
-  FirebaseOppourtunitySchema, // <--- ADD THIS IMPORT
-} from "@/app/services/firebase/data-oppourtunity";
-import { extractArticleContentFromUrl } from "@/app/services/scrape.service";
-import { GscKeywordMetrics } from "@/app/services/firebase/schema"; // <-- ADD THIS IMPORT
+  FirebaseOpportunitySchema, // <--- ADD THIS IMPORT
+} from "../services/firebase/data-opportunity";
+import { extractArticleContentFromUrl } from "../services/scrape.service";
+import { GscKeywordMetrics } from "../services/firebase/schema"; // <-- ADD THIS IMPORT
 import {
   addOnPageResult,
   // getOnPageResultsByAuthorAndWeek,
-} from "@/app/services/firebase/data-onpage-result";
+} from "../services/firebase/data-onpage-result";
 import { analyzeKeywordsWithAiAction, KeywordGroup } from "./actions-ai-audit";
-import { fetchGscKeywordsForUrl } from "@/app/services/gsc-keywords.service";
-import { db, COLLECTIONS } from "@/app/services/firebase/db-config";
+import { fetchGscKeywordsForUrl } from "../services/gsc-keywords.service";
+import { db, COLLECTIONS } from "../services/firebase/db-config";
 import { Timestamp, QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { MEDIASITE_DATA } from "@/app/global-config"; // <-- Import MEDIASITE_DATA
+import { MEDIASITE_DATA } from "../global-config"; // <-- Import MEDIASITE_DATA
 import {
   getSearchVolume,
   getRelatedKeywordIdeas,
-} from "@/app/services/keyword-idea-api.service"; // <-- Import Ads volume service and related keywords
+} from "../services/keyword-idea-api.service"; // <-- Import Ads volume service and related keywords
+import { revalidatePath } from "next/cache"; // Needed for revalidation
 
 // --- Helper Function for Site Info ---
 interface MediaSiteInfo {
@@ -87,13 +88,13 @@ export type ProcessAttemptOutcome = // Export for use in page.tsx if needed for 
         status: "success_ready_for_batch";
         // Data payload for successful processing, ready for batch saving
         data: Omit<
-          ProcessedFirebaseOppourtunity,
+          ProcessedFirebaseOpportunity,
           "id" | "createdAt" | "updatedAt" | "processedAt"
         > & {
           originalCsvKeyword: string;
           csvVolume?: number;
           url: string;
-          status: Extract<OppourtunityStatus, "analyzed">;
+          status: Extract<OpportunityStatus, "analyzed">;
         };
         finalStatusMessage: string;
       }
@@ -114,13 +115,13 @@ export type ProcessAttemptOutcome = // Export for use in page.tsx if needed for 
       };
 
 // Helper type to extract the specific data payload for success
-type SuccessDataPayload = Extract<
+export type SuccessDataPayload = Extract<
   ProcessAttemptOutcome,
   { status: "success_ready_for_batch" }
 >["data"];
 
 interface AllOpportunitiesListResult {
-  opportunities?: ProcessedFirebaseOppourtunity[]; // Use ProcessedFirebaseOppourtunity
+  opportunities?: ProcessedFirebaseOpportunity[]; // Use ProcessedFirebaseOpportunity
   error?: string;
 }
 
@@ -158,7 +159,7 @@ async function checkAuthorWeeklyLimit(
   return processedCountThisWeek >= weeklyLimit;
 }
 
-export async function processRandomOppourtunityAction(
+export async function processRandomOpportunityAction(
   researchId: string
 ): Promise<ProcessAttemptOutcome> {
   // Return the new outcome type
@@ -217,6 +218,7 @@ export async function processRandomOppourtunityAction(
       url: csvCandidate.url,
       originalCsvKeyword: csvCandidate.keyword,
       csvVolume: csvCandidate.volume,
+      originalCsvKeywordRank: csvCandidate.currentPosition,
       status: "analyzed",
       onPageResultId: onPageResultId!,
       scrapedTitle: scrapedData.title ?? undefined,
@@ -411,7 +413,7 @@ export async function processRandomOppourtunityAction(
       finalStatusMessage: `Opportunity ${csvCandidate.url} processed.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
     };
   } catch (e) {
-    console.error("Critical error in processRandomOppourtunityAction:", e);
+    console.error("Critical error in processRandomOpportunityAction:", e);
     const errorMsg = e instanceof Error ? e.message : String(e);
     if (csvCandidate?.url) {
       try {
@@ -447,7 +449,7 @@ export async function getAllOpportunitiesListAction(): Promise<AllOpportunitiesL
   }
 }
 
-export async function markOppourtunityUnavailableAction(
+export async function markOpportunityUnavailableAction(
   url: string,
   reason?: string
 ): Promise<MarkUnavailableResult> {
@@ -468,7 +470,7 @@ export async function markOppourtunityUnavailableAction(
       };
     }
   } catch (e) {
-    console.error("Error in markOppourtunityUnavailableAction:", e);
+    console.error("Error in markOpportunityUnavailableAction:", e);
     return {
       success: false,
       message: `Error marking ${url} as unavailable.`,
@@ -765,7 +767,7 @@ export async function deleteMultipleProcessedOpportunitiesAction(
 
 // --- New Action to Get a Single Processed Opportunity by ID ---
 interface GetProcessedOpportunityByIdResult {
-  opportunity?: ProcessedFirebaseOppourtunity; // Use the Zod-inferred type with Date objects
+  opportunity?: ProcessedFirebaseOpportunity; // Use the Zod-inferred type with Date objects
   error?: string;
 }
 
@@ -802,10 +804,10 @@ export async function getProcessedOpportunityByIdAction(
     // Combine rawData with the document ID before validation (as schema expects it)
     const dataWithId = { ...rawData, id: docSnap.id };
 
-    // Validate and transform to ProcessedFirebaseOppourtunity (with Date objects)
-    // Assuming FirebaseOppourtunitySchema is available in this file's scope
-    // or imported from data-oppourtunity.ts (which it is)
-    const validationResult = FirebaseOppourtunitySchema.safeParse(dataWithId);
+    // Validate and transform to ProcessedFirebaseOpportunity (with Date objects)
+    // Assuming FirebaseOpportunitySchema is available in this file's scope
+    // or imported from data-opportunity.ts (which it is)
+    const validationResult = FirebaseOpportunitySchema.safeParse(dataWithId);
 
     if (!validationResult.success) {
       console.error(
@@ -826,5 +828,283 @@ export async function getProcessedOpportunityByIdAction(
     );
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { error: `Failed to fetch opportunity: ${errorMessage}` };
+  }
+}
+
+// Add this new action
+/**
+ * Processes the next available opportunity for a SPECIFIC site.
+ */
+export async function processNextOpportunityForSiteAction(
+  siteUrlPrefix: string, // Mandatory site prefix
+  researchId: string
+): Promise<ProcessAttemptOutcome> {
+  let csvCandidate: OpportunityFromCsv | null = null;
+  let onPageResultId: string | null = null;
+  let authorToSave: string | undefined = undefined;
+
+  try {
+    // Fetch ONE available opportunity for the SPECIFIC site
+    const availableCsvOpportunities = await getNewAvailableOpportunitiesFromCsv(
+      1,
+      siteUrlPrefix
+    );
+
+    if (!availableCsvOpportunities || availableCsvOpportunities.length === 0) {
+      return {
+        status: "no_new_items",
+        finalStatusMessage: `No new opportunities available from CSV for site ${siteUrlPrefix}.`,
+      };
+    }
+    csvCandidate = availableCsvOpportunities[0];
+
+    // --- The rest of the logic is IDENTICAL to processRandomOpportunityAction ---
+    // (Scraping, saving scrape, author limit check, GSC fetch, Ads fetch, AI analysis)
+
+    const scrapedData = await extractArticleContentFromUrl(csvCandidate.url);
+    if (!scrapedData || !scrapedData.textContent) {
+      return {
+        status: "error",
+        finalStatusMessage: `Scraping yielded no text content for ${csvCandidate.url} (Site: ${siteUrlPrefix}).`,
+        error: "Scraping error - no content",
+        urlAttempted: csvCandidate.url,
+      };
+    }
+
+    onPageResultId = await addOnPageResult(scrapedData);
+    if (!onPageResultId) {
+      return {
+        status: "error",
+        finalStatusMessage: `Could not store scraped page content for ${csvCandidate.url} (Site: ${siteUrlPrefix}).`,
+        error: "DB error storing scrape data",
+        urlAttempted: csvCandidate.url,
+      };
+    }
+
+    authorToSave = scrapedData.byline === null ? undefined : scrapedData.byline;
+
+    const authorLimitReached = await checkAuthorWeeklyLimit(
+      authorToSave,
+      researchId
+    );
+    if (authorLimitReached) {
+      return {
+        status: "author_limit_deferred",
+        finalStatusMessage: `Author ${authorToSave || "N/A"} weekly limit for ${csvCandidate.url} (Site: ${siteUrlPrefix}). Skipped.`,
+        urlSkipped: csvCandidate.url, // Keep urlSkipped for potential later handling
+      };
+    }
+
+    const dataForBatch: SuccessDataPayload = {
+      url: csvCandidate.url,
+      originalCsvKeyword: csvCandidate.keyword,
+      csvVolume: csvCandidate.volume,
+      originalCsvKeywordRank: csvCandidate.currentPosition,
+      status: "analyzed",
+      onPageResultId: onPageResultId!,
+      scrapedTitle: scrapedData.title ?? undefined,
+      scrapedExcerpt: scrapedData.excerpt ?? undefined,
+      scrapedSiteName: scrapedData.siteName ?? undefined, // Should match site derived from siteUrlPrefix
+      keywordGroup: undefined,
+      author: authorToSave,
+      researchId: researchId,
+      gscKeywords: undefined,
+    };
+
+    // GSC Fetch logic...
+    let gscFetchStatusMessage = "";
+    let rawGscKeywords: GscKeywordMetrics[] | undefined = undefined;
+    try {
+      const gscKeywordsResult = await fetchGscKeywordsForUrl(csvCandidate.url);
+      if (!("error" in gscKeywordsResult)) {
+        rawGscKeywords = gscKeywordsResult;
+        gscFetchStatusMessage = " (GSC fetched)";
+        console.log(
+          `Successfully fetched ${rawGscKeywords.length} GSC keywords for ${csvCandidate.url}`
+        );
+      } else {
+        gscFetchStatusMessage = ` (GSC failed: ${gscKeywordsResult.error})`;
+        console.warn(
+          `Failed to fetch GSC keywords for ${csvCandidate.url}: ${gscKeywordsResult.error}`,
+          gscKeywordsResult.details
+        );
+      }
+    } catch (gscError) {
+      gscFetchStatusMessage = " (GSC error)";
+      console.error(
+        `Unexpected error fetching GSC keywords for ${csvCandidate.url}:`,
+        gscError
+      );
+    }
+
+    // Enriched keywords + Ads Volume logic...
+    let enrichedKeywordsForAI: EnrichedKeywordData[] = [];
+    let adsFetchStatusMessage = "";
+    const siteInfo = findMediaSiteInfo(csvCandidate.url);
+    const region = siteInfo.region;
+    const language = siteInfo.language;
+    const nowForTimestamp = Timestamp.now(); // Added missing variable declaration
+
+    if (rawGscKeywords && rawGscKeywords.length > 0) {
+      // --- Original Path: GSC data exists ---
+      const topGscKeywords = [...rawGscKeywords]
+        .sort((a, b) => a.mean_position - b.mean_position)
+        .slice(0, 20);
+      const topKeywordStrings = topGscKeywords.map((k) => k.keyword);
+
+      if (region && language && topKeywordStrings.length > 0) {
+        console.log(
+          `[Action/GSC Path] Getting Ads Volume for ${topKeywordStrings.length} GSC keywords (Region: ${region}, Lang: ${language})`
+        );
+        try {
+          const volumeResults = await getSearchVolume({
+            keywords: topKeywordStrings,
+            region: region,
+            language: language,
+            filterZeroVolume: false,
+          });
+          const volumeMap = new Map<string, number | null | undefined>();
+          volumeResults.forEach((v) =>
+            volumeMap.set(v.text.toLowerCase().trim(), v.searchVolume)
+          );
+
+          enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
+            ...gscKw,
+            searchVolume: volumeMap.get(gscKw.keyword.toLowerCase().trim()),
+          }));
+          adsFetchStatusMessage = " (Ads Volume for GSC keywords checked)";
+          console.log(
+            `[Action/GSC Path] Enriched ${enrichedKeywordsForAI.length} GSC keywords with Ads Volume.`
+          );
+        } catch (adsError) {
+          adsFetchStatusMessage = " (Ads Volume fetch error for GSC keywords)";
+          console.error(
+            `[Action/GSC Path] Error fetching Ads volume:`,
+            adsError
+          );
+          enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
+            ...gscKw,
+            searchVolume: undefined,
+          })); // Fallback: GSC only
+        }
+      } else {
+        adsFetchStatusMessage =
+          " (Ads Volume skipped for GSC: missing region/lang)";
+        enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
+          ...gscKw,
+          searchVolume: undefined,
+        })); // Fallback: GSC only
+      }
+    } else {
+      // --- Fallback Path: GSC failed or returned empty ---
+      console.log(
+        `[Action/Fallback Path] GSC failed or empty. Trying Ads API for related keywords using seed: "${csvCandidate.keyword}"`
+      );
+      adsFetchStatusMessage = " (GSC failed, attempting Ads fallback)";
+
+      if (region && language) {
+        try {
+          const relatedIdeas = await getRelatedKeywordIdeas({
+            seedKeywords: [csvCandidate.keyword], // Seed with original CSV keyword
+            region: region,
+            language: language,
+            maxResults: 20, // Limit fallback results
+          });
+
+          if (relatedIdeas && relatedIdeas.length > 0) {
+            console.log(
+              `[Action/Fallback Path] Found ${relatedIdeas.length} related keywords via Ads.`
+            );
+            enrichedKeywordsForAI = relatedIdeas.map(
+              (idea): EnrichedKeywordData => ({
+                keyword: idea.text,
+                searchVolume: idea.searchVolume,
+                mean_position: -1,
+                min_position: -1,
+                max_position: -1,
+                site_ids: [],
+                total_impressions: 0,
+                total_clicks: 0,
+                overall_ctr: 0,
+              })
+            );
+            adsFetchStatusMessage = ` (GSC failed, using ${relatedIdeas.length} related keywords from Ads)`;
+          } else {
+            console.log(
+              `[Action/Fallback Path] Ads API returned no related keywords for seed: "${csvCandidate.keyword}"`
+            );
+            adsFetchStatusMessage =
+              " (GSC failed, Ads fallback yielded no keywords)";
+            // enrichedKeywordsForAI remains empty
+          }
+        } catch (fallbackError) {
+          console.error(
+            `[Action/Fallback Path] Error fetching related keywords from Ads:`,
+            fallbackError
+          );
+          adsFetchStatusMessage = " (GSC failed, Ads fallback fetch error)";
+          // enrichedKeywordsForAI remains empty
+        }
+      } else {
+        console.log(
+          "[Action/Fallback Path] Ads fallback skipped: missing region/language."
+        );
+        adsFetchStatusMessage =
+          " (GSC failed, Ads fallback skipped - no region/lang)";
+        // enrichedKeywordsForAI remains empty
+      }
+    }
+
+    dataForBatch.gscKeywords = enrichedKeywordsForAI; // Assign enriched keywords
+
+    // AI Analysis logic...
+    const aiInputForLlm = {
+      scrapedContent: scrapedData,
+      originalCsvKeyword: csvCandidate.keyword,
+      enrichedKeywords: enrichedKeywordsForAI,
+    };
+    console.log(
+      `[Action] Passing ${enrichedKeywordsForAI.length} keywords to AI for analysis.`
+    );
+    const aiAnalysisResult = await analyzeKeywordsWithAiAction(aiInputForLlm);
+
+    if ("error" in aiAnalysisResult || !aiAnalysisResult.aiPrimaryKeyword) {
+      const errorMsg =
+        ("error" in aiAnalysisResult && aiAnalysisResult.error) ||
+        "AI analysis returned no keywords";
+      // await markUrlAsUnavailable(
+      //   csvCandidate.url,
+      //   `AI_analysis_failed: ${errorMsg}`
+      // ); // Decide if marking unavailable is right here
+      return {
+        status: "error",
+        finalStatusMessage: `AI Keyword Analysis failed for ${csvCandidate.url} (Site: ${siteUrlPrefix}). Error: ${errorMsg}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
+        error: "AI Analysis Error",
+        urlAttempted: csvCandidate.url,
+      };
+    }
+
+    dataForBatch.keywordGroup = aiAnalysisResult as KeywordGroup; // Assign AI result
+
+    // Success!
+    return {
+      status: "success_ready_for_batch" as const,
+      data: dataForBatch,
+      finalStatusMessage: `Processed ${csvCandidate.url} for site ${siteUrlPrefix}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
+    };
+  } catch (e) {
+    // Critical error handling
+    console.error(
+      `Critical error processing for site ${siteUrlPrefix} (URL: ${csvCandidate?.url}):`,
+      e
+    );
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    /* if (csvCandidate?.url) { ... markUrlAsUnavailable ... } */ // Decide if marking unavailable is right here
+    return {
+      status: "error",
+      finalStatusMessage: `Critical Failure processing for site ${siteUrlPrefix} (URL: ${csvCandidate?.url || "unknown"}). ${errorMsg}.`,
+      error: errorMsg,
+      urlAttempted: csvCandidate?.url,
+    };
   }
 }

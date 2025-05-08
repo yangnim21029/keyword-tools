@@ -16,9 +16,10 @@ export interface OpportunityFromCsv {
   keyword: string;
   url: string;
   volume?: number;
+  currentPosition?: number; // Added field for rank from CSV
 }
 
-export type OppourtunityStatus =
+export type OpportunityStatus =
   | "available" // This status might be conceptual for CSV items not yet processed/excluded
   | "processing" // Actively being worked on
   | "analyzed" // Successfully processed and stored in Firestore
@@ -36,12 +37,13 @@ const KeywordGroupSchema = z.object({
   aiPrimaryKeywordVolume: z.number().nullable().optional(),
 });
 
-// Zod schema for FirebaseOppourtunity, including timestamp transformations
-export const FirebaseOppourtunitySchema = z.object({
+// Zod schema for FirebaseOpportunity, including timestamp transformations
+export const FirebaseOpportunitySchema = z.object({
   id: z.string(),
   url: z.string().url(),
   originalCsvKeyword: z.string(),
   csvVolume: z.number().int().optional(),
+  originalCsvKeywordRank: z.number().int().optional(),
   status: z.enum([
     "available",
     "processing",
@@ -74,18 +76,19 @@ export const FirebaseOppourtunitySchema = z.object({
 });
 
 // This interface is what the functions will return (with Date objects)
-export type ProcessedFirebaseOppourtunity = z.infer<
-  typeof FirebaseOppourtunitySchema
+export type ProcessedFirebaseOpportunity = z.infer<
+  typeof FirebaseOpportunitySchema
 >;
 
 // The Firestore document might still use raw Timestamps before transformation
-// This interface remains for internal use if needed, but return types will be ProcessedFirebaseOppourtunity
-export interface FirebaseOppourtunity {
+// This interface remains for internal use if needed, but return types will be ProcessedFirebaseOpportunity
+export interface FirebaseOpportunity {
   id: string;
   url: string;
   originalCsvKeyword: string;
   csvVolume?: number;
-  status: OppourtunityStatus;
+  originalCsvKeywordRank?: number;
+  status: OpportunityStatus;
   onPageResultId?: string;
   scrapedTitle?: string;
   scrapedExcerpt?: string;
@@ -102,7 +105,7 @@ export interface FirebaseOppourtunity {
 
 const CSV_FILE_PATH = path.join(
   process.cwd(),
-  "app/oppourtunity/oppurtunity_keywords_for_editor.csv"
+  "app/opportunity/oppurtunity_keywords_for_editor.csv"
 );
 
 // Define new collection names
@@ -119,22 +122,59 @@ export const getOpportunitiesFromCsv = async (): Promise<
 > => {
   try {
     const fileContent = await fs.readFile(CSV_FILE_PATH, {
-      encoding: "utf16le",
+      encoding: "utf8",
     });
+
     const records = parse(fileContent, {
-      delimiter: "\t",
+      delimiter: ",",
       columns: true,
       skip_empty_lines: true,
       trim: true,
       bom: true,
     });
-    return records
-      .map((record: any) => ({
-        keyword: record["Keyword"],
-        url: record["Current URL"],
-        volume: record["Volume"] ? parseInt(record["Volume"], 10) : undefined,
-      }))
-      .filter((op: any) => op.url && op.keyword);
+    console.log(
+      `[getOpportunitiesFromCsv] Parsed ${records.length} raw records from CSV.`
+    ); // LOG 1
+
+    const mappedRecords = records.map((record: any) => {
+      const volumeStr = record["Volume"];
+      const currentPosStr = record["Current position"];
+      const keywordStr = record["Keyword"];
+      const urlStr = record["Current URL"];
+
+      const volume =
+        volumeStr && !isNaN(parseFloat(volumeStr))
+          ? parseInt(volumeStr, 10)
+          : undefined;
+
+      let currentPosition: number | undefined = undefined; // Initialize as undefined
+      if (currentPosStr && !isNaN(parseFloat(currentPosStr))) {
+        const parsedInt = parseInt(currentPosStr, 10);
+        // Check if parseInt resulted in NaN (e.g., for "12.3")
+        if (!isNaN(parsedInt)) {
+          currentPosition = parsedInt;
+        }
+      }
+
+      return {
+        keyword: keywordStr,
+        url: urlStr,
+        volume: volume,
+        currentPosition: currentPosition, // Now parsed as integer or undefined
+      };
+    });
+    console.log(
+      `[getOpportunitiesFromCsv] Mapped to ${mappedRecords.length} records.`
+    ); // LOG 2
+
+    const filteredRecords = mappedRecords.filter(
+      (op: any) => op.url && op.keyword
+    );
+    console.log(
+      `[getOpportunitiesFromCsv] Filtered to ${filteredRecords.length} records (must have URL and Keyword).`
+    ); // LOG 3
+
+    return filteredRecords;
   } catch (error) {
     console.error("Error reading or parsing CSV file:", error);
     return [];
@@ -187,21 +227,38 @@ function shuffleArray<T>(array: T[]): T[] {
 
 /**
  * Gets opportunities from CSV that are not yet processed or marked unavailable.
- * Now shuffles the list to provide random candidates.
+ * Can optionally filter by site URL prefix.
+ * Shuffles the list to provide random candidates.
  */
 export const getNewAvailableOpportunitiesFromCsv = async (
-  limit: number = 1 // Default to 1 as processRandomOppourtunityAction takes one
+  limit: number = 1,
+  siteUrlPrefix?: string // Optional prefix to filter by site
 ): Promise<OpportunityFromCsv[]> => {
-  let allCsvOpportunities = await getOpportunitiesFromCsv();
+  let allCsvOpportunities = await getOpportunitiesFromCsv(); // Gets ALL parsed opportunities
   if (allCsvOpportunities.length === 0) return [];
 
-  // Shuffle the opportunities before filtering and limiting
+  // --- Filter by siteUrlPrefix FIRST if provided ---
+  if (siteUrlPrefix) {
+    const initialCount = allCsvOpportunities.length;
+    allCsvOpportunities = allCsvOpportunities.filter(
+      (opp) =>
+        opp.url && opp.url.toLowerCase().startsWith(siteUrlPrefix.toLowerCase())
+    );
+    console.log(
+      `[getNewAvailableOpportunitiesFromCsv] Filtered for site '${siteUrlPrefix}': ${initialCount} -> ${allCsvOpportunities.length} records.`
+    );
+    if (allCsvOpportunities.length === 0) return []; // No opportunities for this site
+  }
+  // --- End Site Filter ---
+
+  // Shuffle the (potentially site-filtered) opportunities before excluding/limiting
   allCsvOpportunities = shuffleArray(allCsvOpportunities);
 
   const excludedUrls = await getExcludedUrls();
 
   const availableForProcessing: OpportunityFromCsv[] = [];
   for (const csvOpp of allCsvOpportunities) {
+    // Check if URL is not excluded
     if (!excludedUrls.has(csvOpp.url)) {
       availableForProcessing.push(csvOpp);
       if (availableForProcessing.length >= limit) {
@@ -210,7 +267,9 @@ export const getNewAvailableOpportunitiesFromCsv = async (
     }
   }
   console.log(
-    `Found ${availableForProcessing.length} new (randomized) available opportunities from CSV.`
+    `[getNewAvailableOpportunitiesFromCsv] Found ${availableForProcessing.length} available opportunities` +
+      (siteUrlPrefix ? ` for site ${siteUrlPrefix}` : ` (globally)`) +
+      ` after exclusion/limit.`
   );
   return availableForProcessing;
 };
@@ -222,16 +281,16 @@ export const getNewAvailableOpportunitiesFromCsv = async (
 export const saveProcessedOpportunity = async (
   // Input data might not have id or full Timestamps yet
   opportunityDataToSave: Omit<
-    FirebaseOppourtunity, // Uses the interface with Timestamp type for stricter internal type before save
+    FirebaseOpportunity, // Uses the interface with Timestamp type for stricter internal type before save
     "id" | "createdAt" | "updatedAt" | "processedAt"
-  > & { status: OppourtunityStatus } // Ensure status is part of the input to save
-): Promise<ProcessedFirebaseOppourtunity | null> => {
+  > & { status: OpportunityStatus } // Ensure status is part of the input to save
+): Promise<ProcessedFirebaseOpportunity | null> => {
   if (!db)
     throw new Error("Firestore not initialized for saveProcessedOpportunity");
   try {
     const now = Timestamp.now();
     // Construct the full document data that will be written to Firestore
-    const docDataForFirestore: Omit<FirebaseOppourtunity, "id"> = {
+    const docDataForFirestore: Omit<FirebaseOpportunity, "id"> = {
       ...opportunityDataToSave,
       // status is already in opportunityDataToSave
       processedAt: now,
@@ -244,13 +303,17 @@ export const saveProcessedOpportunity = async (
       .add(docDataForFirestore);
 
     // Construct the object to be validated and returned, including the new ID and raw Timestamps
-    const savedDataWithRawTimestamps: FirebaseOppourtunity = {
+    const savedDataWithRawTimestamps: FirebaseOpportunity = {
       id: docRef.id,
       ...docDataForFirestore, // This includes the raw Timestamps (processedAt, createdAt, updatedAt)
+      // Ensure originalCsvKeywordRank is present if it was in opportunityDataToSave
+      // The following line might be redundant if docDataForFirestore already contains it via spread,
+      // but explicitly setting it ensures clarity and overrides if necessary.
+      originalCsvKeywordRank: opportunityDataToSave.originalCsvKeywordRank,
     };
 
-    // Validate and transform to ProcessedFirebaseOppourtunity (with Date objects)
-    const validationResult = FirebaseOppourtunitySchema.safeParse(
+    // Validate and transform to ProcessedFirebaseOpportunity (with Date objects)
+    const validationResult = FirebaseOpportunitySchema.safeParse(
       savedDataWithRawTimestamps
     );
 
@@ -265,7 +328,7 @@ export const saveProcessedOpportunity = async (
     console.log(
       `Saved and validated processed opportunity ${validationResult.data.id} for URL ${validationResult.data.url}`
     );
-    return validationResult.data; // This is ProcessedFirebaseOppourtunity
+    return validationResult.data; // This is ProcessedFirebaseOpportunity
   } catch (error) {
     console.error(
       `Error saving processed opportunity for URL ${opportunityDataToSave.url}:`,
@@ -281,7 +344,7 @@ export const saveProcessedOpportunity = async (
  */
 export const getAllProcessedOpportunities = async (
   limit: number = 100
-): Promise<ProcessedFirebaseOppourtunity[]> => {
+): Promise<ProcessedFirebaseOpportunity[]> => {
   if (!db)
     throw new Error(
       "Firestore not initialized for getAllProcessedOpportunities"
@@ -293,12 +356,12 @@ export const getAllProcessedOpportunities = async (
       .limit(limit)
       .get();
 
-    const validatedOpportunities: ProcessedFirebaseOppourtunity[] = [];
+    const validatedOpportunities: ProcessedFirebaseOpportunity[] = [];
     for (const doc of snapshot.docs) {
       const rawData = doc.data();
       // Combine rawData with the document ID before validation
       const dataWithId = { ...rawData, id: doc.id };
-      const validationResult = FirebaseOppourtunitySchema.safeParse(dataWithId);
+      const validationResult = FirebaseOpportunitySchema.safeParse(dataWithId);
 
       if (validationResult.success) {
         validatedOpportunities.push(validationResult.data);
@@ -321,20 +384,18 @@ export const getAllProcessedOpportunities = async (
  * Updates details of a PROCESSED opportunity in Firestore.
  * Note: This function assumes the document ALREADY EXISTS in PROCESSED_OPPORTUNITIES_COLLECTION_NAME.
  */
-export const updateProcessedOppourtunity = async (
+export const updateProcessedOpportunity = async (
   // Renamed for clarity
   docId: string,
   updates: Partial<
     Omit<
-      FirebaseOppourtunity, // Internal type might be raw FirebaseOppourtunity
+      FirebaseOpportunity, // Internal type might be raw FirebaseOpportunity
       "id" | "createdAt" | "url" | "originalCsvKeyword" | "processedAt"
     > & { updatedAt?: FieldValue }
   >
 ): Promise<boolean> => {
   if (!db)
-    throw new Error(
-      "Firestore not initialized for updateProcessedOppourtunity"
-    );
+    throw new Error("Firestore not initialized for updateProcessedOpportunity");
   try {
     const docRef = db
       .collection(PROCESSED_OPPORTUNITIES_COLLECTION_NAME)
@@ -388,7 +449,7 @@ export const markUrlAsUnavailable = async (
 
     if (!snapshot.empty) {
       const docId = snapshot.docs[0].id;
-      const updateSuccess = await updateProcessedOppourtunity(docId, {
+      const updateSuccess = await updateProcessedOpportunity(docId, {
         status: "marked_unavailable",
       });
       if (!updateSuccess) {
@@ -462,13 +523,13 @@ export const getProcessedOpportunitiesCountByAuthorAndWeek = async (
 // - `getNewAvailableOpportunitiesFromCsv` (replaces the old Firestore-based `getAvailableOpportunities`) uses the above to find new items from CSV.
 // - `saveProcessedOpportunity` (new) saves a fully processed item to the `processed_opportunities` collection.
 // - `getAllProcessedOpportunities` (replaces `getAllFirestoreOpportunities`) lists items from `processed_opportunities`.
-// - `updateProcessedOppourtunity` (replaces `updateOppourtunity`) performs partial updates on items in `processed_opportunities`.
-// - `markUrlAsUnavailable` (replaces `markOppourtunityAsUnavailable`) adds to `unavailable_urls` and updates status in `processed_opportunities`.
+// - `updateProcessedOpportunity` (replaces `updateOpportunity`) performs partial updates on items in `processed_opportunities`.
+// - `markUrlAsUnavailable` (replaces `markOpportunityAsUnavailable`) adds to `unavailable_urls` and updates status in `processed_opportunities`.
 // - `importOpportunitiesFromCsvToFirestore` (bulk import to Firestore) was removed.
 
-// The function `getAvailableOpportunities` and `updateOppourtunity` that were mentioned
+// The function `getAvailableOpportunities` and `updateOpportunity` that were mentioned
 // in the prompt for the original OPPORTUNITIES_COLLECTION_NAME are effectively
 // replaced or refactored by the new functions above targeting different collections or logic.
 // Specifically, the concept of "available" opportunities is now handled by reading the CSV
 // and filtering, not by a status in a pre-populated Firestore collection.
-// Updates are now performed on the 'processed_opportunities' collection via 'updateProcessedOppourtunity'.
+// Updates are now performed on the 'processed_opportunities' collection via 'updateProcessedOpportunity'.

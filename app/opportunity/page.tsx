@@ -2,15 +2,18 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import {
-  processRandomOppourtunityAction,
+  processRandomOpportunityAction,
   getAllOpportunitiesListAction,
-  markOppourtunityUnavailableAction,
+  markOpportunityUnavailableAction,
   ProcessAttemptOutcome,
   saveBatchProcessedOpportunitiesAction,
   deleteMultipleProcessedOpportunitiesAction,
-} from "@/app/actions/actions-oppourtunity";
+  deleteProcessedOpportunityAction,
+  processNextOpportunityForSiteAction,
+  SuccessDataPayload,
+} from "../actions/actions-opportunity";
 
-import { ProcessedFirebaseOppourtunity } from "@/app/services/firebase/data-oppourtunity";
+import { ProcessedFirebaseOpportunity } from "../services/firebase/data-opportunity";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +49,7 @@ import {
   Check, // Icon for copy success
 } from "lucide-react"; // Icons
 import { toast } from "sonner"; // Import toast for feedback
+import { MEDIASITE_DATA } from "@/app/global-config"; // Import site config
 
 // Helper function to check if a date is in the current week (Monday to Sunday)
 const isDateInCurrentWeek = (date: Date): boolean => {
@@ -65,8 +69,16 @@ const isDateInCurrentWeek = (date: Date): boolean => {
   return date >= monday && date <= sunday;
 };
 
+// Define GscKeywordMetric for typing to resolve linter errors
+interface GscKeywordMetric {
+  keyword: string;
+  mean_position: number;
+  total_impressions: number;
+  total_clicks: number;
+}
+
 interface AllOpportunitiesListDisplayResult {
-  opportunities?: ProcessedFirebaseOppourtunity[];
+  opportunities?: ProcessedFirebaseOpportunity[];
   error?: string;
 }
 
@@ -88,15 +100,19 @@ const buttonStyle = {
 };
 
 // Define batch constants at component level
-const MAX_SUCCESSFUL_ITEMS_PER_BATCH = 3;
-const MAX_ATTEMPTS_PER_BATCH = 15;
+// const MAX_SUCCESSFUL_ITEMS_PER_BATCH = 3; // No longer used
+const TARGET_SUCCESSES_PER_SITE = 2;
+const MAX_ATTEMPTS_PER_SITE = 7; // Let's try 7 attempts per site
 
-export default function OppourtunityPage() {
+export default function OpportunityPage() {
   const [isProcessingLottery, startProcessingLotteryTransition] =
     useTransition();
   const [isLoadingList, startLoadingListTransition] = useTransition();
   const [isUpdatingStatus, startUpdatingStatusTransition] = useTransition();
   const [isRedrawingWeek, startRedrawingWeekTransition] = useTransition();
+  const [isRedrawingSingle, startRedrawingSingleTransition] = useTransition();
+  const [redrawingOppId, setRedrawingOppId] = useState<string | null>(null);
+  const [isProcessingSite, setIsProcessingSite] = useState<string | null>(null); // Track which site is being processed
 
   const [latestAttemptOutcome, setLatestAttemptOutcome] =
     useState<ProcessAttemptOutcome | null>(null);
@@ -111,7 +127,7 @@ export default function OppourtunityPage() {
     Extract<ProcessAttemptOutcome, { status: "success_ready_for_batch" }>[]
   >([]);
 
-  // State for current attempt number in a batch run
+  // State for current attempt number (can represent total attempts across sites)
   const [currentAttemptInBatch, setCurrentAttemptInBatch] = useState(0);
 
   const [allOpportunitiesList, setAllOpportunitiesList] =
@@ -119,7 +135,7 @@ export default function OppourtunityPage() {
 
   // New state for this week's opportunities and dialog
   const [thisWeeksOpportunities, setThisWeeksOpportunities] = useState<
-    ProcessedFirebaseOppourtunity[]
+    ProcessedFirebaseOpportunity[]
   >([]);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
     "idle"
@@ -165,180 +181,6 @@ export default function OppourtunityPage() {
     }
   }, [allOpportunitiesList]);
 
-  const handleRunLottery = () => {
-    setLotteryError(null);
-    setLatestAttemptOutcome(null);
-    setCurrentBatchSuccesses([]);
-    setLastAttemptStatusMessage(null);
-    setCurrentAttemptInBatch(0);
-
-    startProcessingLotteryTransition(async () => {
-      const collectedDataForSaving: Extract<
-        ProcessAttemptOutcome,
-        { status: "success_ready_for_batch" }
-      >["data"][] = [];
-      let attempts = 0;
-      let anyErrorsDuringAttempts = false;
-
-      setGeneralMessage(
-        `Batch Goal: Process & collect ${MAX_SUCCESSFUL_ITEMS_PER_BATCH} opportunities. Starting...`
-      );
-
-      while (
-        collectedDataForSaving.length < MAX_SUCCESSFUL_ITEMS_PER_BATCH &&
-        attempts < MAX_ATTEMPTS_PER_BATCH
-      ) {
-        attempts++;
-        setCurrentAttemptInBatch(attempts);
-        setGeneralMessage(
-          `Attempt ${attempts}/${MAX_ATTEMPTS_PER_BATCH}: Processing new opportunity... (Collected ${collectedDataForSaving.length}/${MAX_SUCCESSFUL_ITEMS_PER_BATCH} for this batch)`
-        );
-
-        try {
-          const researchId = `research_batch_${new Date().getTime()}_${attempts}`;
-          const response = await processRandomOppourtunityAction(researchId);
-          setLatestAttemptOutcome(response); // Store the very last attempt
-
-          if (response.status === "success_ready_for_batch") {
-            collectedDataForSaving.push(response.data);
-            // Add to displayed successes for this batch run
-            setCurrentBatchSuccesses((prev) => [...prev, response]);
-            setLotteryError(null);
-            setLastAttemptStatusMessage(null); // Clear previous non-success message
-            setGeneralMessage(
-              `COLLECTED (${collectedDataForSaving.length}/${MAX_SUCCESSFUL_ITEMS_PER_BATCH}): ${response.finalStatusMessage}`
-            );
-          } else {
-            // Handle non-success cases for the current attempt message
-            if (response.status === "error") {
-              setLotteryError(response.error); // Set specific error for this attempt
-              anyErrorsDuringAttempts = true;
-              setLastAttemptStatusMessage(
-                `Attempt ${attempts} FAILED: ${response.finalStatusMessage} (Error: ${response.error})`
-              );
-            } else if (response.status === "author_limit_deferred") {
-              setLotteryError(null); // Not an error for the batch, but for this attempt
-              setLastAttemptStatusMessage(
-                `Attempt ${attempts} Deferred (Author Limit): ${response.finalStatusMessage}`
-              );
-            } else if (response.status === "no_new_items") {
-              setLotteryError(null);
-              setLastAttemptStatusMessage(response.finalStatusMessage); // This message is key
-              setGeneralMessage(response.finalStatusMessage + " Batch ending.");
-              break; // Exit while loop
-            }
-            // Update general message for batch progress if not 'no_new_items'
-            setGeneralMessage(
-              `Batch continuing... (Collected ${collectedDataForSaving.length}/${MAX_SUCCESSFUL_ITEMS_PER_BATCH})`
-            );
-          }
-
-          // Delay only if we are expecting more items in this batch
-          if (
-            collectedDataForSaving.length < MAX_SUCCESSFUL_ITEMS_PER_BATCH &&
-            latestAttemptOutcome?.status !== "no_new_items"
-          ) {
-            await new Promise((resolve) => setTimeout(resolve, 1200));
-          }
-        } catch (e) {
-          console.error(
-            `Critical client-side error during batch attempt ${attempts}:`,
-            e
-          );
-          const errorMsg =
-            e instanceof Error
-              ? e.message
-              : "Client error during batch lottery.";
-          setLotteryError(errorMsg);
-          setGeneralMessage(
-            `Critical error on attempt ${attempts}: ${errorMsg}. Batch processing stopped.`
-          );
-          anyErrorsDuringAttempts = true;
-          break;
-        }
-      } // End while loop
-
-      // After loop, set final general message based on outcomes
-      if (collectedDataForSaving.length > 0) {
-        // This will be overridden if save action is called and is successful/fails
-        setGeneralMessage(
-          `Collection phase finished. ${collectedDataForSaving.length} items ready for saving.`
-        );
-      } else if (latestAttemptOutcome?.status === "no_new_items") {
-        // Already handled by setGeneralMessage inside loop
-      } else if (
-        !anyErrorsDuringAttempts &&
-        attempts < MAX_ATTEMPTS_PER_BATCH
-      ) {
-        setGeneralMessage(
-          "Batch ended: No new opportunities were collected for saving (e.g., all were deferred or skipped due to limits)."
-        );
-      } else if (
-        anyErrorsDuringAttempts &&
-        collectedDataForSaving.length === 0
-      ) {
-        setGeneralMessage(
-          "Batch collection finished with errors, and no items were successfully collected to save."
-        );
-      } else if (
-        attempts >= MAX_ATTEMPTS_PER_BATCH &&
-        collectedDataForSaving.length === 0
-      ) {
-        setGeneralMessage(
-          "Max attempts reached for batch. No items were successfully collected to save."
-        );
-      }
-      // If 'no_new_items' was the status, generalMessage is already set and loop broken.
-
-      let itemsSavedInThisRunCount = 0; // Variable to store the count of successfully saved items
-
-      // Save collected items if any
-      if (collectedDataForSaving.length > 0) {
-        setGeneralMessage(
-          `Saving ${collectedDataForSaving.length} collected items to Firestore...`
-        );
-        setLotteryError(null); // Clear lottery-specific error before save
-        try {
-          const batchSaveResult = await saveBatchProcessedOpportunitiesAction(
-            collectedDataForSaving
-          );
-          itemsSavedInThisRunCount = batchSaveResult.successCount; // Store the count
-          setGeneralMessage(batchSaveResult.overallMessage); // Update with save result
-          if (batchSaveResult.failedCount > 0) {
-            console.error("Batch save failures:", batchSaveResult.errors);
-            setGeneralMessage(
-              (prev) =>
-                `${prev} (${batchSaveResult.failedCount} failed to save)`
-            );
-            setLotteryError(
-              `Batch save: ${batchSaveResult.failedCount} items failed to save.`
-            );
-          }
-          if (batchSaveResult.successCount > 0) {
-            // Refresh lists to show newly saved items (including this week's)
-            await fetchAllOpportunitiesFromFirestore();
-          }
-        } catch (e) {
-          console.error("Critical error during batch save action call:", e);
-          const errorMsg =
-            e instanceof Error ? e.message : "Client error during batch save.";
-          setLotteryError(errorMsg);
-          setGeneralMessage(`Critical error during batch save: ${errorMsg}`);
-          // itemsSavedInThisRunCount remains 0 if save fails
-        }
-      }
-
-      // Reset currentBatchSuccesses display if no items were collected,
-      // or if collected items were saved but resulted in zero actual successes.
-      if (
-        collectedDataForSaving.length === 0 ||
-        (collectedDataForSaving.length > 0 && itemsSavedInThisRunCount === 0)
-      ) {
-        setCurrentBatchSuccesses([]);
-      }
-    });
-  };
-
   const fetchAllOpportunitiesFromFirestore = useCallback(() => {
     setGeneralMessage(null);
     startLoadingListTransition(async () => {
@@ -369,7 +211,190 @@ export default function OppourtunityPage() {
     fetchAllOpportunitiesFromFirestore();
   }, [fetchAllOpportunitiesFromFirestore]);
 
-  // New handler for redrawing the entire week
+  // --- NEW handleRunLottery (Site-by-Site) ---
+  const handleRunLottery = () => {
+    setLotteryError(null);
+    setLatestAttemptOutcome(null);
+    setCurrentBatchSuccesses([]); // Clear display from previous runs
+    setLastAttemptStatusMessage(null);
+    setCurrentAttemptInBatch(0); // Reset global attempt counter
+    setIsProcessingSite(null);
+
+    // Define sites based on config - filter out any potentially invalid entries
+    const sitesToProcess = MEDIASITE_DATA.filter(
+      (site) => site.url && site.name
+    ).map((site) => ({ name: site.name!, urlPrefix: site.url }));
+
+    if (sitesToProcess.length === 0) {
+      setGeneralMessage(
+        "No target sites configured or found in MEDIASITE_DATA."
+      );
+      return; // Cannot proceed
+    }
+
+    startProcessingLotteryTransition(async () => {
+      const allCollectedDataForSaving: SuccessDataPayload[] = [];
+      const overallBatchSiteSuccessCounts = new Map<string, number>();
+      let totalAttemptsAcrossSites = 0;
+      let anyErrorsDuringBatch = false;
+      let stopBatchEarly = false;
+
+      setGeneralMessage(
+        `Starting structured batch: Aiming for ${TARGET_SUCCESSES_PER_SITE} successes per site (${sitesToProcess.map((s) => s.name).join(", ")}). Max ${MAX_ATTEMPTS_PER_SITE} attempts per site.`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Brief pause
+
+      for (const site of sitesToProcess) {
+        if (stopBatchEarly) break; // Stop if a critical error occurred
+
+        setIsProcessingSite(site.name); // Update UI indicator
+        setGeneralMessage(
+          `Processing Site: ${site.name}. Goal: ${TARGET_SUCCESSES_PER_SITE} successes (Max ${MAX_ATTEMPTS_PER_SITE} attempts)`
+        );
+
+        let siteSuccesses = 0;
+        let siteAttempts = 0;
+
+        while (
+          siteSuccesses < TARGET_SUCCESSES_PER_SITE &&
+          siteAttempts < MAX_ATTEMPTS_PER_SITE
+        ) {
+          siteAttempts++;
+          totalAttemptsAcrossSites++;
+          setCurrentAttemptInBatch(totalAttemptsAcrossSites); // Update overall counter
+
+          const progressMsg = `Site: ${site.name} | Attempt ${siteAttempts}/${MAX_ATTEMPTS_PER_SITE} | Successes ${siteSuccesses}/${TARGET_SUCCESSES_PER_SITE}`;
+          setGeneralMessage(progressMsg + " | Processing...");
+
+          try {
+            const researchId = `research_${site.name}_${new Date().getTime()}_${siteAttempts}`;
+            // Call the new site-specific action
+            const response = await processNextOpportunityForSiteAction(
+              site.urlPrefix,
+              researchId
+            );
+            setLatestAttemptOutcome(response); // Store last attempt globally
+
+            if (response.status === "success_ready_for_batch") {
+              siteSuccesses++;
+              allCollectedDataForSaving.push(response.data);
+              setCurrentBatchSuccesses((prev) => [...prev, response]); // Update display
+
+              // Update overall count for final summary
+              const currentOverallCount =
+                (overallBatchSiteSuccessCounts.get(site.name) || 0) + 1;
+              overallBatchSiteSuccessCounts.set(site.name, currentOverallCount);
+
+              setLotteryError(null);
+              setLastAttemptStatusMessage(null);
+              setGeneralMessage(
+                `${progressMsg} | COLLECTED: ${response.data.url}`
+              );
+              // Maybe add a shorter delay after success?
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            } else if (response.status === "no_new_items") {
+              setGeneralMessage(
+                `${progressMsg} | No more items available for ${site.name}. Moving to next site.`
+              );
+              await new Promise((resolve) => setTimeout(resolve, 1000)); // Pause before next site
+              break; // Exit inner loop for this site
+            } else {
+              // Handle error or author_limit_deferred
+              anyErrorsDuringBatch = true;
+              setLotteryError(
+                response.status === "error" ? response.error : null
+              );
+              setLastAttemptStatusMessage(
+                `Site: ${site.name} | Attempt ${siteAttempts} -> ${response.status}: ${response.finalStatusMessage}`
+              );
+              setGeneralMessage(
+                `${progressMsg} | Status: ${response.status}. Continuing...`
+              );
+              // Longer delay after non-success
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+            }
+          } catch (e) {
+            console.error(
+              `Critical client error during processing for site ${site.name}, attempt ${siteAttempts}:`,
+              e
+            );
+            const errorMsg =
+              e instanceof Error
+                ? e.message
+                : "Client error during site processing.";
+            setLotteryError(errorMsg);
+            setGeneralMessage(
+              `CRITICAL ERROR processing ${site.name}. Stopping batch. Error: ${errorMsg}`
+            );
+            anyErrorsDuringBatch = true;
+            stopBatchEarly = true; // Stop processing further sites
+            break; // Exit inner loop
+          }
+        } // End inner while loop (site attempts)
+
+        // Add a check to prevent unnecessary delay if the whole batch was stopped early
+        if (!stopBatchEarly) {
+          setGeneralMessage(
+            `Finished processing site: ${site.name}. Collected ${siteSuccesses}/${TARGET_SUCCESSES_PER_SITE}.`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Pause before next site
+        }
+      } // End outer for loop (sites)
+
+      setIsProcessingSite(null); // Clear site indicator
+
+      // --- After all sites processed ---
+      const finalSiteCountsMsg = Array.from(
+        overallBatchSiteSuccessCounts.entries()
+      )
+        .map(([site, count]) => `${site}: ${count}`)
+        .join(", ");
+
+      setGeneralMessage(
+        `Batch Finished. Total collected: ${allCollectedDataForSaving.length} opportunities across sites (${finalSiteCountsMsg || "None"}). ` +
+          (allCollectedDataForSaving.length > 0
+            ? "Proceeding to save..."
+            : "Nothing to save.")
+      );
+
+      // --- Saving Logic --- //
+      let itemsSavedInThisRunCount = 0; // Define here for scope
+      if (allCollectedDataForSaving.length > 0) {
+        try {
+          const batchSaveResult = await saveBatchProcessedOpportunitiesAction(
+            allCollectedDataForSaving
+          );
+          itemsSavedInThisRunCount = batchSaveResult.successCount;
+          setGeneralMessage(batchSaveResult.overallMessage);
+          if (batchSaveResult.failedCount > 0) {
+            console.error("Batch save failures:", batchSaveResult.errors);
+            setLotteryError(
+              `Batch save: ${batchSaveResult.failedCount} items failed to save.`
+            );
+          }
+          if (batchSaveResult.successCount > 0) {
+            await fetchAllOpportunitiesFromFirestore();
+          }
+        } catch (e) {
+          console.error("Critical error during batch save action call:", e);
+          const saveErrorMsg =
+            e instanceof Error ? e.message : "Client error during batch save.";
+          setLotteryError(saveErrorMsg);
+          setGeneralMessage(
+            `Critical error during batch save: ${saveErrorMsg}`
+          );
+        }
+      }
+      // Reset display if nothing was collected or saved
+      if (
+        allCollectedDataForSaving.length === 0 ||
+        itemsSavedInThisRunCount === 0
+      ) {
+        setCurrentBatchSuccesses([]);
+      }
+    }); // End startProcessingLotteryTransition
+  }; // End handleRunLottery
+
   const handleRedrawThisWeek = async () => {
     const idsToDelete = thisWeeksOpportunities.map((opp) => opp.id);
     if (idsToDelete.length === 0) {
@@ -419,7 +444,7 @@ export default function OppourtunityPage() {
     setGeneralMessage(null);
     startUpdatingStatusTransition(async () => {
       try {
-        const response = await markOppourtunityUnavailableAction(
+        const response = await markOpportunityUnavailableAction(
           url,
           "user_marked_unavailable"
         );
@@ -451,7 +476,9 @@ export default function OppourtunityPage() {
   };
 
   // Function to safely escape string for CSV
-  const escapeCsvField = (field: string | undefined | null): string => {
+  const escapeCsvField = (
+    field: string | number | undefined | null
+  ): string => {
     if (field === null || typeof field === "undefined") {
       return "";
     }
@@ -475,6 +502,9 @@ export default function OppourtunityPage() {
       return;
     }
 
+    // Construct base URL - Note: This relies on window object
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+
     const header =
       [
         "Author",
@@ -483,8 +513,10 @@ export default function OppourtunityPage() {
         "AI Related Keyword 1",
         "AI Related Keyword 2",
         "Original CSV Keyword",
-        "URL",
+        "Tracking Rank",
+        "URL", // Original URL
         "Drawn Date",
+        "Advice URL", // <-- Added Advice URL header
       ]
         .map(escapeCsvField)
         .join(",") + "\n";
@@ -506,10 +538,12 @@ export default function OppourtunityPage() {
             ? opp.keywordGroup.aiRelatedKeyword2
             : "";
         const originalCsvKeyword = opp.originalCsvKeyword || "";
+        const trackingRank = opp.originalCsvKeywordRank ?? "N/A";
         const url = opp.url;
         const drawnDate = opp.processedAt
           ? new Date(opp.processedAt).toLocaleDateString()
           : "N/A";
+        const adviceUrl = `${baseUrl}/opportunity/${opp.id}`; // <-- Construct Advice URL
 
         return [
           author,
@@ -518,8 +552,10 @@ export default function OppourtunityPage() {
           aiRelatedKeyword1,
           aiRelatedKeyword2,
           originalCsvKeyword,
+          String(trackingRank),
           url,
           drawnDate,
+          adviceUrl, // <-- Add adviceUrl data
         ]
           .map(escapeCsvField)
           .join(",");
@@ -541,6 +577,43 @@ export default function OppourtunityPage() {
       toast.error("Failed to copy to clipboard. See console for details.");
       setTimeout(() => setCopyStatus("idle"), 3000);
     }
+  };
+
+  // Handler for redrawing (deleting) a single opportunity
+  const handleRedrawSingle = (oppId: string) => {
+    if (!oppId) return;
+    if (
+      !confirm(
+        `Are you sure you want to redraw opportunity ${oppId}? This will delete it.`
+      )
+    ) {
+      return;
+    }
+    setGeneralMessage(null); // Clear general messages
+    setLotteryError(null);
+    setRedrawingOppId(oppId); // Set the ID being redrawn
+
+    startRedrawingSingleTransition(async () => {
+      try {
+        // Call the delete action directly
+        const response = await deleteProcessedOpportunityAction(oppId);
+
+        if (response.success) {
+          toast.success(response.message + " List has been updated.");
+          // Revalidation should trigger a refresh, but fetch again for certainty
+          await fetchAllOpportunitiesFromFirestore();
+        } else {
+          toast.error(`Delete failed: ${response.error || response.message}`);
+        }
+      } catch (e) {
+        console.error(`Failed to delete opportunity ${oppId}:`, e);
+        toast.error(
+          e instanceof Error ? e.message : "Client error during single delete."
+        );
+      } finally {
+        setRedrawingOppId(null); // Clear the ID being redrawn
+      }
+    });
   };
 
   return (
@@ -678,12 +751,18 @@ export default function OppourtunityPage() {
           </Card>
         )}
 
-        {/* Table Display for This Week's Opportunities */}
+        {/* Table Display for This Week's Opportunities - NOW USING HISTORY TABLE FORMAT */}
         {!isLoadingList && thisWeeksOpportunities.length > 0 && (
           <div className="overflow-x-auto bg-white shadow-md rounded-lg">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Title / URL
+                  </th>
                   <th
                     scope="col"
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -694,7 +773,7 @@ export default function OppourtunityPage() {
                     scope="col"
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    AI Primary Keyword (Volume)
+                    AI Keyword (Vol)
                   </th>
                   <th
                     scope="col"
@@ -710,15 +789,27 @@ export default function OppourtunityPage() {
                   </th>
                   <th
                     scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Tracking Rank
+                  </th>
+                  <th
+                    scope="col"
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    URL
+                    Status
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
                     Drawn Date
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    GSC Info
                   </th>
                   <th
                     scope="col"
@@ -731,12 +822,28 @@ export default function OppourtunityPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {thisWeeksOpportunities.map((opp) => (
                   <tr key={opp.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 max-w-md break-words">
+                      <Link
+                        href={`/opportunity/${opp.id}`}
+                        legacyBehavior={false}
+                        className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                      >
+                        {opp.scrapedTitle || decodeURIComponent(opp.url)}
+                      </Link>
+                      {opp.scrapedTitle && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {decodeURIComponent(opp.url)}
+                        </p>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {opp.author || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {opp.keywordGroup?.aiPrimaryKeyword || (
-                        <span className="text-gray-400 italic">(Not Set)</span>
+                        <span className="text-gray-400 italic">
+                          {opp.originalCsvKeyword}
+                        </span>
                       )}
                       {opp.keywordGroup?.aiPrimaryKeywordVolume !== null &&
                         opp.keywordGroup?.aiPrimaryKeywordVolume !==
@@ -785,30 +892,92 @@ export default function OppourtunityPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-normal text-sm text-gray-700 max-w-xs break-words">
-                      <a
-                        href={opp.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                    <td className="px-4 py-4 text-sm text-gray-700">
+                      {opp.originalCsvKeywordRank ?? (
+                        <span className="text-gray-400 italic">N/A</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <Badge
+                        variant={
+                          opp.status === "analyzed"
+                            ? "default"
+                            : opp.status === "marked_unavailable"
+                              ? "outline"
+                              : "secondary"
+                        }
+                        className={`text-xs ${
+                          opp.status === "analyzed"
+                            ? "bg-blue-100 text-blue-700"
+                            : opp.status === "marked_unavailable"
+                              ? "bg-gray-100 text-gray-600"
+                              : "bg-yellow-100 text-yellow-700"
+                        }`}
                       >
-                        {decodeURIComponent(opp.url)}
-                        <ExternalLink className="inline h-3 w-3 ml-1 align-baseline" />
-                      </a>
+                        {opp.status || "analyzed"}
+                      </Badge>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {opp.processedAt
                         ? new Date(opp.processedAt).toLocaleDateString()
                         : "N/A"}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {opp.gscKeywords && opp.gscKeywords.length > 0 ? (
+                        <Collapsible>
+                          <CollapsibleTrigger className="text-xs text-blue-600 hover:underline flex items-center">
+                            <ChevronDown className="h-3 w-3 mr-1" /> Show GSC (
+                            {opp.gscKeywords.length})
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin p-1 bg-gray-50 rounded border">
+                              {opp.gscKeywords
+                                .slice(0, 5)
+                                .map((kw: GscKeywordMetric, idx: number) => (
+                                  <li
+                                    key={idx}
+                                  >{`"${kw.keyword}" P:${kw.mean_position.toFixed(0)} I:${kw.total_impressions} C:${kw.total_clicks}`}</li>
+                                ))}
+                              {opp.gscKeywords.length > 5 && (
+                                <li>
+                                  ...and {opp.gscKeywords.length - 5} more
+                                </li>
+                              )}
+                            </ul>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ) : (
+                        <span className="text-xs italic">No GSC</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 flex items-center">
                       <Button variant="outline" size="sm" asChild>
                         <Link
-                          href={`/oppourtunity/${opp.id}`}
+                          href={`/opportunity/${opp.id}`}
                           legacyBehavior={false}
                         >
                           View Details
                         </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRedrawSingle(opp.id)}
+                        disabled={
+                          isProcessingLottery ||
+                          isRedrawingWeek ||
+                          isRedrawingSingle ||
+                          redrawingOppId === opp.id
+                        }
+                        className="text-orange-600 border-orange-400 hover:bg-orange-50 hover:text-orange-700 h-8 px-2 text-xs"
+                        title="Delete this opportunity"
+                      >
+                        {redrawingOppId === opp.id ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <RotateCw className="mr-1 h-3 w-3" />
+                        )}
+                        Redraw
                       </Button>
                     </td>
                   </tr>
@@ -844,7 +1013,7 @@ export default function OppourtunityPage() {
           <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
             Click the button below to start the automated process. The system
             will find, scrape, analyze (with AI!), and prepare up to{" "}
-            {MAX_SUCCESSFUL_ITEMS_PER_BATCH} new content opportunities for you.
+            {TARGET_SUCCESSES_PER_SITE} new content opportunities for you.
           </p>
           <Button
             size="lg"
@@ -854,9 +1023,12 @@ export default function OppourtunityPage() {
           >
             {isProcessingLottery ? (
               <>
-                <Loader2 className="mr-3 h-6 w-6 animate-spin" /> Processing
-                Batch ({currentAttemptInBatch}/{MAX_ATTEMPTS_PER_BATCH},{" "}
-                {currentBatchSuccesses.length} Collected)
+                <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                Processing Batch
+                {isProcessingSite && ` (Site: ${isProcessingSite})`}
+                ... Attempt {currentAttemptInBatch} ...
+                {currentBatchSuccesses.length > 0 &&
+                  ` (${currentBatchSuccesses.length} Collected)`}
               </>
             ) : (
               <>
@@ -942,11 +1114,13 @@ export default function OppourtunityPage() {
                                 {item.data.gscKeywords.length})
                               </summary>
                               <ul className="mt-1 pl-4 list-disc space-y-0.5 max-h-32 overflow-y-auto scrollbar-thin">
-                                {item.data.gscKeywords.map((kw, idx) => (
-                                  <li
-                                    key={idx}
-                                  >{`"${kw.keyword}" (Pos: ${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
-                                ))}
+                                {item.data.gscKeywords.map(
+                                  (kw: GscKeywordMetric, idx: number) => (
+                                    <li
+                                      key={idx}
+                                    >{`"${kw.keyword}" (Pos: ${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
+                                  )
+                                )}
                               </ul>
                             </details>
                           ) : (
@@ -1052,6 +1226,12 @@ export default function OppourtunityPage() {
                         </th>
                         <th
                           scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Tracking Rank
+                        </th>
+                        <th
+                          scope="col"
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                         >
                           Status
@@ -1081,7 +1261,7 @@ export default function OppourtunityPage() {
                         <tr key={opp.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 max-w-md break-words">
                             <Link
-                              href={`/oppourtunity/${opp.id}`}
+                              href={`/opportunity/${opp.id}`}
                               legacyBehavior={false}
                               className="text-indigo-600 hover:text-indigo-800 hover:underline"
                             >
@@ -1109,7 +1289,6 @@ export default function OppourtunityPage() {
                                 <span className="ml-2 text-xs text-gray-500">
                                   (
                                   {opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()}
-                                  )
                                 </span>
                               )}
                           </td>
@@ -1154,6 +1333,11 @@ export default function OppourtunityPage() {
                               </span>
                             )}
                           </td>
+                          <td className="px-4 py-4 text-sm text-gray-700">
+                            {opp.originalCsvKeywordRank ?? (
+                              <span className="text-gray-400 italic">N/A</span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <Badge
                               variant={
@@ -1184,11 +1368,13 @@ export default function OppourtunityPage() {
                                   <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin p-1 bg-gray-50 rounded border">
                                     {opp.gscKeywords
                                       .slice(0, 5)
-                                      .map((kw, idx) => (
-                                        <li
-                                          key={idx}
-                                        >{`"${kw.keyword}" P:${kw.mean_position.toFixed(0)} I:${kw.total_impressions} C:${kw.total_clicks}`}</li>
-                                      ))}
+                                      .map(
+                                        (kw: GscKeywordMetric, idx: number) => (
+                                          <li
+                                            key={idx}
+                                          >{`"${kw.keyword}" P:${kw.mean_position.toFixed(0)} I:${kw.total_impressions} C:${kw.total_clicks}`}</li>
+                                        )
+                                      )}
                                     {opp.gscKeywords.length > 5 && (
                                       <li>
                                         ...and {opp.gscKeywords.length - 5} more
@@ -1201,10 +1387,10 @@ export default function OppourtunityPage() {
                               <span className="text-xs italic">No GSC</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2 flex items-center">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 flex items-center">
                             <Button variant="outline" size="sm" asChild>
                               <Link
-                                href={`/oppourtunity/${opp.id}`}
+                                href={`/opportunity/${opp.id}`}
                                 legacyBehavior={false}
                               >
                                 View

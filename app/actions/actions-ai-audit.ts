@@ -6,8 +6,8 @@ import { AI_MODELS } from "../global-config";
 import { z } from "zod"; // Import Zod
 import { GscKeywordMetrics } from "@/app/services/firebase/schema"; // <-- Import GSC type
 
-// Import the new combined type from actions-oppourtunity (or define locally if preferred)
-// Assuming EnrichedKeywordData is defined in actions-oppourtunity.ts and exported, or we define it here:
+// Import the new combined type from actions-opportunity (or define locally if preferred)
+// Assuming EnrichedKeywordData is defined in actions-opportunity.ts and exported, or we define it here:
 interface EnrichedKeywordData extends GscKeywordMetrics {
   searchVolume?: number | null; // Added from Google Ads
 }
@@ -48,6 +48,12 @@ const AiSelectionResponseSchema = z.object({
 
 // Type for validated AI selection output
 type ValidatedAiSelection = z.infer<typeof AiSelectionResponseSchema>;
+
+// Add this helper function near the top
+const normalizeKeyword = (keyword: string): string => {
+  if (!keyword) return "";
+  return keyword.replace(/\s+/g, "").toLowerCase(); // Remove all whitespace and lowercase
+};
 
 /**
  * Analyzes scraped content and enriched keyword data (GSC+Ads) to SELECT a primary keyword group
@@ -126,27 +132,40 @@ export async function analyzeKeywordsWithAiAction(
 
     // Find the search volume for the selected primary keyword from the input list
     let primaryKeywordVolume: number | null | undefined = undefined;
-    const selectedPrimary = validatedSelection.aiPrimaryKeyword.trim();
+    // Normalize the keyword selected by the AI
+    const normalizedSelectedPrimary = normalizeKeyword(
+      validatedSelection.aiPrimaryKeyword
+    );
 
-    if (enrichedKeywords && enrichedKeywords.length > 0) {
+    if (
+      enrichedKeywords &&
+      enrichedKeywords.length > 0 &&
+      normalizedSelectedPrimary
+    ) {
       const matchedKeyword = enrichedKeywords.find(
         (kw) =>
-          kw.keyword.toLowerCase().trim() ===
-          selectedPrimary.toLowerCase().trim()
+          // Normalize the keyword from the list for comparison
+          normalizeKeyword(kw.keyword) === normalizedSelectedPrimary
       );
       if (matchedKeyword) {
         // Ensure searchVolume is treated as potentially null/undefined
         primaryKeywordVolume = matchedKeyword.searchVolume ?? null;
+      } else {
+        console.warn(
+          `[AI Audit] Could not find volume for AI selected primary keyword "${validatedSelection.aiPrimaryKeyword}" (normalized: "${normalizedSelectedPrimary}") in the enriched list after normalization.`
+        );
       }
+    } else {
+      console.warn(
+        `[AI Audit] Cannot lookup volume: EnrichedKeywords list is empty or normalizedSelectedPrimary is empty.`
+      );
     }
-
-    // If the selected primary keyword was the fallback (originalCsvKeyword) because the list was empty/unsuitable,
-    // we won't find a volume in the enriched list. primaryKeywordVolume remains undefined/null.
 
     // Construct the final KeywordGroup including the volume
     const keywordGroup: KeywordGroup = {
-      csvKeyword: originalCsvKeyword,
-      aiPrimaryKeyword: selectedPrimary,
+      csvKeyword: originalCsvKeyword, // Keep original CSV keyword as is
+      // Return the keyword EXACTLY as selected by AI for consistency with prompt
+      aiPrimaryKeyword: validatedSelection.aiPrimaryKeyword.trim(),
       aiRelatedKeyword1: validatedSelection.aiRelatedKeyword1.trim(),
       aiRelatedKeyword2: validatedSelection.aiRelatedKeyword2.trim(),
       aiPrimaryKeywordVolume: primaryKeywordVolume, // Assign the found volume

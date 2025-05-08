@@ -115,6 +115,11 @@ export function Navigation({ className }: NavigationProps) {
                           aria-hidden="true"
                         />
                       )}
+                      {isExpanded && !item.isPrimary && (
+                        <span className="ml-1 text-xs text-muted-foreground/80">
+                          (再等一下)
+                        </span>
+                      )}
                     </span>
                   </Link>
                 </TooltipTrigger>

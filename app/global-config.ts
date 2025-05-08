@@ -281,6 +281,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "box",
     isPrimary: false,
   },
+  {
+    href: "/opportunity",
+    label: "機會字優化",
+    icon: "list",
+    isPrimary: false,
+  },
 ];
 
 // Define the settings navigation item

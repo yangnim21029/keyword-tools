@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getProcessedOpportunityByIdAction } from "@/app/actions/actions-oppourtunity";
-import { ProcessedFirebaseOppourtunity } from "@/app/services/firebase/data-oppourtunity";
+import { getProcessedOpportunityByIdAction } from "@/app/actions/actions-opportunity";
+import { ProcessedFirebaseOpportunity } from "@/app/services/firebase/data-opportunity";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,22 +33,22 @@ import {
 } from "lucide-react";
 
 export default function OpportunityDetailPage() {
-  const params = useParams<{ oppourtunityId: string }>();
-  const { oppourtunityId } = params;
+  const params = useParams<{ opportunityId: string }>();
+  const { opportunityId } = params;
   // const router = useRouter(); // If needed for navigation
   const [opportunity, setOpportunity] =
-    useState<ProcessedFirebaseOppourtunity | null>(null);
+    useState<ProcessedFirebaseOpportunity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (oppourtunityId) {
+    if (opportunityId) {
       const fetchOpportunity = async () => {
         setLoading(true);
         setError(null);
         try {
           const result = await getProcessedOpportunityByIdAction(
-            oppourtunityId as string
+            opportunityId as string
           );
           if (result.error) {
             setError(result.error);
@@ -70,7 +70,7 @@ export default function OpportunityDetailPage() {
       };
       fetchOpportunity();
     }
-  }, [oppourtunityId]);
+  }, [opportunityId]);
 
   if (loading) {
     return (
@@ -87,7 +87,7 @@ export default function OpportunityDetailPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <Button variant="outline" asChild className="mb-4">
-          <Link href="/oppourtunity">
+          <Link href="/opportunity">
             <ChevronLeft className="mr-2 h-4 w-4" /> Back to Opportunities
           </Link>
         </Button>
@@ -104,7 +104,7 @@ export default function OpportunityDetailPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <Button variant="outline" asChild className="mb-4">
-          <Link href="/oppourtunity">
+          <Link href="/opportunity">
             <ChevronLeft className="mr-2 h-4 w-4" /> Back to Opportunities
           </Link>
         </Button>
@@ -165,7 +165,7 @@ export default function OpportunityDetailPage() {
           asChild
           className="mb-6 bg-white shadow-sm hover:bg-gray-50"
         >
-          <Link href="/oppourtunity">
+          <Link href="/opportunity">
             <ChevronLeft className="mr-2 h-4 w-4" /> Back to Dashboard
           </Link>
         </Button>
