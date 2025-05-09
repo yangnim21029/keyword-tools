@@ -1,4 +1,4 @@
-import * as fs from "fs/promises";
+import { promises as fs } from "fs";
 import * as path from "path";
 import { parse } from "csv-parse/sync";
 import { db, COLLECTIONS } from "./db-config"; // Ensure db-config.ts exports db and COLLECTIONS
@@ -103,10 +103,8 @@ export interface FirebaseOpportunity {
   updatedAt: Timestamp;
 }
 
-const CSV_FILE_PATH = path.join(
-  process.cwd(),
-  "app/opportunity/oppurtunity_keywords_for_editor.csv"
-);
+const CSV_FILE_PATH =
+  process.cwd() + "/app/opportunity/oppurtunity_keywords_for_editor.csv";
 
 // Define new collection names
 const PROCESSED_OPPORTUNITIES_COLLECTION_NAME =
