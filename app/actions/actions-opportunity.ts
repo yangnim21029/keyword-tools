@@ -12,6 +12,7 @@ import {
   ProcessedFirebaseOpportunity, // Import the type with Date objects
   getProcessedOpportunitiesCountByAuthorAndWeek, // <-- Import new helper
   FirebaseOpportunitySchema, // <--- ADD THIS IMPORT
+  getOpportunitiesFromCsv, // <<<< ENSURE THIS IS EXPORTED AND IMPORTED
 } from "../services/firebase/data-opportunity";
 import { extractArticleContentFromUrl } from "../services/scrape.service";
 import { GscKeywordMetrics } from "../services/firebase/schema"; // <-- ADD THIS IMPORT
@@ -29,6 +30,9 @@ import {
   getRelatedKeywordIdeas,
 } from "../services/keyword-idea-api.service"; // <-- Import Ads volume service and related keywords
 import { revalidatePath } from "next/cache"; // Needed for revalidation
+
+// List of authors to ignore (case-insensitive)
+const IGNORED_AUTHORS_LOWERCASE = ["hai taeng", "miki", "bernice"];
 
 // --- Helper Function for Site Info ---
 interface MediaSiteInfo {
@@ -104,6 +108,11 @@ export type ProcessAttemptOutcome = // Export for use in page.tsx if needed for 
         urlSkipped: string;
       }
     | {
+        status: "author_ignored"; // New status for explicitly ignored authors
+        finalStatusMessage: string;
+        urlSkipped: string;
+      }
+    | {
         status: "no_new_items";
         finalStatusMessage: string;
       }
@@ -159,26 +168,20 @@ async function checkAuthorWeeklyLimit(
   return processedCountThisWeek >= weeklyLimit;
 }
 
-export async function processRandomOpportunityAction(
-  researchId: string
+// --- NEW Core Helper: Processes a single CSV Opportunity ---
+async function processSingleCsvItem(
+  csvCandidate: OpportunityFromCsv,
+  researchId: string,
+  ignoredAuthors: string[]
 ): Promise<ProcessAttemptOutcome> {
-  // Return the new outcome type
-  let csvCandidate: OpportunityFromCsv | null = null;
   let onPageResultId: string | null = null;
   let authorToSave: string | undefined = undefined;
 
-  try {
-    const availableCsvOpportunities =
-      await getNewAvailableOpportunitiesFromCsv(1);
-    if (!availableCsvOpportunities || availableCsvOpportunities.length === 0) {
-      return {
-        status: "no_new_items",
-        finalStatusMessage:
-          "No new opportunities available from CSV to process.",
-      };
-    }
-    csvCandidate = availableCsvOpportunities[0];
+  console.log(
+    `[processSingleCsvItem] Processing URL: ${csvCandidate.url}, Keyword: ${csvCandidate.keyword}, Research ID: ${researchId}`
+  );
 
+  try {
     const scrapedData = await extractArticleContentFromUrl(csvCandidate.url);
     if (!scrapedData || !scrapedData.textContent) {
       return {
@@ -201,15 +204,27 @@ export async function processRandomOpportunityAction(
 
     authorToSave = scrapedData.byline === null ? undefined : scrapedData.byline;
 
+    // **** Author Ignore Check (before weekly limit) ****
+    if (authorToSave && ignoredAuthors.includes(authorToSave.toLowerCase())) {
+      console.log(
+        `[processSingleCsvItem] Author ${authorToSave} for ${csvCandidate.url} is on ignore list. Skipping.`
+      );
+      return {
+        status: "author_ignored",
+        finalStatusMessage: `Author ${authorToSave} on ignore list for ${csvCandidate.url}.`,
+        urlSkipped: csvCandidate.url,
+      };
+    }
+
+    // **** Author Weekly Limit Check ****
     const authorLimitReached = await checkAuthorWeeklyLimit(
       authorToSave,
       researchId
     );
     if (authorLimitReached) {
-      // DO NOT markUrlAsUnavailable here anymore. Caller (batch loop) will decide.
       return {
         status: "author_limit_deferred",
-        finalStatusMessage: `Author ${authorToSave || "N/A"} weekly limit for ${csvCandidate.url}. Skipped for this batch.`,
+        finalStatusMessage: `Author ${authorToSave || "N/A"} weekly limit for ${csvCandidate.url}. Item deferred.`,
         urlSkipped: csvCandidate.url,
       };
     }
@@ -227,7 +242,7 @@ export async function processRandomOpportunityAction(
       keywordGroup: undefined,
       author: authorToSave,
       researchId: researchId,
-      gscKeywords: undefined,
+      gscKeywords: undefined, // Will be EnrichedKeywordData[]
     };
 
     // --- Step 1: Fetch GSC Keywords ---
@@ -237,21 +252,24 @@ export async function processRandomOpportunityAction(
       const gscKeywordsResult = await fetchGscKeywordsForUrl(csvCandidate.url);
       if (!("error" in gscKeywordsResult)) {
         rawGscKeywords = gscKeywordsResult;
-        gscFetchStatusMessage = " (GSC keywords fetched)";
+        gscFetchStatusMessage =
+          rawGscKeywords.length > 0
+            ? ` (Fetched ${rawGscKeywords.length} GSC keywords)`
+            : " (No GSC keywords found)";
         console.log(
-          `Successfully fetched ${rawGscKeywords.length} GSC keywords for ${csvCandidate.url}`
+          `[processSingleCsvItem] ${gscFetchStatusMessage} for ${csvCandidate.url}`
         );
       } else {
-        gscFetchStatusMessage = ` (GSC keywords fetch failed: ${gscKeywordsResult.error})`;
+        gscFetchStatusMessage = ` (GSC fetch failed: ${gscKeywordsResult.error})`;
         console.warn(
-          `Failed to fetch GSC keywords for ${csvCandidate.url}: ${gscKeywordsResult.error}`,
+          `[processSingleCsvItem] GSC fetch failed for ${csvCandidate.url}: ${gscKeywordsResult.error}`,
           gscKeywordsResult.details
         );
       }
     } catch (gscError) {
-      gscFetchStatusMessage = " (GSC keywords fetch error)";
+      gscFetchStatusMessage = " (GSC fetch error)";
       console.error(
-        `Unexpected error fetching GSC keywords for ${csvCandidate.url}:`,
+        `[processSingleCsvItem] GSC fetch error for ${csvCandidate.url}:`,
         gscError
       );
     }
@@ -262,10 +280,8 @@ export async function processRandomOpportunityAction(
     const siteInfo = findMediaSiteInfo(csvCandidate.url);
     const region = siteInfo.region;
     const language = siteInfo.language;
-    const nowForTimestamp = Timestamp.now();
 
     if (rawGscKeywords && rawGscKeywords.length > 0) {
-      // --- Original Path: GSC data exists ---
       const topGscKeywords = [...rawGscKeywords]
         .sort((a, b) => a.mean_position - b.mean_position)
         .slice(0, 20);
@@ -273,7 +289,7 @@ export async function processRandomOpportunityAction(
 
       if (region && language && topKeywordStrings.length > 0) {
         console.log(
-          `[Action/GSC Path] Getting Ads Volume for ${topKeywordStrings.length} GSC keywords (Region: ${region}, Lang: ${language})`
+          `[processSingleCsvItem/GSC Path] Getting Ads Vol for ${topKeywordStrings.length} GSC keywords (Region: ${region}, Lang: ${language}) for ${csvCandidate.url}`
         );
         try {
           const volumeResults = await getSearchVolume({
@@ -286,55 +302,47 @@ export async function processRandomOpportunityAction(
           volumeResults.forEach((v) =>
             volumeMap.set(v.text.toLowerCase().trim(), v.searchVolume)
           );
-
           enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
             ...gscKw,
             searchVolume: volumeMap.get(gscKw.keyword.toLowerCase().trim()),
           }));
-          adsFetchStatusMessage = " (Ads Volume for GSC keywords checked)";
+          adsFetchStatusMessage = ` (Ads Vol for ${enrichedKeywordsForAI.length} GSC keywords checked)`;
           console.log(
-            `[Action/GSC Path] Enriched ${enrichedKeywordsForAI.length} GSC keywords with Ads Volume.`
+            `[processSingleCsvItem/GSC Path] Enriched ${enrichedKeywordsForAI.length} GSC keywords with Ads Vol for ${csvCandidate.url}.`
           );
         } catch (adsError) {
-          adsFetchStatusMessage = " (Ads Volume fetch error for GSC keywords)";
+          adsFetchStatusMessage = " (Ads Vol fetch error for GSC keywords)";
           console.error(
-            `[Action/GSC Path] Error fetching Ads volume:`,
+            `[processSingleCsvItem/GSC Path] Ads Vol error for ${csvCandidate.url}:`,
             adsError
           );
           enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
             ...gscKw,
             searchVolume: undefined,
-          })); // Fallback: GSC only
+          }));
         }
       } else {
         adsFetchStatusMessage =
-          " (Ads Volume skipped for GSC: missing region/lang)";
+          " (Ads Vol skipped for GSC: missing region/lang or no keywords)";
         enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
           ...gscKw,
           searchVolume: undefined,
-        })); // Fallback: GSC only
+        }));
       }
-      // --- End Original Path ---
     } else {
-      // --- Fallback Path: GSC failed or returned empty ---
       console.log(
-        `[Action/Fallback Path] GSC failed or empty. Trying Ads API for related keywords using seed: "${csvCandidate.keyword}"`
+        `[processSingleCsvItem/Fallback Path] GSC failed/empty. Ads fallback using seed: "${csvCandidate.keyword}" for ${csvCandidate.url}`
       );
-      adsFetchStatusMessage = " (GSC failed, attempting Ads fallback)";
-
+      adsFetchStatusMessage = " (GSC failed/empty, attempting Ads fallback)";
       if (region && language) {
         try {
           const relatedIdeas = await getRelatedKeywordIdeas({
-            seedKeywords: [csvCandidate.keyword], // Seed with original CSV keyword
+            seedKeywords: [csvCandidate.keyword],
             region: region,
             language: language,
-            maxResults: 20, // Limit fallback results
+            maxResults: 20,
           });
-
           if (relatedIdeas && relatedIdeas.length > 0) {
-            console.log(
-              `[Action/Fallback Path] Found ${relatedIdeas.length} related keywords via Ads.`
-            );
             enrichedKeywordsForAI = relatedIdeas.map(
               (idea): EnrichedKeywordData => ({
                 keyword: idea.text,
@@ -348,34 +356,37 @@ export async function processRandomOpportunityAction(
                 overall_ctr: 0,
               })
             );
-            adsFetchStatusMessage = ` (GSC failed, using ${relatedIdeas.length} related keywords from Ads)`;
+            adsFetchStatusMessage = ` (GSC failed, used ${relatedIdeas.length} related keywords from Ads)`;
           } else {
-            console.log(
-              `[Action/Fallback Path] Ads API returned no related keywords for seed: "${csvCandidate.keyword}"`
-            );
             adsFetchStatusMessage =
               " (GSC failed, Ads fallback yielded no keywords)";
-            // enrichedKeywordsForAI remains empty
           }
         } catch (fallbackError) {
+          adsFetchStatusMessage = " (GSC failed, Ads fallback fetch error)";
           console.error(
-            `[Action/Fallback Path] Error fetching related keywords from Ads:`,
+            `[processSingleCsvItem/Fallback Path] Ads fallback error for ${csvCandidate.url}:`,
             fallbackError
           );
-          adsFetchStatusMessage = " (GSC failed, Ads fallback fetch error)";
-          // enrichedKeywordsForAI remains empty
         }
       } else {
-        console.log(
-          "[Action/Fallback Path] Ads fallback skipped: missing region/language."
-        );
         adsFetchStatusMessage =
           " (GSC failed, Ads fallback skipped - no region/lang)";
-        // enrichedKeywordsForAI remains empty
       }
-      // --- End Fallback Path ---
     }
 
+    // --- Step 2b: Filter out zero-volume keywords before sending to AI ---
+    const originalCount = enrichedKeywordsForAI.length;
+    enrichedKeywordsForAI = enrichedKeywordsForAI.filter(
+      (kw) => typeof kw.searchVolume === "number" && kw.searchVolume > 0
+    );
+    console.log(
+      `[processSingleCsvItem] Filtered out zero/null/undefined volume keywords for ${csvCandidate.url}. ` +
+        `Before: ${originalCount}, After: ${enrichedKeywordsForAI.length}. (Kept only > 0)`
+    );
+    // Update dataForBatch.gscKeywords with the filtered list if it changed
+    // This is important if dataForBatch.gscKeywords was already assigned the unfiltered list by reference.
+    // However, enrichedKeywordsForAI is the one passed to AI, so this direct update is key.
+    // If dataForBatch.gscKeywords is intended to store the *final* list sent to AI, it should be updated here:
     dataForBatch.gscKeywords = enrichedKeywordsForAI;
 
     // --- Step 3: AI Analysis ---
@@ -385,7 +396,7 @@ export async function processRandomOpportunityAction(
       enrichedKeywords: enrichedKeywordsForAI,
     };
     console.log(
-      `[Action] Passing ${enrichedKeywordsForAI.length} keywords to AI for analysis.`
+      `[processSingleCsvItem] Passing ${enrichedKeywordsForAI.length} keywords to AI for ${csvCandidate.url}.`
     );
     const aiAnalysisResult = await analyzeKeywordsWithAiAction(aiInputForLlm);
 
@@ -393,14 +404,11 @@ export async function processRandomOpportunityAction(
       const errorMsg =
         ("error" in aiAnalysisResult && aiAnalysisResult.error) ||
         "AI analysis returned no keywords";
-      await markUrlAsUnavailable(
-        csvCandidate.url,
-        `AI_analysis_failed: ${errorMsg}`
-      );
+      // No markUrlAsUnavailable here, let the caller decide or handle based on status
       return {
         status: "error",
         finalStatusMessage: `AI Keyword Analysis failed for ${csvCandidate.url}. Error: ${errorMsg}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
-        error: "AI Analysis Error",
+        error: `AI Analysis Error: ${errorMsg}`,
         urlAttempted: csvCandidate.url,
       };
     }
@@ -413,26 +421,81 @@ export async function processRandomOpportunityAction(
       finalStatusMessage: `Opportunity ${csvCandidate.url} processed.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
     };
   } catch (e) {
-    console.error("Critical error in processRandomOpportunityAction:", e);
+    console.error(
+      `[processSingleCsvItem] Critical error for ${csvCandidate.url}:`,
+      e
+    );
     const errorMsg = e instanceof Error ? e.message : String(e);
-    if (csvCandidate?.url) {
+    // No markUrlAsUnavailable here, let the caller decide or handle based on status
+    return {
+      status: "error",
+      finalStatusMessage: `Critical Failure during processing for ${csvCandidate.url}. ${errorMsg}. Check logs.`,
+      error: errorMsg,
+      urlAttempted: csvCandidate.url,
+    };
+  }
+}
+// --- END Core Helper ---
+
+export async function processRandomOpportunityAction(
+  researchId: string
+): Promise<ProcessAttemptOutcome> {
+  console.log(
+    `[processRandomOpportunityAction] Called. Research ID: ${researchId}`
+  );
+  try {
+    // Get ONE available opportunity from CSV (any site, not yet processed)
+    const availableCsvOpportunities =
+      await getNewAvailableOpportunitiesFromCsv(1);
+    if (!availableCsvOpportunities || availableCsvOpportunities.length === 0) {
+      return {
+        status: "no_new_items",
+        finalStatusMessage:
+          "No new opportunities available from CSV to process.",
+      };
+    }
+    const csvCandidate = availableCsvOpportunities[0];
+    console.log(
+      `[processRandomOpportunityAction] Selected CSV candidate: ${csvCandidate.url}`
+    );
+
+    // Process this single CSV item using the new core helper
+    const result = await processSingleCsvItem(
+      csvCandidate,
+      researchId,
+      IGNORED_AUTHORS_LOWERCASE
+    );
+
+    // If processing failed in a way that makes the URL unusable, mark it.
+    if (
+      result.status === "error" &&
+      (result.error.includes("Scraping error") ||
+        result.error.includes("AI Analysis Error"))
+    ) {
       try {
         await markUrlAsUnavailable(
           csvCandidate.url,
-          `critical_processing_error: ${errorMsg.substring(0, 100)}`
+          `processing_error_in_batch: ${result.error.substring(0, 100)}`
+        );
+        console.log(
+          `[processRandomOpportunityAction] Marked ${csvCandidate.url} as unavailable due to error: ${result.error}`
         );
       } catch (markError) {
         console.error(
-          `Failed to mark URL as unavailable during critical error handling for ${csvCandidate.url}:`,
+          `[processRandomOpportunityAction] Failed to mark ${csvCandidate.url} as unavailable:`,
           markError
         );
       }
     }
+    return result;
+  } catch (e) {
+    console.error("[processRandomOpportunityAction] Critical error:", e);
+    const errorMsg = e instanceof Error ? e.message : String(e);
     return {
       status: "error",
-      finalStatusMessage: `Critical Failure during processing for ${csvCandidate?.url || "unknown URL"}. ${errorMsg}. Check logs.`,
+      finalStatusMessage: `Critical Failure in processRandomOpportunityAction. ${errorMsg}. Check logs.`,
       error: errorMsg,
-      urlAttempted: csvCandidate?.url,
+      // urlAttempted might not be known here if error is early
     };
   }
 }
@@ -831,280 +894,175 @@ export async function getProcessedOpportunityByIdAction(
   }
 }
 
-// Add this new action
-/**
- * Processes the next available opportunity for a SPECIFIC site.
- */
-export async function processNextOpportunityForSiteAction(
-  siteUrlPrefix: string, // Mandatory site prefix
-  researchId: string
+// Renamed and refactored: was findAndProcessRandomOpportunityFromSitemapInternal
+async function findAndProcessRandomOpportunityForSiteInternal(
+  siteUrlPrefix: string,
+  researchId: string,
+  ignoredAuthors: string[]
 ): Promise<ProcessAttemptOutcome> {
-  let csvCandidate: OpportunityFromCsv | null = null;
-  let onPageResultId: string | null = null;
-  let authorToSave: string | undefined = undefined;
+  console.log(
+    `[findAndProcessRandomOpportunityForSiteInternal] Site: ${siteUrlPrefix}, Research ID: ${researchId}`
+  );
 
-  try {
-    // Fetch ONE available opportunity for the SPECIFIC site
-    const availableCsvOpportunities = await getNewAvailableOpportunitiesFromCsv(
-      1,
-      siteUrlPrefix
-    );
-
-    if (!availableCsvOpportunities || availableCsvOpportunities.length === 0) {
-      return {
-        status: "no_new_items",
-        finalStatusMessage: `No new opportunities available from CSV for site ${siteUrlPrefix}.`,
-      };
-    }
-    csvCandidate = availableCsvOpportunities[0];
-
-    // --- The rest of the logic is IDENTICAL to processRandomOpportunityAction ---
-    // (Scraping, saving scrape, author limit check, GSC fetch, Ads fetch, AI analysis)
-
-    const scrapedData = await extractArticleContentFromUrl(csvCandidate.url);
-    if (!scrapedData || !scrapedData.textContent) {
-      return {
-        status: "error",
-        finalStatusMessage: `Scraping yielded no text content for ${csvCandidate.url} (Site: ${siteUrlPrefix}).`,
-        error: "Scraping error - no content",
-        urlAttempted: csvCandidate.url,
-      };
-    }
-
-    onPageResultId = await addOnPageResult(scrapedData);
-    if (!onPageResultId) {
-      return {
-        status: "error",
-        finalStatusMessage: `Could not store scraped page content for ${csvCandidate.url} (Site: ${siteUrlPrefix}).`,
-        error: "DB error storing scrape data",
-        urlAttempted: csvCandidate.url,
-      };
-    }
-
-    authorToSave = scrapedData.byline === null ? undefined : scrapedData.byline;
-
-    const authorLimitReached = await checkAuthorWeeklyLimit(
-      authorToSave,
-      researchId
-    );
-    if (authorLimitReached) {
-      return {
-        status: "author_limit_deferred",
-        finalStatusMessage: `Author ${authorToSave || "N/A"} weekly limit for ${csvCandidate.url} (Site: ${siteUrlPrefix}). Skipped.`,
-        urlSkipped: csvCandidate.url, // Keep urlSkipped for potential later handling
-      };
-    }
-
-    const dataForBatch: SuccessDataPayload = {
-      url: csvCandidate.url,
-      originalCsvKeyword: csvCandidate.keyword,
-      csvVolume: csvCandidate.volume,
-      originalCsvKeywordRank: csvCandidate.currentPosition,
-      status: "analyzed",
-      onPageResultId: onPageResultId!,
-      scrapedTitle: scrapedData.title ?? undefined,
-      scrapedExcerpt: scrapedData.excerpt ?? undefined,
-      scrapedSiteName: scrapedData.siteName ?? undefined, // Should match site derived from siteUrlPrefix
-      keywordGroup: undefined,
-      author: authorToSave,
-      researchId: researchId,
-      gscKeywords: undefined,
-    };
-
-    // GSC Fetch logic...
-    let gscFetchStatusMessage = "";
-    let rawGscKeywords: GscKeywordMetrics[] | undefined = undefined;
-    try {
-      const gscKeywordsResult = await fetchGscKeywordsForUrl(csvCandidate.url);
-      if (!("error" in gscKeywordsResult)) {
-        rawGscKeywords = gscKeywordsResult;
-        gscFetchStatusMessage = " (GSC fetched)";
-        console.log(
-          `Successfully fetched ${rawGscKeywords.length} GSC keywords for ${csvCandidate.url}`
-        );
-      } else {
-        gscFetchStatusMessage = ` (GSC failed: ${gscKeywordsResult.error})`;
-        console.warn(
-          `Failed to fetch GSC keywords for ${csvCandidate.url}: ${gscKeywordsResult.error}`,
-          gscKeywordsResult.details
-        );
-      }
-    } catch (gscError) {
-      gscFetchStatusMessage = " (GSC error)";
-      console.error(
-        `Unexpected error fetching GSC keywords for ${csvCandidate.url}:`,
-        gscError
-      );
-    }
-
-    // Enriched keywords + Ads Volume logic...
-    let enrichedKeywordsForAI: EnrichedKeywordData[] = [];
-    let adsFetchStatusMessage = "";
-    const siteInfo = findMediaSiteInfo(csvCandidate.url);
-    const region = siteInfo.region;
-    const language = siteInfo.language;
-    const nowForTimestamp = Timestamp.now(); // Added missing variable declaration
-
-    if (rawGscKeywords && rawGscKeywords.length > 0) {
-      // --- Original Path: GSC data exists ---
-      const topGscKeywords = [...rawGscKeywords]
-        .sort((a, b) => a.mean_position - b.mean_position)
-        .slice(0, 20);
-      const topKeywordStrings = topGscKeywords.map((k) => k.keyword);
-
-      if (region && language && topKeywordStrings.length > 0) {
-        console.log(
-          `[Action/GSC Path] Getting Ads Volume for ${topKeywordStrings.length} GSC keywords (Region: ${region}, Lang: ${language})`
-        );
-        try {
-          const volumeResults = await getSearchVolume({
-            keywords: topKeywordStrings,
-            region: region,
-            language: language,
-            filterZeroVolume: false,
-          });
-          const volumeMap = new Map<string, number | null | undefined>();
-          volumeResults.forEach((v) =>
-            volumeMap.set(v.text.toLowerCase().trim(), v.searchVolume)
-          );
-
-          enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
-            ...gscKw,
-            searchVolume: volumeMap.get(gscKw.keyword.toLowerCase().trim()),
-          }));
-          adsFetchStatusMessage = " (Ads Volume for GSC keywords checked)";
-          console.log(
-            `[Action/GSC Path] Enriched ${enrichedKeywordsForAI.length} GSC keywords with Ads Volume.`
-          );
-        } catch (adsError) {
-          adsFetchStatusMessage = " (Ads Volume fetch error for GSC keywords)";
-          console.error(
-            `[Action/GSC Path] Error fetching Ads volume:`,
-            adsError
-          );
-          enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
-            ...gscKw,
-            searchVolume: undefined,
-          })); // Fallback: GSC only
-        }
-      } else {
-        adsFetchStatusMessage =
-          " (Ads Volume skipped for GSC: missing region/lang)";
-        enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
-          ...gscKw,
-          searchVolume: undefined,
-        })); // Fallback: GSC only
-      }
-    } else {
-      // --- Fallback Path: GSC failed or returned empty ---
-      console.log(
-        `[Action/Fallback Path] GSC failed or empty. Trying Ads API for related keywords using seed: "${csvCandidate.keyword}"`
-      );
-      adsFetchStatusMessage = " (GSC failed, attempting Ads fallback)";
-
-      if (region && language) {
-        try {
-          const relatedIdeas = await getRelatedKeywordIdeas({
-            seedKeywords: [csvCandidate.keyword], // Seed with original CSV keyword
-            region: region,
-            language: language,
-            maxResults: 20, // Limit fallback results
-          });
-
-          if (relatedIdeas && relatedIdeas.length > 0) {
-            console.log(
-              `[Action/Fallback Path] Found ${relatedIdeas.length} related keywords via Ads.`
-            );
-            enrichedKeywordsForAI = relatedIdeas.map(
-              (idea): EnrichedKeywordData => ({
-                keyword: idea.text,
-                searchVolume: idea.searchVolume,
-                mean_position: -1,
-                min_position: -1,
-                max_position: -1,
-                site_ids: [],
-                total_impressions: 0,
-                total_clicks: 0,
-                overall_ctr: 0,
-              })
-            );
-            adsFetchStatusMessage = ` (GSC failed, using ${relatedIdeas.length} related keywords from Ads)`;
-          } else {
-            console.log(
-              `[Action/Fallback Path] Ads API returned no related keywords for seed: "${csvCandidate.keyword}"`
-            );
-            adsFetchStatusMessage =
-              " (GSC failed, Ads fallback yielded no keywords)";
-            // enrichedKeywordsForAI remains empty
-          }
-        } catch (fallbackError) {
-          console.error(
-            `[Action/Fallback Path] Error fetching related keywords from Ads:`,
-            fallbackError
-          );
-          adsFetchStatusMessage = " (GSC failed, Ads fallback fetch error)";
-          // enrichedKeywordsForAI remains empty
-        }
-      } else {
-        console.log(
-          "[Action/Fallback Path] Ads fallback skipped: missing region/language."
-        );
-        adsFetchStatusMessage =
-          " (GSC failed, Ads fallback skipped - no region/lang)";
-        // enrichedKeywordsForAI remains empty
-      }
-    }
-
-    dataForBatch.gscKeywords = enrichedKeywordsForAI; // Assign enriched keywords
-
-    // AI Analysis logic...
-    const aiInputForLlm = {
-      scrapedContent: scrapedData,
-      originalCsvKeyword: csvCandidate.keyword,
-      enrichedKeywords: enrichedKeywordsForAI,
-    };
-    console.log(
-      `[Action] Passing ${enrichedKeywordsForAI.length} keywords to AI for analysis.`
-    );
-    const aiAnalysisResult = await analyzeKeywordsWithAiAction(aiInputForLlm);
-
-    if ("error" in aiAnalysisResult || !aiAnalysisResult.aiPrimaryKeyword) {
-      const errorMsg =
-        ("error" in aiAnalysisResult && aiAnalysisResult.error) ||
-        "AI analysis returned no keywords";
-      // await markUrlAsUnavailable(
-      //   csvCandidate.url,
-      //   `AI_analysis_failed: ${errorMsg}`
-      // ); // Decide if marking unavailable is right here
-      return {
-        status: "error",
-        finalStatusMessage: `AI Keyword Analysis failed for ${csvCandidate.url} (Site: ${siteUrlPrefix}). Error: ${errorMsg}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
-        error: "AI Analysis Error",
-        urlAttempted: csvCandidate.url,
-      };
-    }
-
-    dataForBatch.keywordGroup = aiAnalysisResult as KeywordGroup; // Assign AI result
-
-    // Success!
-    return {
-      status: "success_ready_for_batch" as const,
-      data: dataForBatch,
-      finalStatusMessage: `Processed ${csvCandidate.url} for site ${siteUrlPrefix}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
-    };
-  } catch (e) {
-    // Critical error handling
+  if (!db) {
     console.error(
-      `Critical error processing for site ${siteUrlPrefix} (URL: ${csvCandidate?.url}):`,
-      e
+      "[findAndProcessRandomOpportunityForSiteInternal] Firestore DB not available."
     );
-    const errorMsg = e instanceof Error ? e.message : String(e);
-    /* if (csvCandidate?.url) { ... markUrlAsUnavailable ... } */ // Decide if marking unavailable is right here
     return {
       status: "error",
-      finalStatusMessage: `Critical Failure processing for site ${siteUrlPrefix} (URL: ${csvCandidate?.url || "unknown"}). ${errorMsg}.`,
-      error: errorMsg,
-      urlAttempted: csvCandidate?.url,
+      finalStatusMessage:
+        "Database not available. Cannot process opportunity for site.",
+      error: "Database not available",
+      urlAttempted: siteUrlPrefix,
+    };
+  }
+
+  try {
+    // 1. Get ALL opportunities from CSV
+    const allCsvOpportunities = await getOpportunitiesFromCsv(); // Assume this function exists and works
+    if (!allCsvOpportunities || allCsvOpportunities.length === 0) {
+      return {
+        status: "no_new_items",
+        finalStatusMessage: "CSV file is empty or could not be loaded.",
+      };
+    }
+    console.log(
+      `[findAndProcessRandomOpportunityForSiteInternal] Loaded ${allCsvOpportunities.length} total items from CSV.`
+    );
+
+    // 2. Filter by siteUrlPrefix
+    const siteSpecificCsvOpportunities = allCsvOpportunities.filter((opp) =>
+      opp.url.startsWith(siteUrlPrefix)
+    );
+    if (siteSpecificCsvOpportunities.length === 0) {
+      return {
+        status: "no_new_items",
+        finalStatusMessage: `No items found in CSV for site prefix: ${siteUrlPrefix}.`,
+      };
+    }
+    console.log(
+      `[findAndProcessRandomOpportunityForSiteInternal] Found ${siteSpecificCsvOpportunities.length} items for site ${siteUrlPrefix} in CSV.`
+    );
+
+    // 3. Filter out already processed or unavailable URLs
+    // Need to fetch all processed and unavailable URLs from Firestore
+    // This could be slow if there are many. Consider optimizing if needed.
+    const processedDocsSnapshot = await db
+      .collection(COLLECTIONS.PROCESSED_OPPORTUNITY!)
+      .select("url")
+      .get();
+    const processedUrls = new Set(
+      processedDocsSnapshot.docs.map((doc) => doc.data().url as string)
+    );
+
+    const unavailableDocsSnapshot = await db
+      .collection(COLLECTIONS.UNAVAILABLE_URLS!)
+      .select("url")
+      .get();
+    const unavailableUrls = new Set(
+      unavailableDocsSnapshot.docs.map((doc) => doc.data().url as string)
+    );
+
+    console.log(
+      `[findAndProcessRandomOpportunityForSiteInternal] Known processed URLs: ${processedUrls.size}, Known unavailable URLs: ${unavailableUrls.size}`
+    );
+
+    const availableForSite = siteSpecificCsvOpportunities.filter(
+      (opp) => !processedUrls.has(opp.url) && !unavailableUrls.has(opp.url)
+    );
+
+    if (availableForSite.length === 0) {
+      return {
+        status: "no_new_items",
+        finalStatusMessage: `All CSV items for ${siteUrlPrefix} are either already processed or marked unavailable.`,
+      };
+    }
+    console.log(
+      `[findAndProcessRandomOpportunityForSiteInternal] Found ${availableForSite.length} available items for site ${siteUrlPrefix} from CSV after filtering.`
+    );
+
+    // 4. Randomly pick one
+    const randomIndex = Math.floor(Math.random() * availableForSite.length);
+    const csvCandidate = availableForSite[randomIndex];
+    console.log(
+      `[findAndProcessRandomOpportunityForSiteInternal] Selected candidate: ${csvCandidate.url}`
+    );
+
+    // 5. Process this single CSV item using the core helper
+    const result = await processSingleCsvItem(
+      csvCandidate,
+      researchId,
+      ignoredAuthors
+    );
+
+    // If processing failed in a way that makes the URL unusable, mark it.
+    // This is important so we don't keep trying the same failing URL from CSV for this site.
+    if (
+      result.status === "error" &&
+      (result.error.includes("Scraping error") ||
+        result.error.includes("AI Analysis Error"))
+    ) {
+      try {
+        await markUrlAsUnavailable(
+          csvCandidate.url,
+          `processing_error_for_site_draw: ${result.error.substring(0, 100)}`
+        );
+        console.log(
+          `[findAndProcessRandomOpportunityForSiteInternal] Marked ${csvCandidate.url} as unavailable due to error: ${result.error}`
+        );
+      } catch (markError) {
+        console.error(
+          `[findAndProcessRandomOpportunityForSiteInternal] Failed to mark ${csvCandidate.url} as unavailable:`,
+          markError
+        );
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error(
+      `[findAndProcessRandomOpportunityForSiteInternal] Critical error for site ${siteUrlPrefix}:`,
+      error
+    );
+    return {
+      status: "error",
+      finalStatusMessage: `Critical error during CSV opportunity processing for site ${siteUrlPrefix}.`,
+      error: error instanceof Error ? error.message : "Unknown server error",
+      urlAttempted: siteUrlPrefix, // Or a more specific URL if available from candidate
+    };
+  }
+}
+
+export async function processNextOpportunityForSiteAction(
+  siteUrlPrefix: string,
+  researchId: string
+): Promise<ProcessAttemptOutcome> {
+  console.log(
+    `[processNextOpportunityForSiteAction] Called for site: ${siteUrlPrefix}, researchId: ${researchId}`
+  );
+  try {
+    // Call the renamed and refactored internal function
+    const processingResult =
+      await findAndProcessRandomOpportunityForSiteInternal(
+        // Corrected function name
+        siteUrlPrefix,
+        researchId,
+        IGNORED_AUTHORS_LOWERCASE
+      );
+
+    if (processingResult.status === "success_ready_for_batch") {
+      revalidatePath("/opportunity");
+    }
+    return processingResult;
+  } catch (error) {
+    console.error(
+      `[processNextOpportunityForSiteAction] Critical error for site ${siteUrlPrefix}:`,
+      error
+    );
+    return {
+      status: "error",
+      finalStatusMessage: `Critical error during processing for site ${siteUrlPrefix}.`,
+      error: error instanceof Error ? error.message : "Unknown server error",
+      urlAttempted: siteUrlPrefix,
     };
   }
 }

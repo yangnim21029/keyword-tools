@@ -130,12 +130,10 @@ export async function analyzeKeywordsWithAiAction(
         prompt: prompt,
       });
 
-    // Find the search volume for the selected primary keyword from the input list
     let primaryKeywordVolume: number | null | undefined = undefined;
-    // Normalize the keyword selected by the AI
-    const normalizedSelectedPrimary = normalizeKeyword(
-      validatedSelection.aiPrimaryKeyword
-    );
+    let finalAiPrimaryKeyword = validatedSelection.aiPrimaryKeyword.trim(); // Default to AI's selection
+
+    const normalizedSelectedPrimary = normalizeKeyword(finalAiPrimaryKeyword);
 
     if (
       enrichedKeywords &&
@@ -143,32 +141,69 @@ export async function analyzeKeywordsWithAiAction(
       normalizedSelectedPrimary
     ) {
       const matchedKeyword = enrichedKeywords.find(
-        (kw) =>
-          // Normalize the keyword from the list for comparison
-          normalizeKeyword(kw.keyword) === normalizedSelectedPrimary
+        (kw) => normalizeKeyword(kw.keyword) === normalizedSelectedPrimary
       );
+
       if (matchedKeyword) {
-        // Ensure searchVolume is treated as potentially null/undefined
-        primaryKeywordVolume = matchedKeyword.searchVolume ?? null;
+        primaryKeywordVolume = matchedKeyword.searchVolume ?? 0;
+        // Ensure we use the exact keyword string from our list if a match is found,
+        // to counteract any minor case/spacing changes by the AI not caught by normalizeKeyword for display purposes.
+        finalAiPrimaryKeyword = matchedKeyword.keyword;
       } else {
-        console.warn(
-          `[AI Audit] Could not find volume for AI selected primary keyword "${validatedSelection.aiPrimaryKeyword}" (normalized: "${normalizedSelectedPrimary}") in the enriched list after normalization.`
+        console.error(
+          `[AI Audit ERROR] AI selected primary keyword "${validatedSelection.aiPrimaryKeyword}" (Normalized: "${normalizedSelectedPrimary}") was NOT FOUND in the provided enriched list. This should not happen if AI follows instructions. CSV Hint: ${originalCsvKeyword}. URL: ${scrapedContent.url}. Setting volume to null and using AI's original selection string.`
         );
+        primaryKeywordVolume = null; // Explicitly null as it couldn't be verified
+        // Keep finalAiPrimaryKeyword as what AI returned, but log error.
       }
+    } else if (normalizedSelectedPrimary) {
+      console.warn(
+        `[AI Audit] Cannot lookup volume for AI selected primary "${finalAiPrimaryKeyword}": EnrichedKeywords list was empty. CSV Hint: ${originalCsvKeyword}. URL: ${scrapedContent.url}.`
+      );
+      primaryKeywordVolume = 0; // New: Default to 0 if enrichedKeywords list is empty
     } else {
       console.warn(
-        `[AI Audit] Cannot lookup volume: EnrichedKeywords list is empty or normalizedSelectedPrimary is empty.`
+        `[AI Audit] AI did not select a primary keyword or selection was empty. CSV Hint: ${originalCsvKeyword}. URL: ${scrapedContent.url}.`
       );
+      primaryKeywordVolume = 0; // New: Default to 0 if AI selection is empty
+      finalAiPrimaryKeyword = originalCsvKeyword; // Fallback to CSV keyword if AI selection is effectively empty
     }
 
-    // Construct the final KeywordGroup including the volume
+    // Fallback for related keywords if AI chose N/A or if they are not in the list (less critical than primary)
+    const ensureValidRelatedKeyword = (
+      selectedRelated: string,
+      list: EnrichedKeywordData[] | undefined
+    ) => {
+      if (selectedRelated.toUpperCase() === "N/A") return "N/A";
+      if (
+        list &&
+        list.some(
+          (kw) =>
+            normalizeKeyword(kw.keyword) === normalizeKeyword(selectedRelated)
+        )
+      ) {
+        return selectedRelated.trim(); // Use AI's if it's valid and in list
+      }
+      // If not in list, or list empty, consider it N/A to avoid saving invented keywords
+      // console.warn(`[AI Audit] Related keyword "${selectedRelated}" not in list or list empty. Defaulting to N/A.`);
+      return "N/A";
+    };
+
+    const finalAiRelatedKeyword1 = ensureValidRelatedKeyword(
+      validatedSelection.aiRelatedKeyword1,
+      enrichedKeywords
+    );
+    const finalAiRelatedKeyword2 = ensureValidRelatedKeyword(
+      validatedSelection.aiRelatedKeyword2,
+      enrichedKeywords
+    );
+
     const keywordGroup: KeywordGroup = {
-      csvKeyword: originalCsvKeyword, // Keep original CSV keyword as is
-      // Return the keyword EXACTLY as selected by AI for consistency with prompt
-      aiPrimaryKeyword: validatedSelection.aiPrimaryKeyword.trim(),
-      aiRelatedKeyword1: validatedSelection.aiRelatedKeyword1.trim(),
-      aiRelatedKeyword2: validatedSelection.aiRelatedKeyword2.trim(),
-      aiPrimaryKeywordVolume: primaryKeywordVolume, // Assign the found volume
+      csvKeyword: originalCsvKeyword,
+      aiPrimaryKeyword: finalAiPrimaryKeyword, // Use the potentially corrected keyword string
+      aiRelatedKeyword1: finalAiRelatedKeyword1,
+      aiRelatedKeyword2: finalAiRelatedKeyword2,
+      aiPrimaryKeywordVolume: primaryKeywordVolume,
     };
 
     console.log(

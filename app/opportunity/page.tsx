@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import {
-  processRandomOpportunityAction,
   getAllOpportunitiesListAction,
   markOpportunityUnavailableAction,
   ProcessAttemptOutcome,
@@ -33,7 +32,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge"; // For status
 
 import {
-  ExternalLink,
   ChevronDown,
   ChevronUp,
   AlertCircle,
@@ -50,6 +48,21 @@ import {
 } from "lucide-react"; // Icons
 import { toast } from "sonner"; // Import toast for feedback
 import { MEDIASITE_DATA } from "@/app/global-config"; // Import site config
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Import Select components
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"; // Import Table components
 
 // Helper function to check if a date is in the current week (Monday to Sunday)
 const isDateInCurrentWeek = (date: Date): boolean => {
@@ -104,6 +117,9 @@ const buttonStyle = {
 const TARGET_SUCCESSES_PER_SITE = 2;
 const MAX_ATTEMPTS_PER_SITE = 7; // Let's try 7 attempts per site
 
+// --- TARGET SITE NAMES FOR FILTERING ---
+const TARGET_SITE_NAMES = ["BF", "GSHK", "HSHK", "PL", "TB", "UL", "MD"];
+
 export default function OpportunityPage() {
   const [isProcessingLottery, startProcessingLotteryTransition] =
     useTransition();
@@ -113,6 +129,9 @@ export default function OpportunityPage() {
   const [isRedrawingSingle, startRedrawingSingleTransition] = useTransition();
   const [redrawingOppId, setRedrawingOppId] = useState<string | null>(null);
   const [isProcessingSite, setIsProcessingSite] = useState<string | null>(null); // Track which site is being processed
+  const [selectedSiteForSingleDraw, setSelectedSiteForSingleDraw] =
+    useState<string>("");
+  const [isDrawingOne, startDrawingOneTransition] = useTransition();
 
   const [latestAttemptOutcome, setLatestAttemptOutcome] =
     useState<ProcessAttemptOutcome | null>(null);
@@ -221,8 +240,9 @@ export default function OpportunityPage() {
     setIsProcessingSite(null);
 
     // Define sites based on config - filter out any potentially invalid entries
+    // AND filter by TARGET_SITE_NAMES
     const sitesToProcess = MEDIASITE_DATA.filter(
-      (site) => site.url && site.name
+      (site) => site.url && site.name && TARGET_SITE_NAMES.includes(site.name)
     ).map((site) => ({ name: site.name!, urlPrefix: site.url }));
 
     if (sitesToProcess.length === 0) {
@@ -232,168 +252,223 @@ export default function OpportunityPage() {
       return; // Cannot proceed
     }
 
+    setGeneralMessage(
+      `Starting Opportunity Draw Batch... (Will attempt ${MAX_ATTEMPTS_PER_SITE} times per site to find ${TARGET_SUCCESSES_PER_SITE} for each)`
+    );
+    setLotteryError(null);
+    const allCollectedDataForSaving: SuccessDataPayload[] = [];
+    let itemsSavedInThisRunCount = 0;
+    let anyErrorsDuringBatch = false;
+
     startProcessingLotteryTransition(async () => {
-      const allCollectedDataForSaving: SuccessDataPayload[] = [];
-      const overallBatchSiteSuccessCounts = new Map<string, number>();
-      let totalAttemptsAcrossSites = 0;
-      let anyErrorsDuringBatch = false;
-      let stopBatchEarly = false;
-
-      setGeneralMessage(
-        `Starting structured batch: Aiming for ${TARGET_SUCCESSES_PER_SITE} successes per site (${sitesToProcess.map((s) => s.name).join(", ")}). Max ${MAX_ATTEMPTS_PER_SITE} attempts per site.`
-      );
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Brief pause
-
       for (const site of sitesToProcess) {
-        if (stopBatchEarly) break; // Stop if a critical error occurred
-
-        setIsProcessingSite(site.name); // Update UI indicator
+        setIsProcessingSite(site.name);
         setGeneralMessage(
-          `Processing Site: ${site.name}. Goal: ${TARGET_SUCCESSES_PER_SITE} successes (Max ${MAX_ATTEMPTS_PER_SITE} attempts)`
+          `Batch: Now processing ${site.name}. Trying to find ${TARGET_SUCCESSES_PER_SITE} item(s) from your CSV list...`
         );
-
-        let siteSuccesses = 0;
-        let siteAttempts = 0;
+        let successesForThisSite = 0;
+        let attemptsForThisSite = 0;
 
         while (
-          siteSuccesses < TARGET_SUCCESSES_PER_SITE &&
-          siteAttempts < MAX_ATTEMPTS_PER_SITE
+          successesForThisSite < TARGET_SUCCESSES_PER_SITE &&
+          attemptsForThisSite < MAX_ATTEMPTS_PER_SITE
         ) {
-          siteAttempts++;
-          totalAttemptsAcrossSites++;
-          setCurrentAttemptInBatch(totalAttemptsAcrossSites); // Update overall counter
+          attemptsForThisSite++;
+          setCurrentAttemptInBatch((prev) => prev + 1);
+          const researchId = `batch_${site.name.replace(/\s+/g, "")}_${new Date().getTime()}_${attemptsForThisSite}`;
+          setLastAttemptStatusMessage(
+            `Batch: Attempt ${attemptsForThisSite}/${MAX_ATTEMPTS_PER_SITE} for ${site.name}...`
+          );
+          const attempt = await processNextOpportunityForSiteAction(
+            site.urlPrefix,
+            researchId
+          );
+          setLatestAttemptOutcome(attempt); // Update for detailed display
 
-          const progressMsg = `Site: ${site.name} | Attempt ${siteAttempts}/${MAX_ATTEMPTS_PER_SITE} | Successes ${siteSuccesses}/${TARGET_SUCCESSES_PER_SITE}`;
-          setGeneralMessage(progressMsg + " | Processing...");
-
-          try {
-            const researchId = `research_${site.name}_${new Date().getTime()}_${siteAttempts}`;
-            // Call the new site-specific action
-            const response = await processNextOpportunityForSiteAction(
-              site.urlPrefix,
-              researchId
+          if (attempt.status === "success_ready_for_batch") {
+            allCollectedDataForSaving.push(attempt.data);
+            setCurrentBatchSuccesses((prev) => [...prev, attempt]);
+            successesForThisSite++;
+            toast.success(
+              `Batch: Found item for ${site.name}: ${attempt.data.url}`,
+              { duration: 2000 }
             );
-            setLatestAttemptOutcome(response); // Store last attempt globally
-
-            if (response.status === "success_ready_for_batch") {
-              siteSuccesses++;
-              allCollectedDataForSaving.push(response.data);
-              setCurrentBatchSuccesses((prev) => [...prev, response]); // Update display
-
-              // Update overall count for final summary
-              const currentOverallCount =
-                (overallBatchSiteSuccessCounts.get(site.name) || 0) + 1;
-              overallBatchSiteSuccessCounts.set(site.name, currentOverallCount);
-
-              setLotteryError(null);
-              setLastAttemptStatusMessage(null);
-              setGeneralMessage(
-                `${progressMsg} | COLLECTED: ${response.data.url}`
-              );
-              // Maybe add a shorter delay after success?
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            } else if (response.status === "no_new_items") {
-              setGeneralMessage(
-                `${progressMsg} | No more items available for ${site.name}. Moving to next site.`
-              );
-              await new Promise((resolve) => setTimeout(resolve, 1000)); // Pause before next site
-              break; // Exit inner loop for this site
-            } else {
-              // Handle error or author_limit_deferred
-              anyErrorsDuringBatch = true;
-              setLotteryError(
-                response.status === "error" ? response.error : null
-              );
-              setLastAttemptStatusMessage(
-                `Site: ${site.name} | Attempt ${siteAttempts} -> ${response.status}: ${response.finalStatusMessage}`
-              );
-              setGeneralMessage(
-                `${progressMsg} | Status: ${response.status}. Continuing...`
-              );
-              // Longer delay after non-success
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-          } catch (e) {
-            console.error(
-              `Critical client error during processing for site ${site.name}, attempt ${siteAttempts}:`,
-              e
+            setLastAttemptStatusMessage(
+              `Batch: Success for ${site.name}! (${successesForThisSite}/${TARGET_SUCCESSES_PER_SITE} found).`
             );
-            const errorMsg =
-              e instanceof Error
-                ? e.message
-                : "Client error during site processing.";
-            setLotteryError(errorMsg);
-            setGeneralMessage(
-              `CRITICAL ERROR processing ${site.name}. Stopping batch. Error: ${errorMsg}`
+          } else if (attempt.status === "no_new_items") {
+            setLastAttemptStatusMessage(
+              `Batch: No more available items found in CSV for ${site.name} this round.`
             );
+            toast.info(
+              `Batch: No more available items in CSV for ${site.name}.`,
+              { duration: 2000 }
+            );
+            break; // No point in further attempts for this site in this batch
+          } else if (
+            attempt.status === "author_limit_deferred" ||
+            attempt.status === "author_ignored"
+          ) {
+            toast.info(
+              `Batch item for ${site.name} skipped: ${attempt.finalStatusMessage}`,
+              { duration: 2000 }
+            );
+            setLastAttemptStatusMessage(
+              `Batch: Item for ${site.name} skipped (${attempt.status}). Trying next...`
+            );
+            // Continue attempts for this site as this specific item was skipped
+          } else {
+            // Error status
             anyErrorsDuringBatch = true;
-            stopBatchEarly = true; // Stop processing further sites
-            break; // Exit inner loop
-          }
-        } // End inner while loop (site attempts)
-
-        // Add a check to prevent unnecessary delay if the whole batch was stopped early
-        if (!stopBatchEarly) {
-          setGeneralMessage(
-            `Finished processing site: ${site.name}. Collected ${siteSuccesses}/${TARGET_SUCCESSES_PER_SITE}.`
-          );
-          await new Promise((resolve) => setTimeout(resolve, 1000)); // Pause before next site
-        }
-      } // End outer for loop (sites)
-
-      setIsProcessingSite(null); // Clear site indicator
-
-      // --- After all sites processed ---
-      const finalSiteCountsMsg = Array.from(
-        overallBatchSiteSuccessCounts.entries()
-      )
-        .map(([site, count]) => `${site}: ${count}`)
-        .join(", ");
-
-      setGeneralMessage(
-        `Batch Finished. Total collected: ${allCollectedDataForSaving.length} opportunities across sites (${finalSiteCountsMsg || "None"}). ` +
-          (allCollectedDataForSaving.length > 0
-            ? "Proceeding to save..."
-            : "Nothing to save.")
-      );
-
-      // --- Saving Logic --- //
-      let itemsSavedInThisRunCount = 0; // Define here for scope
-      if (allCollectedDataForSaving.length > 0) {
-        try {
-          const batchSaveResult = await saveBatchProcessedOpportunitiesAction(
-            allCollectedDataForSaving
-          );
-          itemsSavedInThisRunCount = batchSaveResult.successCount;
-          setGeneralMessage(batchSaveResult.overallMessage);
-          if (batchSaveResult.failedCount > 0) {
-            console.error("Batch save failures:", batchSaveResult.errors);
             setLotteryError(
-              `Batch save: ${batchSaveResult.failedCount} items failed to save.`
+              (prev) =>
+                `${prev ? prev + "; " : ""}Error for ${site.name}: ${attempt.finalStatusMessage}`
             );
+            toast.error(
+              `Batch Error for ${site.name}: ${attempt.finalStatusMessage}`
+            );
+            setLastAttemptStatusMessage(
+              `Batch: Error for ${site.name}. Check messages.`
+            );
+            // Depending on error, might break or continue. For now, continue attempts.
           }
-          if (batchSaveResult.successCount > 0) {
-            await fetchAllOpportunitiesFromFirestore();
-          }
-        } catch (e) {
-          console.error("Critical error during batch save action call:", e);
-          const saveErrorMsg =
-            e instanceof Error ? e.message : "Client error during batch save.";
-          setLotteryError(saveErrorMsg);
-          setGeneralMessage(
-            `Critical error during batch save: ${saveErrorMsg}`
+        }
+        if (successesForThisSite < TARGET_SUCCESSES_PER_SITE) {
+          toast.info(
+            `Batch for ${site.name}: Found ${successesForThisSite}/${TARGET_SUCCESSES_PER_SITE} items from CSV after ${attemptsForThisSite} attempts.`
           );
         }
-      }
-      // Reset display if nothing was collected or saved
-      if (
-        allCollectedDataForSaving.length === 0 ||
-        itemsSavedInThisRunCount === 0
-      ) {
-        setCurrentBatchSuccesses([]);
+      } // End for...of sitesToProcess
+
+      setIsProcessingSite(null); // Clear site specific processing message
+      setLastAttemptStatusMessage("Batch processing attempts finished.");
+
+      if (allCollectedDataForSaving.length > 0) {
+        setGeneralMessage(
+          `Batch Finished. Attempting to save ${allCollectedDataForSaving.length} collected items...`
+        );
+        const saveResult = await saveBatchProcessedOpportunitiesAction(
+          allCollectedDataForSaving
+        );
+        itemsSavedInThisRunCount = saveResult.successCount;
+        if (saveResult.successCount > 0) {
+          toast.success(
+            `${saveResult.successCount} new opportunities saved from batch!`
+          );
+        }
+        if (saveResult.failedCount > 0) {
+          anyErrorsDuringBatch = true;
+          const errorDetails = saveResult.errors
+            .map((e) => `URL: ${e.url}, Err: ${e.error}`)
+            .join("; ");
+          setLotteryError(
+            (prev) =>
+              `${prev ? prev + "; " : ""}Save Errors: ${saveResult.failedCount} failed. ${errorDetails}`
+          );
+          toast.error(
+            `Batch Save: ${saveResult.failedCount} items failed to save.`,
+            { description: errorDetails, duration: 10000 }
+          );
+        }
+        setGeneralMessage(
+          `Batch save complete. Saved ${saveResult.successCount} of ${allCollectedDataForSaving.length} collected items.`
+        );
+      } else {
+        setGeneralMessage(
+          "Batch finished. No new items were collected to save from your CSV lists."
+        );
       }
     }); // End startProcessingLotteryTransition
   }; // End handleRunLottery
+
+  // --- NEW: Handler for Drawing One Single Opportunity for a Selected Site ---
+  const handleDrawOneForSite = async () => {
+    if (!selectedSiteForSingleDraw) {
+      toast.info("Please select a site to draw an opportunity for.");
+      return;
+    }
+
+    const siteInfo = MEDIASITE_DATA.find(
+      (site) => site.url === selectedSiteForSingleDraw
+    );
+    if (!siteInfo) {
+      toast.error("Selected site configuration not found.");
+      return;
+    }
+
+    const siteName = siteInfo.name || "Selected Site";
+
+    setGeneralMessage(
+      `Attempting to draw one new opportunity for site: ${siteName} from your CSV list...`
+    );
+    setLotteryError(null);
+    setCurrentBatchSuccesses([]);
+    setLatestAttemptOutcome(null);
+    setIsProcessingSite(siteName); // Indicate processing for this site
+
+    startDrawingOneTransition(async () => {
+      try {
+        const researchId = `drawOne_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}`;
+        const attempt = await processNextOpportunityForSiteAction(
+          selectedSiteForSingleDraw, // This is the siteUrlPrefix
+          researchId
+        );
+        setLatestAttemptOutcome(attempt);
+
+        if (attempt.status === "success_ready_for_batch") {
+          toast.info(
+            `Found one opportunity for ${siteName} from CSV: ${attempt.data.url}. Saving...`
+          );
+          const saveResult = await saveBatchProcessedOpportunitiesAction([
+            attempt.data,
+          ]);
+          if (saveResult.successCount > 0) {
+            toast.success(
+              `New CSV opportunity for ${siteName} saved successfully!`
+            );
+            setGeneralMessage(
+              `New opportunity for ${siteName} (from CSV) drawn and saved.`
+            );
+          } else {
+            toast.error(
+              "Failed to save the new CSV opportunity. " +
+                (saveResult.errors[0]?.error || "Unknown save error.")
+            );
+            setGeneralMessage(
+              `Found CSV opportunity for ${siteName}, but failed to save it.`
+            );
+          }
+        } else if (attempt.status === "no_new_items") {
+          toast.info(
+            `No new available items found in your CSV list for ${siteName}.`
+          );
+          setGeneralMessage(
+            `No new available items found in your CSV list for ${siteName}.`
+          );
+        } else {
+          toast.info(
+            `Could not draw a new opportunity for ${siteName} from CSV: ${attempt.finalStatusMessage}`
+          );
+          setGeneralMessage(
+            `Attempted to draw for ${siteName} from CSV, but status was: ${attempt.status}. Message: ${attempt.finalStatusMessage}`
+          );
+        }
+      } catch (e) {
+        console.error(`Error during Draw One for Site ${siteName}:`, e);
+        toast.error(
+          e instanceof Error
+            ? e.message
+            : "Client error during single draw attempt."
+        );
+        setGeneralMessage(
+          `An error occurred while drawing one for ${siteName}.`
+        );
+      } finally {
+        setIsProcessingSite(null);
+        await fetchAllOpportunitiesFromFirestore();
+      }
+    });
+  };
 
   const handleRedrawThisWeek = async () => {
     const idsToDelete = thisWeeksOpportunities.map((opp) => opp.id);
@@ -579,39 +654,122 @@ export default function OpportunityPage() {
     }
   };
 
-  // Handler for redrawing (deleting) a single opportunity
-  const handleRedrawSingle = (oppId: string) => {
-    if (!oppId) return;
+  // Handler for redrawing (deleting) a single opportunity and attempting to draw one replacement
+  const handleRedrawSingle = (oppId: string, oppUrl: string) => {
+    if (!oppId || !oppUrl) return;
     if (
       !confirm(
-        `Are you sure you want to redraw opportunity ${oppId}? This will delete it.`
+        `Are you sure you want to redraw opportunity ${oppId}? This will delete it and attempt to draw one replacement.`
       )
     ) {
       return;
     }
-    setGeneralMessage(null); // Clear general messages
+    setGeneralMessage(null);
     setLotteryError(null);
-    setRedrawingOppId(oppId); // Set the ID being redrawn
+    setRedrawingOppId(oppId);
+    setCurrentBatchSuccesses([]); // Clear any previous batch items from display
+    setLatestAttemptOutcome(null);
 
     startRedrawingSingleTransition(async () => {
       try {
-        // Call the delete action directly
-        const response = await deleteProcessedOpportunityAction(oppId);
+        toast.info(
+          `Redraw: Deleting item ${oppId} and attempting to find a replacement from CSV for its site...`
+        );
+        setGeneralMessage(
+          `Redraw: Deleting ${oppId} and trying to find a CSV replacement...`
+        );
 
-        if (response.success) {
-          toast.success(response.message + " List has been updated.");
-          // Revalidation should trigger a refresh, but fetch again for certainty
-          await fetchAllOpportunitiesFromFirestore();
+        const deleteResult = await deleteProcessedOpportunityAction(oppId);
+        if (!deleteResult.success) {
+          toast.error(
+            `Redraw: Failed to delete original item ${oppId}. Error: ${deleteResult.error}`
+          );
+          setGeneralMessage(
+            `Redraw: Failed to delete ${oppId}. Aborting redraw.`
+          );
+          setRedrawingOppId(null);
+          return;
+        }
+        toast.success(`Redraw: Original item ${oppId} deleted.`);
+
+        // Determine the siteUrlPrefix from the original opportunity's URL
+        // This requires fetching the original opportunity first or having its URL passed in.
+        // Assuming oppUrl is the full URL of the opportunity being redrawn.
+        const siteData = MEDIASITE_DATA.find((s) => oppUrl.startsWith(s.url));
+        if (!siteData) {
+          toast.error(
+            `Redraw: Could not determine site for URL ${oppUrl}. Cannot draw replacement.`
+          );
+          setGeneralMessage(
+            `Redraw: Could not identify site for ${oppUrl}. Replacement aborted.`
+          );
+          await fetchAllOpportunitiesFromFirestore(); // Refresh list after deletion
+          setRedrawingOppId(null);
+          return;
+        }
+        const siteUrlPrefix = siteData.url;
+        const siteName = siteData.name || "the original site";
+
+        setGeneralMessage(
+          `Redraw: Attempting to find a new CSV item for ${siteName}...`
+        );
+        const researchId = `redraw_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}`;
+        const attempt = await processNextOpportunityForSiteAction(
+          siteUrlPrefix,
+          researchId
+        );
+
+        setLatestAttemptOutcome(attempt);
+
+        if (attempt.status === "success_ready_for_batch") {
+          toast.info(
+            `Redraw: Found new CSV item for ${siteName}: ${attempt.data.url}. Saving...`
+          );
+          const saveResult = await saveBatchProcessedOpportunitiesAction([
+            attempt.data,
+          ]);
+          if (saveResult.successCount > 0) {
+            toast.success(
+              `Redraw: New replacement item for ${siteName} (from CSV) saved!`
+            );
+            setGeneralMessage(
+              `Redraw for ${siteName} complete. New CSV item saved.`
+            );
+          } else {
+            toast.error(
+              `Redraw: Failed to save new CSV replacement for ${siteName}. ` +
+                (saveResult.errors[0]?.error || "Unknown save error.")
+            );
+            setGeneralMessage(
+              `Redraw: Found CSV replacement for ${siteName}, but save failed.`
+            );
+          }
+        } else if (attempt.status === "no_new_items") {
+          toast.info(
+            `Redraw: No new available items found in your CSV list for ${siteName} to replace the deleted one.`
+          );
+          setGeneralMessage(
+            `Redraw: No new available items in CSV for ${siteName} found.`
+          );
         } else {
-          toast.error(`Delete failed: ${response.error || response.message}`);
+          toast.info(
+            `Redraw: Could not draw a replacement for ${siteName} from CSV: ${attempt.finalStatusMessage}`
+          );
+          setGeneralMessage(
+            `Redraw: Attempt to find replacement from CSV for ${siteName} failed. Status: ${attempt.status}.`
+          );
         }
       } catch (e) {
-        console.error(`Failed to delete opportunity ${oppId}:`, e);
+        console.error("Error during redraw single:", e);
         toast.error(
-          e instanceof Error ? e.message : "Client error during single delete."
+          e instanceof Error
+            ? `Redraw Error: ${e.message}`
+            : "Client error during single redraw."
         );
+        setGeneralMessage("Redraw: An unexpected error occurred.");
       } finally {
-        setRedrawingOppId(null); // Clear the ID being redrawn
+        setRedrawingOppId(null);
+        await fetchAllOpportunitiesFromFirestore(); // Refresh list
       }
     });
   };
@@ -719,6 +877,56 @@ export default function OpportunityPage() {
               )}
               Refresh List
             </Button>
+            {/* --- NEW: UI for Drawing One Specific Opportunity --- */}
+            <div className="flex items-end gap-2 ml-auto">
+              {" "}
+              {/* Aligns this group to the right */}
+              <div className="w-48">
+                <Select
+                  value={selectedSiteForSingleDraw}
+                  onValueChange={setSelectedSiteForSingleDraw}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select site for single draw" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MEDIASITE_DATA.filter(
+                      (site) =>
+                        site.url &&
+                        site.name &&
+                        TARGET_SITE_NAMES.includes(site.name)
+                    ).map((site) => (
+                      <SelectItem
+                        key={site.url}
+                        value={site.url}
+                        className="text-xs"
+                      >
+                        {site.name} ({site.language})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDrawOneForSite}
+                disabled={
+                  isDrawingOne ||
+                  isProcessingLottery ||
+                  !selectedSiteForSingleDraw
+                }
+                className="h-9"
+              >
+                {isDrawingOne ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                )}
+                Draw One
+              </Button>
+            </div>
+            {/* --- END: UI for Drawing One Specific Opportunity --- */}
           </div>
         </header>
 
@@ -842,18 +1050,18 @@ export default function OpportunityPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {opp.keywordGroup?.aiPrimaryKeyword || (
                         <span className="text-gray-400 italic">
-                          {opp.originalCsvKeyword}
+                          {opp.originalCsvKeyword}{" "}
+                          {/* Fallback if no AI primary keyword */}
                         </span>
                       )}
-                      {opp.keywordGroup?.aiPrimaryKeywordVolume !== null &&
-                        opp.keywordGroup?.aiPrimaryKeywordVolume !==
-                          undefined && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            (
-                            {opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()}
-                            )
-                          </span>
-                        )}
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Vol:{" "}
+                        {opp.keywordGroup?.aiPrimaryKeywordVolume !== null &&
+                        opp.keywordGroup?.aiPrimaryKeywordVolume !== undefined
+                          ? opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()
+                          : "N/A"}
+                        )
+                      </span>
                     </td>
                     <td className="px-4 py-4 text-xs text-gray-600">
                       <ul className="space-y-0.5">
@@ -930,13 +1138,13 @@ export default function OpportunityPage() {
                             {opp.gscKeywords.length})
                           </CollapsibleTrigger>
                           <CollapsibleContent>
-                            <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin p-1 bg-gray-50 rounded border">
+                            <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin">
                               {opp.gscKeywords
                                 .slice(0, 5)
                                 .map((kw: GscKeywordMetric, idx: number) => (
                                   <li
                                     key={idx}
-                                  >{`"${kw.keyword}" P:${kw.mean_position.toFixed(0)} I:${kw.total_impressions} C:${kw.total_clicks}`}</li>
+                                  >{`"${kw.keyword}" P:${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
                                 ))}
                               {opp.gscKeywords.length > 5 && (
                                 <li>
@@ -947,7 +1155,9 @@ export default function OpportunityPage() {
                           </CollapsibleContent>
                         </Collapsible>
                       ) : (
-                        <span className="text-xs italic">No GSC</span>
+                        <span className="text-xs italic text-gray-500">
+                          No GSC keyword data processed for this item.
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 flex items-center">
@@ -962,7 +1172,7 @@ export default function OpportunityPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleRedrawSingle(opp.id)}
+                        onClick={() => handleRedrawSingle(opp.id, opp.url)}
                         disabled={
                           isProcessingLottery ||
                           isRedrawingWeek ||
@@ -970,7 +1180,6 @@ export default function OpportunityPage() {
                           redrawingOppId === opp.id
                         }
                         className="text-orange-600 border-orange-400 hover:bg-orange-50 hover:text-orange-700 h-8 px-2 text-xs"
-                        title="Delete this opportunity"
                       >
                         {redrawingOppId === opp.id ? (
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -1004,6 +1213,45 @@ export default function OpportunityPage() {
         )}
         {/* End Calculated Author Performance */}
       </section>
+
+      {/* --- NEW: This Week's Opportunities by Site Summary Table --- */}
+      <div className="mt-6 pt-6 border-t">
+        <h3 className="text-lg font-semibold mb-3">
+          This Week's Opportunities by Site
+        </h3>
+        {thisWeeksOpportunities.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Media Site</TableHead>
+                <TableHead>Language</TableHead>
+                <TableHead className="text-right">Count This Week</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {MEDIASITE_DATA.filter((site) =>
+                TARGET_SITE_NAMES.includes(site.name)
+              ).map((site) => {
+                const count = thisWeeksOpportunities.filter((opp) =>
+                  opp.url.startsWith(site.url)
+                ).length;
+                return (
+                  <TableRow key={site.url}>
+                    <TableCell>{site.name}</TableCell>
+                    <TableCell>{site.language}</TableCell>
+                    <TableCell className="text-right">{count}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No opportunities drawn this week to summarize.
+          </p>
+        )}
+      </div>
+      {/* --- END: This Week's Opportunities by Site Summary Table --- */}
 
       <section className="my-12 py-10 bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 rounded-xl shadow-2xl border border-purple-200">
         <div className="container mx-auto text-center px-6">
@@ -1282,15 +1530,16 @@ export default function OpportunityPage() {
                                 {opp.originalCsvKeyword}
                               </span>
                             )}
-                            {opp.keywordGroup?.aiPrimaryKeywordVolume !==
-                              null &&
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Vol:{" "}
+                              {opp.keywordGroup?.aiPrimaryKeywordVolume !==
+                                null &&
                               opp.keywordGroup?.aiPrimaryKeywordVolume !==
-                                undefined && (
-                                <span className="ml-2 text-xs text-gray-500">
-                                  (
-                                  {opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()}
-                                </span>
-                              )}
+                                undefined
+                                ? opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()
+                                : "N/A"}
+                              )
+                            </span>
                           </td>
                           <td className="px-4 py-4 text-xs text-gray-600">
                             <ul className="space-y-0.5">
@@ -1423,6 +1672,7 @@ export default function OpportunityPage() {
       {latestAttemptOutcome &&
         (latestAttemptOutcome.status === "error" ||
           latestAttemptOutcome.status === "author_limit_deferred" ||
+          latestAttemptOutcome.status === "author_ignored" ||
           latestAttemptOutcome.status === "no_new_items") &&
         !currentBatchSuccesses.find(
           (s) =>
@@ -1451,7 +1701,8 @@ export default function OpportunityPage() {
               {latestAttemptOutcome.status === "error"
                 ? latestAttemptOutcome.urlAttempted &&
                   decodeURIComponent(latestAttemptOutcome.urlAttempted)
-                : latestAttemptOutcome.status === "author_limit_deferred"
+                : latestAttemptOutcome.status === "author_limit_deferred" ||
+                    latestAttemptOutcome.status === "author_ignored"
                   ? latestAttemptOutcome.urlSkipped &&
                     decodeURIComponent(latestAttemptOutcome.urlSkipped)
                   : "No New Items"}
