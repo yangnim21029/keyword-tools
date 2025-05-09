@@ -18,6 +18,8 @@ export interface KeywordGroup {
   aiRelatedKeyword1: string;
   aiRelatedKeyword2: string;
   aiPrimaryKeywordVolume?: number | null; // ADDED: Volume for the primary keyword
+  aiRelatedKeyword1Volume?: number | null;
+  aiRelatedKeyword2Volume?: number | null;
 }
 
 interface AiAuditInput {
@@ -198,12 +200,69 @@ export async function analyzeKeywordsWithAiAction(
       enrichedKeywords
     );
 
+    // --- Volume lookup for Related Keywords ---
+    let relatedKeyword1Volume: number | null | undefined = undefined;
+    const normalizedR1 = normalizeKeyword(finalAiRelatedKeyword1);
+    if (
+      enrichedKeywords &&
+      enrichedKeywords.length > 0 &&
+      finalAiRelatedKeyword1 !== "N/A" &&
+      normalizedR1
+    ) {
+      const matchedR1 = enrichedKeywords.find(
+        (kw) => normalizeKeyword(kw.keyword) === normalizedR1
+      );
+      if (matchedR1) {
+        relatedKeyword1Volume = matchedR1.searchVolume; // Keep null/undefined if that's what searchVolume is
+      } else {
+        console.warn(
+          `[AI Audit] AI selected R1 keyword '${finalAiRelatedKeyword1}' not found in enriched list for volume lookup. Volume will be null/undefined.`
+        );
+        relatedKeyword1Volume = null;
+      }
+    } else if (finalAiRelatedKeyword1 !== "N/A") {
+      // If no enrichedKeywords or R1 is not 'N/A' but somehow normalizedR1 is falsy (empty string after normalize)
+      console.warn(
+        `[AI Audit] R1 '${finalAiRelatedKeyword1}' will have null/undefined volume (no enriched list or bad normalization).`
+      );
+      relatedKeyword1Volume = null;
+    }
+
+    let relatedKeyword2Volume: number | null | undefined = undefined;
+    const normalizedR2 = normalizeKeyword(finalAiRelatedKeyword2);
+    if (
+      enrichedKeywords &&
+      enrichedKeywords.length > 0 &&
+      finalAiRelatedKeyword2 !== "N/A" &&
+      normalizedR2
+    ) {
+      const matchedR2 = enrichedKeywords.find(
+        (kw) => normalizeKeyword(kw.keyword) === normalizedR2
+      );
+      if (matchedR2) {
+        relatedKeyword2Volume = matchedR2.searchVolume; // Keep null/undefined
+      } else {
+        console.warn(
+          `[AI Audit] AI selected R2 keyword '${finalAiRelatedKeyword2}' not found in enriched list for volume lookup. Volume will be null/undefined.`
+        );
+        relatedKeyword2Volume = null;
+      }
+    } else if (finalAiRelatedKeyword2 !== "N/A") {
+      console.warn(
+        `[AI Audit] R2 '${finalAiRelatedKeyword2}' will have null/undefined volume (no enriched list or bad normalization).`
+      );
+      relatedKeyword2Volume = null;
+    }
+    // --- End Volume lookup for Related Keywords ---
+
     const keywordGroup: KeywordGroup = {
       csvKeyword: originalCsvKeyword,
       aiPrimaryKeyword: finalAiPrimaryKeyword, // Use the potentially corrected keyword string
       aiRelatedKeyword1: finalAiRelatedKeyword1,
       aiRelatedKeyword2: finalAiRelatedKeyword2,
       aiPrimaryKeywordVolume: primaryKeywordVolume,
+      aiRelatedKeyword1Volume: relatedKeyword1Volume,
+      aiRelatedKeyword2Volume: relatedKeyword2Volume,
     };
 
     console.log(

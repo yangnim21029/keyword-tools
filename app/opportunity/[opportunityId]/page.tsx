@@ -269,7 +269,7 @@ export default function OpportunityDetailPage() {
                 <Separator className="my-4" />
                 <h3 className="text-md font-semibold text-gray-700 flex items-center">
                   <Brain className="h-5 w-5 mr-2 text-purple-600" />
-                  AI Keyword Group
+                  AI Keyword Group Results
                 </h3>
                 <div className="pl-7 text-sm space-y-1 mt-1">
                   <p>
@@ -289,10 +289,44 @@ export default function OpportunityDetailPage() {
                   <p>
                     <strong>AI Related 1:</strong>{" "}
                     {opportunity.keywordGroup.aiRelatedKeyword1}
+                    {opportunity.keywordGroup.aiRelatedKeyword1Volume !==
+                      null &&
+                    opportunity.keywordGroup.aiRelatedKeyword1Volume !==
+                      undefined &&
+                    typeof opportunity.keywordGroup.aiRelatedKeyword1Volume ===
+                      "number" ? (
+                      <span className="ml-2 text-xs text-gray-500">
+                        (
+                        {opportunity.keywordGroup.aiRelatedKeyword1Volume.toLocaleString()}
+                        )
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-xs text-gray-500">
+                        {" "}
+                        (Vol: N/A)
+                      </span>
+                    )}
                   </p>
                   <p>
                     <strong>AI Related 2:</strong>{" "}
                     {opportunity.keywordGroup.aiRelatedKeyword2}
+                    {opportunity.keywordGroup.aiRelatedKeyword2Volume !==
+                      null &&
+                    opportunity.keywordGroup.aiRelatedKeyword2Volume !==
+                      undefined &&
+                    typeof opportunity.keywordGroup.aiRelatedKeyword2Volume ===
+                      "number" ? (
+                      <span className="ml-2 text-xs text-gray-500">
+                        (
+                        {opportunity.keywordGroup.aiRelatedKeyword2Volume.toLocaleString()}
+                        )
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-xs text-gray-500">
+                        {" "}
+                        (Vol: N/A)
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-gray-500 pt-1">
                     (Original CSV Keyword: {opportunity.keywordGroup.csvKeyword}
@@ -302,22 +336,63 @@ export default function OpportunityDetailPage() {
               </>
             )}
 
-            {opportunity.gscKeywords && opportunity.gscKeywords.length > 0 && (
+            {/* New Section: Keywords Submitted for AI Analysis */}
+            {opportunity.aiInputKeywords &&
+              opportunity.aiInputKeywords.length > 0 && (
+                <>
+                  <Separator className="my-4" />
+                  <h3 className="text-md font-semibold text-gray-700 flex items-center">
+                    <FileText className="h-5 w-5 mr-2 text-blue-600" />{" "}
+                    {/* Using FileText icon as placeholder */}
+                    Keywords Submitted for AI Analysis (
+                    {opportunity.aiInputKeywords.length})
+                  </h3>
+                  <ul className="mt-1 pl-7 list-disc space-y-1 text-sm text-gray-800 max-h-60 overflow-y-auto scrollbar-thin pr-2">
+                    {opportunity.aiInputKeywords.map((kw, idx) => (
+                      <li key={`ai-input-${idx}`}>
+                        <span className="font-medium">{`"${kw.keyword}"`}</span>
+                        {typeof kw.searchVolume === "number" ? (
+                          <span className="text-xs text-gray-500">
+                            {" "}
+                            (Vol: {kw.searchVolume.toLocaleString()})
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">
+                            {" "}
+                            (Vol: N/A)
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+            {/* Updated Section: Google Search Console Keywords (Actual GSC Data Only) */}
+            {opportunity.gscKeywords && opportunity.gscKeywords.length > 0 ? (
               <>
                 <Separator className="my-4" />
                 <h3 className="text-md font-semibold text-gray-700 flex items-center">
                   <Info className="h-5 w-5 mr-2 text-teal-600" />
-                  Google Search Console Keywords (
+                  Actual Google Search Console Keywords (
                   {opportunity.gscKeywords.length})
                 </h3>
                 <ul className="mt-1 pl-7 list-disc space-y-1 text-sm text-gray-800 max-h-60 overflow-y-auto scrollbar-thin pr-2">
                   {opportunity.gscKeywords.map((kw, idx) => (
-                    <li key={idx}>
+                    <li key={`gsc-${idx}`}>
                       <span className="font-medium">{`"${kw.keyword}"`}</span>
+                      {/* Display actual GSC metrics; no more (Data from Ads API suggestion) here */}
                       {` (Pos: ${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}
                     </li>
                   ))}
                 </ul>
+              </>
+            ) : (
+              <>
+                <Separator className="my-4" />
+                <div className="pl-7 text-sm text-gray-500 italic">
+                  No direct GSC data was processed and stored for this URL.
+                </div>
               </>
             )}
 

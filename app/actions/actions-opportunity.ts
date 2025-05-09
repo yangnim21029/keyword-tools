@@ -30,7 +30,7 @@ import {
 import { revalidatePath } from "next/cache"; // Needed for revalidation
 
 // List of authors to ignore (case-insensitive)
-const IGNORED_AUTHORS_LOWERCASE = ["hai taeng", "miki", "bernice"];
+const IGNORED_AUTHORS_LOWERCASE = ["hai taeng", "miki liang	", "bernice"];
 
 // --- Helper Function for Site Info ---
 interface MediaSiteInfo {
@@ -47,31 +47,25 @@ interface MediaSiteInfo {
  * @param url The URL to analyze.
  * @returns An object containing region, language, and name, or nulls if no match found.
  */
-function findMediaSiteInfo(url: string): MediaSiteInfo {
+function findMediaSiteInfoByUrl(url: string): MediaSiteInfo {
   if (!url) {
     return { region: null, language: null, name: null };
   }
 
-  let bestMatch: { site: (typeof MEDIASITE_DATA)[0]; length: number } | null =
-    null;
+  // Find the site with the longest matching base URL using filter and sort.
+  const bestMatchSite = MEDIASITE_DATA.filter((site) =>
+    url.startsWith(site.url)
+  ).sort((a, b) => b.url.length - a.url.length)[0]; // Get the first element (longest URL) or undefined
 
-  for (const site of MEDIASITE_DATA) {
-    if (url.startsWith(site.url)) {
-      if (!bestMatch || site.url.length > bestMatch.length) {
-        bestMatch = { site: site, length: site.url.length };
-      }
-    }
-  }
-
-  if (bestMatch) {
+  if (bestMatchSite) {
     return {
-      region: bestMatch.site.region || null,
-      language: bestMatch.site.language || null,
-      name: bestMatch.site.name || null,
+      region: bestMatchSite.region || null,
+      language: bestMatchSite.language || null,
+      name: bestMatchSite.name || null,
     };
   } else {
     console.warn(
-      `[findMediaSiteInfo] No matching media site found for URL: ${url}`
+      `[findMediaSiteInfoByUrl] No matching media site found for URL: ${url}`
     );
     return { region: null, language: null, name: null };
   }
@@ -116,6 +110,11 @@ export type ProcessAttemptOutcome = // Export for use in page.tsx if needed for 
       }
     | {
         status: "no_gsc_data_skipped"; // <<< NEW STATUS
+        finalStatusMessage: string;
+        urlSkipped: string;
+      }
+    | {
+        status: "no_keywords_for_ai_skipped"; // <<< ADDED NEW STATUS
         finalStatusMessage: string;
         urlSkipped: string;
       }
@@ -245,7 +244,8 @@ async function processSingleCsvItem(
       keywordGroup: undefined,
       author: authorToSave,
       researchId: researchId,
-      gscKeywords: undefined, // Will be EnrichedKeywordData[]
+      gscKeywords: undefined, // This will store actual GSC keyword data if fetched successfully
+      aiInputKeywords: undefined, // This will store the keywords (with volume) passed to AI
     };
 
     // --- Step 1: Fetch GSC Keywords ---
@@ -296,9 +296,15 @@ async function processSingleCsvItem(
     // --- Step 2: Prepare Keywords & Get Ads Volume/Ideas ---
     let enrichedKeywordsForAI: EnrichedKeywordData[] = [];
     let adsFetchStatusMessage = "";
-    const siteInfo = findMediaSiteInfo(csvCandidate.url);
+    const siteInfo = findMediaSiteInfoByUrl(csvCandidate.url);
     const region = siteInfo.region;
     const language = siteInfo.language;
+
+    // Variable to store the raw results from the getSearchVolume call, if made.
+    // Assuming KeywordIdea is { text: string; searchVolume?: number | null; ... }
+    let adsIdeasRawOutput:
+      | Awaited<ReturnType<typeof getSearchVolume>>
+      | undefined = undefined;
 
     if (rawGscKeywords && rawGscKeywords.length > 0) {
       const topGscKeywords = [...rawGscKeywords]
@@ -311,14 +317,14 @@ async function processSingleCsvItem(
           `[processSingleCsvItem/GSC Path] Getting Ads Vol for ${topKeywordStrings.length} GSC keywords (Region: ${region}, Lang: ${language}) for ${csvCandidate.url}`
         );
         try {
-          const volumeResults = await getSearchVolume({
+          adsIdeasRawOutput = await getSearchVolume({
             keywords: topKeywordStrings,
             region: region,
             language: language,
             filterZeroVolume: false,
           });
           const volumeMap = new Map<string, number | null | undefined>();
-          volumeResults.forEach((v) =>
+          (adsIdeasRawOutput || []).forEach((v) =>
             volumeMap.set(v.text.toLowerCase().trim(), v.searchVolume)
           );
           enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
@@ -335,12 +341,14 @@ async function processSingleCsvItem(
             `[processSingleCsvItem/GSC Path] Ads Vol error for ${csvCandidate.url}:`,
             adsError
           );
+          // Assign GSC keywords with undefined searchVolume if Ads call fails
           enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
             ...gscKw,
             searchVolume: undefined,
           }));
         }
       } else {
+        // This case handles when GSC keywords exist but region/language/topKeywordStrings might be missing for Ads call
         adsFetchStatusMessage =
           " (Ads Vol skipped for GSC: missing region/lang or no keywords)";
         enrichedKeywordsForAI = topGscKeywords.map((gscKw) => ({
@@ -348,65 +356,89 @@ async function processSingleCsvItem(
           searchVolume: undefined,
         }));
       }
-    } else {
-      console.log(
-        `[processSingleCsvItem/Fallback Path] GSC failed/empty. Ads fallback using seed: "${csvCandidate.keyword}" for ${csvCandidate.url}`
-      );
-      adsFetchStatusMessage = " (GSC failed/empty, attempting Ads fallback)";
-      if (region && language) {
-        try {
-          const relatedIdeas = await getRelatedKeywordIdeas({
-            seedKeywords: [csvCandidate.keyword],
-            region: region,
-            language: language,
-            maxResults: 20,
-          });
-          if (relatedIdeas && relatedIdeas.length > 0) {
-            enrichedKeywordsForAI = relatedIdeas.map(
-              (idea): EnrichedKeywordData => ({
-                keyword: idea.text,
-                searchVolume: idea.searchVolume,
-                mean_position: -1,
-                min_position: -1,
-                max_position: -1,
-                site_ids: [],
-                total_impressions: 0,
-                total_clicks: 0,
-                overall_ctr: 0,
-              })
-            );
-            adsFetchStatusMessage = ` (GSC failed, used ${relatedIdeas.length} related keywords from Ads)`;
-          } else {
-            adsFetchStatusMessage =
-              " (GSC failed, Ads fallback yielded no keywords)";
-          }
-        } catch (fallbackError) {
-          adsFetchStatusMessage = " (GSC failed, Ads fallback fetch error)";
-          console.error(
-            `[processSingleCsvItem/Fallback Path] Ads fallback error for ${csvCandidate.url}:`,
-            fallbackError
-          );
-        }
-      } else {
-        adsFetchStatusMessage =
-          " (GSC failed, Ads fallback skipped - no region/lang)";
-      }
     }
 
     // --- Step 2b: Filter out zero-volume keywords before sending to AI ---
-    const originalCount = enrichedKeywordsForAI.length;
-    enrichedKeywordsForAI = enrichedKeywordsForAI.filter(
+    const originalGscKeywordCount = enrichedKeywordsForAI.length; // enrichedKeywordsForAI is based on GSC KWs at this point
+    const gscKeywordsWithPositiveAdsVolume = enrichedKeywordsForAI.filter(
       (kw) => typeof kw.searchVolume === "number" && kw.searchVolume > 0
     );
     console.log(
-      `[processSingleCsvItem] Filtered out zero/null/undefined volume keywords for ${csvCandidate.url}. ` +
-        `Before: ${originalCount}, After: ${enrichedKeywordsForAI.length}. (Kept only > 0)`
+      `[processSingleCsvItem] GSC-based keywords enrichment: Initial ${originalGscKeywordCount}, after filtering for positive AdsVol: ${gscKeywordsWithPositiveAdsVolume.length}.`
     );
-    // Update dataForBatch.gscKeywords with the filtered list if it changed
-    // This is important if dataForBatch.gscKeywords was already assigned the unfiltered list by reference.
-    // However, enrichedKeywordsForAI is the one passed to AI, so this direct update is key.
-    // If dataForBatch.gscKeywords is intended to store the *final* list sent to AI, it should be updated here:
-    dataForBatch.gscKeywords = enrichedKeywordsForAI;
+
+    // --- Fallback to Ads Ideas if GSC-based enrichment yielded nothing ---
+    if (
+      gscKeywordsWithPositiveAdsVolume.length === 0 &&
+      adsIdeasRawOutput &&
+      adsIdeasRawOutput.length > 0
+    ) {
+      console.log(
+        `[processSingleCsvItem] GSC keyword enrichment yielded 0 positive volume keywords. Attempting fallback using Ads API ideas directly.`
+      );
+      const positiveVolumeAdsIdeas = adsIdeasRawOutput.filter(
+        (idea) => typeof idea.searchVolume === "number" && idea.searchVolume > 0
+      );
+
+      if (positiveVolumeAdsIdeas.length > 0) {
+        enrichedKeywordsForAI = positiveVolumeAdsIdeas.map(
+          (idea): EnrichedKeywordData => ({
+            keyword: idea.text,
+            searchVolume: idea.searchVolume,
+            // Default GSC metrics as these are not directly from GSC for this URL
+            mean_position: -1,
+            min_position: -1,
+            max_position: -1,
+            site_ids: [],
+            total_impressions: 0,
+            total_clicks: 0,
+            overall_ctr: 0,
+          })
+        );
+        // Preserve original GSC fetch status, append Ads fallback status
+        adsFetchStatusMessage =
+          (adsFetchStatusMessage || "") +
+          ` (Used ${enrichedKeywordsForAI.length} Ads ideas as fallback as GSC direct enrichment failed)`;
+        console.log(
+          `[processSingleCsvItem] Fallback successful: Using ${enrichedKeywordsForAI.length} keywords directly from Ads API ideas.`
+        );
+      } else {
+        // Fallback attempted but Ads ideas also had no positive volume
+        enrichedKeywordsForAI = []; // Ensure it's empty
+        console.log(
+          `[processSingleCsvItem] Fallback attempted: Ads API ideas also had no positive volume keywords. Proceeding with no keywords.`
+        );
+      }
+    } else {
+      // If GSC enrichment was successful OR no Ads ideas were available for fallback, use the GSC-based results
+      enrichedKeywordsForAI = gscKeywordsWithPositiveAdsVolume;
+    }
+
+    // --- Populate dataForBatch with clear separation of GSC data and AI input keywords ---
+
+    // 1. Store RAW GSC data if available for the gscKeywords field
+    if (rawGscKeywords && rawGscKeywords.length > 0) {
+      // rawGscKeywords are GscKeywordMetrics. This field stores them as is.
+      dataForBatch.gscKeywords = rawGscKeywords;
+    } else {
+      dataForBatch.gscKeywords = undefined; // No actual GSC data was successfully fetched for the URL
+    }
+
+    // 2. Store the (potentially mixed-source) keywords that were actually sent to the AI
+    // This list was already prepared in enrichedKeywordsForAI and filtered for positive volume.
+    dataForBatch.aiInputKeywords = enrichedKeywordsForAI;
+
+    // --- NEW CHECK: If after all attempts and filtering, we have no keywords for AI ---
+    if (enrichedKeywordsForAI.length === 0) {
+      console.log(
+        `[processSingleCsvItem] No keywords with positive search volume found for ${csvCandidate.url} after GSC/Ads processing and filtering. Skipping.`
+      );
+      return {
+        status: "no_keywords_for_ai_skipped",
+        finalStatusMessage: `No keywords with positive search volume found for AI analysis of ${csvCandidate.url}. Item skipped. GSC status: ${gscFetchStatusMessage}. Ads status: ${adsFetchStatusMessage}.`,
+        urlSkipped: csvCandidate.url,
+      };
+    }
 
     // --- Step 3: AI Analysis ---
     const aiInputForLlm = {
@@ -419,15 +451,39 @@ async function processSingleCsvItem(
     );
     const aiAnalysisResult = await analyzeKeywordsWithAiAction(aiInputForLlm);
 
+    // Check 1: Basic AI error or no primary keyword
     if ("error" in aiAnalysisResult || !aiAnalysisResult.aiPrimaryKeyword) {
       const errorMsg =
         ("error" in aiAnalysisResult && aiAnalysisResult.error) ||
-        "AI analysis returned no keywords";
+        "AI analysis returned no primary keyword";
       // No markUrlAsUnavailable here, let the caller decide or handle based on status
       return {
         status: "error",
         finalStatusMessage: `AI Keyword Analysis failed for ${csvCandidate.url}. Error: ${errorMsg}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
         error: `AI Analysis Error: ${errorMsg}`,
+        urlAttempted: csvCandidate.url,
+      };
+    }
+
+    // Check 2: Ensure the AI's chosen primary keyword was one of the keywords we sent it (which all have >0 search volume)
+    const aiChosenKeywordText = aiAnalysisResult.aiPrimaryKeyword
+      .toLowerCase()
+      .trim();
+    const wasAiKeywordInInput = enrichedKeywordsForAI.some(
+      (inputKw) => inputKw.keyword.toLowerCase().trim() === aiChosenKeywordText
+    );
+
+    if (!wasAiKeywordInInput) {
+      const errorMsg = `AI selected primary keyword ('${aiAnalysisResult.aiPrimaryKeyword}') which was not in the provided list of keywords with known search volume.`;
+      console.warn(
+        `[processSingleCsvItem] ${errorMsg} for URL: ${csvCandidate.url}. Input keywords:`,
+        enrichedKeywordsForAI.map((k) => k.keyword)
+      );
+      // No markUrlAsUnavailable here, let the caller decide or handle based on status
+      return {
+        status: "error",
+        finalStatusMessage: `AI Keyword Analysis failed for ${csvCandidate.url}. Error: ${errorMsg}.${gscFetchStatusMessage}${adsFetchStatusMessage}`,
+        error: `AI Analysis Error: ${errorMsg}`, // More specific error
         urlAttempted: csvCandidate.url,
       };
     }
@@ -514,7 +570,6 @@ export async function processRandomOpportunityAction(
       status: "error",
       finalStatusMessage: `Critical Failure in processRandomOpportunityAction. ${errorMsg}. Check logs.`,
       error: errorMsg,
-      // urlAttempted might not be known here if error is early
     };
   }
 }
@@ -588,7 +643,7 @@ export async function saveBatchProcessedOpportunitiesAction(
       if (savedOpp) {
         successCount++;
       } else {
-        // This case should ideally be caught by an error in saveProcessedOpportunity if it returns null
+        // saveProcessedOpportunity returning null (without throwing) indicates a non-critical save issue (e.g., validation post-save)
         console.error(
           `Batch Save: Failed to save opportunity for URL ${oppData.url} - saveProcessedOpportunity returned null.`
         );
@@ -736,8 +791,8 @@ export async function deleteProcessedOpportunityAction(
     console.log(
       `[Action] Successfully deleted processed opportunity: ${opportunityId}`
     );
-    // Consider if revalidation is needed here or handled by caller after re-fetching lists
-    // For now, not revalidating tags from this specific delete action directly.
+    // Revalidation for lists (e.g., /opportunity page) is generally handled by the client refetching
+    // or by specific revalidatePath calls in higher-level actions that trigger deletions.
     return {
       success: true,
       message: `Successfully deleted opportunity ${opportunityId}.`,
@@ -964,8 +1019,7 @@ async function findAndProcessRandomOpportunityForSiteInternal(
     );
 
     // 3. Filter out already processed or unavailable URLs
-    // Need to fetch all processed and unavailable URLs from Firestore
-    // This could be slow if there are many. Consider optimizing if needed.
+    // (Consider potential performance impact if Firestore collections are very large)
     const processedDocsSnapshot = await db
       .collection(COLLECTIONS.PROCESSED_OPPORTUNITY!)
       .select("url")
@@ -1059,10 +1113,8 @@ export async function processNextOpportunityForSiteAction(
     `[processNextOpportunityForSiteAction] Called for site: ${siteUrlPrefix}, researchId: ${researchId}`
   );
   try {
-    // Call the renamed and refactored internal function
     const processingResult =
       await findAndProcessRandomOpportunityForSiteInternal(
-        // Corrected function name
         siteUrlPrefix,
         researchId,
         IGNORED_AUTHORS_LOWERCASE

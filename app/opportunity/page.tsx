@@ -45,6 +45,9 @@ import {
   RotateCw, // New icon for redraw all
   ClipboardCopy, // New icon for Copy CSV
   Check, // Icon for copy success
+  Eye, // For View Details icon
+  Trash2, // For Delete/Mark Unavailable (generalizing for history too)
+  PlayCircle, // Placeholder for Redraw
 } from "lucide-react"; // Icons
 import { toast } from "sonner"; // Import toast for feedback
 import { MEDIASITE_DATA } from "@/app/global-config"; // Import site config
@@ -63,6 +66,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"; // Import Table components
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription, // If needed for GSC dialog body
+} from "@/components/ui/dialog"; // For GSC Dialog
 
 // Helper function to check if a date is in the current week (Monday to Sunday)
 const isDateInCurrentWeek = (date: Date): boolean => {
@@ -287,7 +298,20 @@ export default function OpportunityPage() {
 
           if (attempt.status === "success_ready_for_batch") {
             allCollectedDataForSaving.push(attempt.data);
-            setCurrentBatchSuccesses((prev) => [...prev, attempt]);
+            setCurrentBatchSuccesses((prev) => {
+              // Check if an item with the same URL already exists
+              if (
+                prev.some(
+                  (existingItem) => existingItem.data.url === attempt.data.url
+                )
+              ) {
+                console.warn(
+                  `[handleRunLottery] Attempted to add duplicate URL to currentBatchSuccesses: ${attempt.data.url}. Skipping.`
+                );
+                return prev; // Return previous state if duplicate
+              }
+              return [...prev, attempt]; // Add new item if not duplicate
+            });
             successesForThisSite++;
             toast.success(
               `Batch: Found item for ${site.name}: ${attempt.data.url}`,
@@ -415,70 +439,125 @@ export default function OpportunityPage() {
     setLatestAttemptOutcome(null);
     setIsProcessingSite(siteName); // Indicate processing for this site
 
-    startDrawingOneTransition(async () => {
-      try {
-        const researchId = `drawOne_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}`;
-        const attempt = await processNextOpportunityForSiteAction(
-          selectedSiteForSingleDraw, // This is the siteUrlPrefix
-          researchId
-        );
-        setLatestAttemptOutcome(attempt);
+    const MAX_SINGLE_DRAW_ATTEMPTS = 3;
 
-        if (attempt.status === "success_ready_for_batch") {
-          toast.info(
-            `Found one opportunity for ${siteName} from CSV: ${attempt.data.url}. Saving...`
+    startDrawingOneTransition(async () => {
+      let success = false;
+      // Outer try for the whole multi-attempt process, for the finally block.
+      try {
+        for (
+          let attemptNum = 1;
+          attemptNum <= MAX_SINGLE_DRAW_ATTEMPTS;
+          attemptNum++
+        ) {
+          setGeneralMessage(
+            `Attempt ${attemptNum}/${MAX_SINGLE_DRAW_ATTEMPTS} to draw new opportunity for site: ${siteName} from CSV...`
           );
-          const saveResult = await saveBatchProcessedOpportunitiesAction([
-            attempt.data,
-          ]);
-          if (saveResult.successCount > 0) {
-            toast.success(
-              `New CSV opportunity for ${siteName} saved successfully!`
+          toast.info(
+            `Draw One (${siteName}): Attempt ${attemptNum}/${MAX_SINGLE_DRAW_ATTEMPTS}...`
+          );
+          try {
+            // Inner try for each specific attempt
+            const researchId = `drawOne_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}_${attemptNum}`;
+            const attempt = await processNextOpportunityForSiteAction(
+              selectedSiteForSingleDraw, // This is the siteUrlPrefix
+              researchId
             );
-            setGeneralMessage(
-              `New opportunity for ${siteName} (from CSV) drawn and saved.`
+            setLatestAttemptOutcome(attempt);
+
+            if (attempt.status === "success_ready_for_batch") {
+              toast.info(
+                `Draw One (${siteName}, Attempt ${attemptNum}): Found ${attempt.data.url}. Saving...`
+              );
+              const saveResult = await saveBatchProcessedOpportunitiesAction([
+                attempt.data,
+              ]);
+              if (saveResult.successCount > 0) {
+                toast.success(
+                  `Draw One (${siteName}): New CSV opportunity saved successfully!`
+                );
+                setGeneralMessage(
+                  `New opportunity for ${siteName} (from CSV) drawn and saved on attempt ${attemptNum}.`
+                );
+                success = true;
+                break; // Exit loop on success
+              } else {
+                toast.error(
+                  `Draw One (${siteName}, Attempt ${attemptNum}): Failed to save new CSV opportunity. ` +
+                    (saveResult.errors[0]?.error || "Unknown save error.")
+                );
+                setGeneralMessage(
+                  `Draw One (${siteName}, Attempt ${attemptNum}): Found CSV opportunity, but failed to save it.`
+                );
+                break; // Break on save failure
+              }
+            } else if (attempt.status === "no_new_items") {
+              toast.info(
+                `Draw One (${siteName}, Attempt ${attemptNum}): No new available items in CSV list.`
+              );
+              setGeneralMessage(
+                `Draw One (${siteName}): No new available items in CSV list after ${attemptNum} attempt(s).`
+              );
+              break; // No point in further attempts
+            } else if (
+              attempt.status === "no_gsc_data_skipped" ||
+              attempt.status === "no_keywords_for_ai_skipped" ||
+              attempt.status === "author_limit_deferred" ||
+              attempt.status === "author_ignored"
+            ) {
+              toast.info(
+                `Draw One (${siteName}, Attempt ${attemptNum}): Item skipped - ${attempt.finalStatusMessage}. Trying again...`,
+                { duration: 3000 }
+              );
+              // Message already set by setLatestAttemptOutcome indirectly via main alert or explicitly if needed
+            } else {
+              // Error status for the attempt
+              toast.error(
+                `Draw One (${siteName}, Attempt ${attemptNum}): Could not draw. ${attempt.finalStatusMessage}`
+              );
+              // Message already set by setLatestAttemptOutcome indirectly via main alert or explicitly if needed
+            }
+          } catch (e) {
+            // Catch for an individual attempt's processing error
+            console.error(
+              `Error during Draw One for Site ${siteName}, Attempt ${attemptNum}:`,
+              e
             );
-          } else {
             toast.error(
-              "Failed to save the new CSV opportunity. " +
-                (saveResult.errors[0]?.error || "Unknown save error.")
+              e instanceof Error
+                ? `Draw One Error (Attempt ${attemptNum}): ${e.message}`
+                : `Client error during single draw attempt ${attemptNum}.`
             );
             setGeneralMessage(
-              `Found CSV opportunity for ${siteName}, but failed to save it.`
+              `An error occurred during attempt ${attemptNum} for ${siteName}. Check console.`
             );
           }
-        } else if (attempt.status === "no_new_items") {
-          toast.info(
-            `No new available items found in your CSV list for ${siteName}.`
-          );
+          if (attemptNum < MAX_SINGLE_DRAW_ATTEMPTS && !success) {
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Small delay before next attempt
+          }
+        } // End for loop
+
+        if (!success) {
           setGeneralMessage(
-            `No new available items found in your CSV list for ${siteName}.`
+            `Finished ${MAX_SINGLE_DRAW_ATTEMPTS} attempts for ${siteName}. No new opportunity was successfully drawn and saved.`
           );
-        } else if (attempt.status === "no_gsc_data_skipped") {
           toast.info(
-            `Item for ${siteName} (${attempt.urlSkipped}) skipped: No GSC data found.`,
-            { duration: 3000 }
-          );
-          setGeneralMessage(
-            `Could not draw for ${siteName}: Item from CSV skipped due to no GSC data. ${attempt.finalStatusMessage}`
-          );
-        } else {
-          toast.info(
-            `Could not draw a new opportunity for ${siteName} from CSV: ${attempt.finalStatusMessage}`
-          );
-          setGeneralMessage(
-            `Attempted to draw for ${siteName} from CSV, but status was: ${attempt.status}. Message: ${attempt.finalStatusMessage}`
+            `Draw One (${siteName}): Completed ${MAX_SINGLE_DRAW_ATTEMPTS} attempts without saving a new opportunity.`
           );
         }
-      } catch (e) {
-        console.error(`Error during Draw One for Site ${siteName}:`, e);
+      } catch (outerError) {
+        // Optional outer catch for unforeseen issues in the transition block setup
+        console.error(
+          `Outer error during Draw One for Site ${siteName} transition:`,
+          outerError
+        );
         toast.error(
-          e instanceof Error
-            ? e.message
-            : "Client error during single draw attempt."
+          outerError instanceof Error
+            ? `Critical Draw One Error: ${outerError.message}`
+            : "Critical client error during single draw process."
         );
         setGeneralMessage(
-          `An error occurred while drawing one for ${siteName}.`
+          `A critical error occurred while attempting to draw for ${siteName}.`
         );
       } finally {
         setIsProcessingSite(null);
@@ -688,6 +767,9 @@ export default function OpportunityPage() {
     setLatestAttemptOutcome(null);
 
     startRedrawingSingleTransition(async () => {
+      const MAX_REDRAW_ATTEMPTS = 3;
+      let replacementSuccess = false;
+
       try {
         toast.info(
           `Redraw: Deleting item ${oppId} and attempting to find a replacement from CSV for its site...`
@@ -704,14 +786,13 @@ export default function OpportunityPage() {
           setGeneralMessage(
             `Redraw: Failed to delete ${oppId}. Aborting redraw.`
           );
-          setRedrawingOppId(null);
+          // No finally block here, as it's part of the outer try/finally
+          setRedrawingOppId(null); // Still ensure this is cleared
+          await fetchAllOpportunitiesFromFirestore(); // Refresh to show deletion status
           return;
         }
         toast.success(`Redraw: Original item ${oppId} deleted.`);
 
-        // Determine the siteUrlPrefix from the original opportunity's URL
-        // This requires fetching the original opportunity first or having its URL passed in.
-        // Assuming oppUrl is the full URL of the opportunity being redrawn.
         const siteData = MEDIASITE_DATA.find((s) => oppUrl.startsWith(s.url));
         if (!siteData) {
           toast.error(
@@ -720,81 +801,128 @@ export default function OpportunityPage() {
           setGeneralMessage(
             `Redraw: Could not identify site for ${oppUrl}. Replacement aborted.`
           );
-          await fetchAllOpportunitiesFromFirestore(); // Refresh list after deletion
           setRedrawingOppId(null);
+          await fetchAllOpportunitiesFromFirestore();
           return;
         }
         const siteUrlPrefix = siteData.url;
         const siteName = siteData.name || "the original site";
 
-        setGeneralMessage(
-          `Redraw: Attempting to find a new CSV item for ${siteName}...`
-        );
-        const researchId = `redraw_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}`;
-        const attempt = await processNextOpportunityForSiteAction(
-          siteUrlPrefix,
-          researchId
-        );
-
-        setLatestAttemptOutcome(attempt);
-
-        if (attempt.status === "success_ready_for_batch") {
-          toast.info(
-            `Redraw: Found new CSV item for ${siteName}: ${attempt.data.url}. Saving...`
+        for (
+          let attemptNum = 1;
+          attemptNum <= MAX_REDRAW_ATTEMPTS;
+          attemptNum++
+        ) {
+          setGeneralMessage(
+            `Redraw Attempt ${attemptNum}/${MAX_REDRAW_ATTEMPTS}: Finding new CSV item for ${siteName}...`
           );
-          const saveResult = await saveBatchProcessedOpportunitiesAction([
-            attempt.data,
-          ]);
-          if (saveResult.successCount > 0) {
-            toast.success(
-              `Redraw: New replacement item for ${siteName} (from CSV) saved!`
+          toast.info(
+            `Redraw (${siteName}): Attempt ${attemptNum}/${MAX_REDRAW_ATTEMPTS} for replacement...`
+          );
+
+          try {
+            // Inner try for each attempt to process a new opportunity
+            const researchId = `redraw_${siteName.replace(/\s+/g, "")}_${new Date().getTime()}_${attemptNum}`;
+            const attempt = await processNextOpportunityForSiteAction(
+              siteUrlPrefix,
+              researchId
             );
-            setGeneralMessage(
-              `Redraw for ${siteName} complete. New CSV item saved.`
+            setLatestAttemptOutcome(attempt);
+
+            if (attempt.status === "success_ready_for_batch") {
+              toast.info(
+                `Redraw (${siteName}, Attempt ${attemptNum}): Found new CSV item ${attempt.data.url}. Saving...`
+              );
+              const saveResult = await saveBatchProcessedOpportunitiesAction([
+                attempt.data,
+              ]);
+              if (saveResult.successCount > 0) {
+                toast.success(
+                  `Redraw (${siteName}): New replacement item saved successfully!`
+                );
+                setGeneralMessage(
+                  `Redraw for ${siteName} complete. New CSV item saved on attempt ${attemptNum}.`
+                );
+                replacementSuccess = true;
+                break; // Exit loop on successful replacement and save
+              } else {
+                toast.error(
+                  `Redraw (${siteName}, Attempt ${attemptNum}): Failed to save new CSV replacement. ` +
+                    (saveResult.errors[0]?.error || "Unknown save error.")
+                );
+                setGeneralMessage(
+                  `Redraw (${siteName}, Attempt ${attemptNum}): Found CSV replacement, but save failed.`
+                );
+                break; // Break on save failure
+              }
+            } else if (attempt.status === "no_new_items") {
+              toast.info(
+                `Redraw (${siteName}, Attempt ${attemptNum}): No new available CSV items for replacement.`
+              );
+              setGeneralMessage(
+                `Redraw (${siteName}): No new available CSV items found for replacement after ${attemptNum} attempt(s).`
+              );
+              break; // No point in further attempts
+            } else if (
+              attempt.status === "no_gsc_data_skipped" ||
+              attempt.status === "no_keywords_for_ai_skipped" ||
+              attempt.status === "author_limit_deferred" ||
+              attempt.status === "author_ignored"
+            ) {
+              toast.info(
+                `Redraw (${siteName}, Attempt ${attemptNum}): Replacement candidate skipped - ${attempt.finalStatusMessage}. Trying again...`,
+                { duration: 3000 }
+              );
+              // Loop continues
+            } else {
+              // Error status for the attempt
+              toast.error(
+                `Redraw (${siteName}, Attempt ${attemptNum}): Could not draw replacement. ${attempt.finalStatusMessage}`
+              );
+              // Loop continues
+            }
+          } catch (e) {
+            // Catch for an individual replacement attempt's processing error
+            console.error(
+              `Error during Redraw for Site ${siteName}, Attempt ${attemptNum}:`,
+              e
             );
-          } else {
             toast.error(
-              `Redraw: Failed to save new CSV replacement for ${siteName}. ` +
-                (saveResult.errors[0]?.error || "Unknown save error.")
+              e instanceof Error
+                ? `Redraw Error (Attempt ${attemptNum}): ${e.message}`
+                : `Client error during redraw attempt ${attemptNum}.`
             );
             setGeneralMessage(
-              `Redraw: Found CSV replacement for ${siteName}, but save failed.`
+              `An error occurred during replacement attempt ${attemptNum} for ${siteName}. Check console.`
             );
           }
-        } else if (attempt.status === "no_new_items") {
-          toast.info(
-            `Redraw: No new available items found in your CSV list for ${siteName} to replace the deleted one.`
-          );
+          if (attemptNum < MAX_REDRAW_ATTEMPTS && !replacementSuccess) {
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Small delay
+          }
+        } // End for loop for redraw attempts
+
+        if (!replacementSuccess) {
           setGeneralMessage(
-            `Redraw: No new available items in CSV for ${siteName} found.`
+            `Finished ${MAX_REDRAW_ATTEMPTS} attempts to find a replacement for ${siteName}. None saved.`
           );
-        } else if (attempt.status === "no_gsc_data_skipped") {
           toast.info(
-            `Redraw: Replacement for ${siteName} (${attempt.urlSkipped}) skipped: No GSC data found.`,
-            { duration: 3000 }
-          );
-          setGeneralMessage(
-            `Redraw: Replacement for ${siteName} from CSV skipped due to no GSC data. ${attempt.finalStatusMessage}`
-          );
-        } else {
-          toast.info(
-            `Redraw: Could not draw a replacement for ${siteName} from CSV: ${attempt.finalStatusMessage}`
-          );
-          setGeneralMessage(
-            `Redraw: Attempt to find replacement from CSV for ${siteName} failed. Status: ${attempt.status}.`
+            `Redraw (${siteName}): Completed ${MAX_REDRAW_ATTEMPTS} attempts without saving a replacement.`
           );
         }
       } catch (e) {
-        console.error("Error during redraw single:", e);
+        // Catch for errors in the delete part or outer redraw logic
+        console.error("Error during redraw single operation:", e);
         toast.error(
           e instanceof Error
             ? `Redraw Error: ${e.message}`
-            : "Client error during single redraw."
+            : "Client error during single redraw operation."
         );
-        setGeneralMessage("Redraw: An unexpected error occurred.");
+        setGeneralMessage(
+          "Redraw: An unexpected error occurred during the operation."
+        );
       } finally {
         setRedrawingOppId(null);
-        await fetchAllOpportunitiesFromFirestore(); // Refresh list
+        await fetchAllOpportunitiesFromFirestore(); // Refresh list regardless of outcome
       }
     });
   };
@@ -1012,7 +1140,7 @@ export default function OpportunityPage() {
                     scope="col"
                     className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    All Keywords
+                    All Keywords (Vol)
                   </th>
                   <th
                     scope="col"
@@ -1030,23 +1158,11 @@ export default function OpportunityPage() {
                     scope="col"
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    Status
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Drawn Date
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
                     GSC Info
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
                     Actions
                   </th>
@@ -1075,11 +1191,10 @@ export default function OpportunityPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {opp.keywordGroup?.aiPrimaryKeyword || (
                         <span className="text-gray-400 italic">
-                          {opp.originalCsvKeyword}{" "}
-                          {/* Fallback if no AI primary keyword */}
+                          {opp.originalCsvKeyword}
                         </span>
                       )}
-                      <span className="ml-2 text-xs text-gray-500">
+                      <span className="ml-1 text-xs text-gray-500">
                         (Vol:{" "}
                         {opp.keywordGroup?.aiPrimaryKeywordVolume !== null &&
                         opp.keywordGroup?.aiPrimaryKeywordVolume !== undefined
@@ -1094,6 +1209,17 @@ export default function OpportunityPage() {
                           <li>
                             <strong>AI:</strong>{" "}
                             {opp.keywordGroup.aiPrimaryKeyword}
+                            {opp.keywordGroup?.aiPrimaryKeywordVolume !==
+                              null &&
+                              opp.keywordGroup?.aiPrimaryKeywordVolume !==
+                                undefined && (
+                                <span className="ml-1 text-gray-500">
+                                  {" "}
+                                  (Vol:{" "}
+                                  {opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()}
+                                  )
+                                </span>
+                              )}
                           </li>
                         )}
                         {opp.keywordGroup?.aiRelatedKeyword1 &&
@@ -1101,6 +1227,24 @@ export default function OpportunityPage() {
                             <li>
                               <strong>R1:</strong>{" "}
                               {opp.keywordGroup.aiRelatedKeyword1}
+                              {opp.keywordGroup.aiRelatedKeyword1Volume !==
+                                null &&
+                              opp.keywordGroup.aiRelatedKeyword1Volume !==
+                                undefined &&
+                              typeof opp.keywordGroup
+                                .aiRelatedKeyword1Volume === "number" ? (
+                                <span className="ml-1 text-gray-500">
+                                  {" "}
+                                  (Vol:{" "}
+                                  {opp.keywordGroup.aiRelatedKeyword1Volume.toLocaleString()}
+                                  )
+                                </span>
+                              ) : (
+                                <span className="ml-1 text-gray-500">
+                                  {" "}
+                                  (Vol: N/A)
+                                </span>
+                              )}
                             </li>
                           )}
                         {opp.keywordGroup?.aiRelatedKeyword2 &&
@@ -1108,10 +1252,34 @@ export default function OpportunityPage() {
                             <li>
                               <strong>R2:</strong>{" "}
                               {opp.keywordGroup.aiRelatedKeyword2}
+                              {opp.keywordGroup.aiRelatedKeyword2Volume !==
+                                null &&
+                              opp.keywordGroup.aiRelatedKeyword2Volume !==
+                                undefined &&
+                              typeof opp.keywordGroup
+                                .aiRelatedKeyword2Volume === "number" ? (
+                                <span className="ml-1 text-gray-500">
+                                  {" "}
+                                  (Vol:{" "}
+                                  {opp.keywordGroup.aiRelatedKeyword2Volume.toLocaleString()}
+                                  )
+                                </span>
+                              ) : (
+                                <span className="ml-1 text-gray-500">
+                                  {" "}
+                                  (Vol: N/A)
+                                </span>
+                              )}
                             </li>
                           )}
                         <li>
                           <strong>CSV:</strong> {opp.originalCsvKeyword}
+                          {typeof opp.csvVolume === "number" && (
+                            <span className="ml-1 text-gray-500">
+                              {" "}
+                              (Vol: {opp.csvVolume.toLocaleString()})
+                            </span>
+                          )}
                         </li>
                       </ul>
                     </td>
@@ -1130,73 +1298,66 @@ export default function OpportunityPage() {
                         <span className="text-gray-400 italic">N/A</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <Badge
-                        variant={
-                          opp.status === "analyzed"
-                            ? "default"
-                            : opp.status === "marked_unavailable"
-                              ? "outline"
-                              : "secondary"
-                        }
-                        className={`text-xs ${
-                          opp.status === "analyzed"
-                            ? "bg-blue-100 text-blue-700"
-                            : opp.status === "marked_unavailable"
-                              ? "bg-gray-100 text-gray-600"
-                              : "bg-yellow-100 text-yellow-700"
-                        }`}
-                      >
-                        {opp.status || "analyzed"}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {opp.processedAt
-                        ? new Date(opp.processedAt).toLocaleDateString()
-                        : "N/A"}
-                    </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {opp.gscKeywords && opp.gscKeywords.length > 0 ? (
-                        <Collapsible>
-                          <CollapsibleTrigger className="text-xs text-blue-600 hover:underline flex items-center">
-                            <ChevronDown className="h-3 w-3 mr-1" /> Show GSC (
-                            {opp.gscKeywords.length})
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin">
-                              {opp.gscKeywords
-                                .slice(0, 5)
-                                .map((kw: GscKeywordMetric, idx: number) => (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="text-xs p-0 h-auto text-blue-600 hover:underline"
+                            >
+                              <Info className="h-3 w-3 mr-1" /> Show GSC (
+                              {opp.gscKeywords.length})
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-lg">
+                            <DialogHeader>
+                              <DialogTitle>
+                                GSC Keywords for:{" "}
+                                {opp.scrapedTitle ||
+                                  decodeURIComponent(opp.url)}
+                              </DialogTitle>
+                              <DialogDescription>
+                                Top {opp.gscKeywords.length} keywords from
+                                Google Search Console.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <ul className="mt-2 list-disc space-y-1 text-xs text-gray-800 max-h-60 overflow-y-auto scrollbar-thin pr-2 pl-5">
+                              {opp.gscKeywords.map(
+                                (kw: GscKeywordMetric, idx: number) => (
                                   <li
                                     key={idx}
-                                  >{`"${kw.keyword}" P:${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
-                                ))}
-                              {opp.gscKeywords.length > 5 && (
-                                <li>
-                                  ...and {opp.gscKeywords.length - 5} more
-                                </li>
+                                  >{`"${kw.keyword}" (Pos: ${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
+                                )
                               )}
                             </ul>
-                          </CollapsibleContent>
-                        </Collapsible>
+                          </DialogContent>
+                        </Dialog>
                       ) : (
                         <span className="text-xs italic text-gray-500">
-                          No GSC keyword data processed for this item.
+                          No GSC kw data
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 flex items-center">
-                      <Button variant="outline" size="sm" asChild>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        asChild
+                        title="View Details"
+                      >
                         <Link
                           href={`/opportunity/${opp.id}`}
                           legacyBehavior={false}
                         >
-                          View Details
+                          <Eye className="h-4 w-4 text-blue-600" />
                         </Link>
                       </Button>
                       <Button
-                        variant="outline"
-                        size="sm"
+                        variant="ghost"
+                        size="icon"
+                        title="Redraw Opportunity"
                         onClick={() => handleRedrawSingle(opp.id, opp.url)}
                         disabled={
                           isProcessingLottery ||
@@ -1204,14 +1365,13 @@ export default function OpportunityPage() {
                           isRedrawingSingle ||
                           redrawingOppId === opp.id
                         }
-                        className="text-orange-600 border-orange-400 hover:bg-orange-50 hover:text-orange-700 h-8 px-2 text-xs"
+                        className="text-orange-600 hover:text-orange-700"
                       >
                         {redrawingOppId === opp.id ? (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <RotateCw className="mr-1 h-3 w-3" />
+                          <RotateCw className="h-4 w-4" />
                         )}
-                        Redraw
                       </Button>
                     </td>
                   </tr>
@@ -1221,62 +1381,86 @@ export default function OpportunityPage() {
           </div>
         )}
 
-        {/* Calculated Author Performance Display (Below This Week's Table) */}
-        {!isLoadingList && calculatedAuthorCounts.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <h4 className="text-md font-semibold text-gray-600 mb-2">
-              Author Submissions This Week (from table):
-            </h4>
-            <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-              {calculatedAuthorCounts.map((stat) => (
-                <li key={stat.author}>
-                  <strong>{stat.author}:</strong> {stat.count} opportunity(s)
-                </li>
-              ))}
-            </ul>
+        {/* --- NEW: This Week's Opportunities by Site Summary Table --- */}
+        {!isLoadingList && thisWeeksOpportunities.length > 0 && (
+          <div className="mt-6 pt-6 border-t">
+            <h3 className="text-lg font-semibold mb-3">
+              This Week's Opportunities by Site
+            </h3>
+            {thisWeeksOpportunities.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Media Site</TableHead>
+                    <TableHead className="text-right">
+                      Count This Week
+                    </TableHead>
+                    <TableHead>
+                      Authors (Contributions to Site This Week)
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {MEDIASITE_DATA.filter((site) =>
+                    TARGET_SITE_NAMES.includes(site.name)
+                  ).map((site) => {
+                    const siteOpportunitiesThisWeek =
+                      thisWeeksOpportunities.filter((opp) =>
+                        opp.url.startsWith(site.url)
+                      );
+                    const count = siteOpportunitiesThisWeek.length;
+
+                    // Calculate author contributions for this specific site
+                    const authorContributionsMap = new Map<string, number>();
+                    siteOpportunitiesThisWeek.forEach((opp) => {
+                      const author = opp.author || "Unknown Author";
+                      authorContributionsMap.set(
+                        author,
+                        (authorContributionsMap.get(author) || 0) + 1
+                      );
+                    });
+                    const authorContributionsString = Array.from(
+                      authorContributionsMap
+                    )
+                      .map(([author, num]) => `${author} (${num})`)
+                      .join(", ");
+
+                    return (
+                      <TableRow key={site.url}>
+                        <TableCell>{site.name}</TableCell>
+                        <TableCell className="text-right">{count}</TableCell>
+                        <TableCell className="text-xs text-gray-600">
+                          {authorContributionsString || "N/A"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No opportunities drawn this week to summarize.
+              </p>
+            )}
           </div>
         )}
-        {/* End Calculated Author Performance */}
-      </section>
+        {/* --- END: This Week's Opportunities by Site Summary Table --- */}
 
-      {/* --- NEW: This Week's Opportunities by Site Summary Table --- */}
-      <div className="mt-6 pt-6 border-t">
-        <h3 className="text-lg font-semibold mb-3">
-          This Week's Opportunities by Site
-        </h3>
-        {thisWeeksOpportunities.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Media Site</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead className="text-right">Count This Week</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {MEDIASITE_DATA.filter((site) =>
-                TARGET_SITE_NAMES.includes(site.name)
-              ).map((site) => {
-                const count = thisWeeksOpportunities.filter((opp) =>
-                  opp.url.startsWith(site.url)
-                ).length;
-                return (
-                  <TableRow key={site.url}>
-                    <TableCell>{site.name}</TableCell>
-                    <TableCell>{site.language}</TableCell>
-                    <TableCell className="text-right">{count}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No opportunities drawn this week to summarize.
-          </p>
+        {/* RELOCATED AND RESTYLED: Overall Author Performance Note */}
+        {!isLoadingList && calculatedAuthorCounts.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-sm font-semibold text-gray-700 mb-1">
+              Overall Author Contributions This Week:
+            </p>
+            <p className="text-xs text-gray-600">
+              {calculatedAuthorCounts
+                .map((stat) => `${stat.author} (${stat.count})`)
+                .join(", ")}
+            </p>
+          </div>
         )}
-      </div>
-      {/* --- END: This Week's Opportunities by Site Summary Table --- */}
+        {/* END RELOCATED AND RESTYLED: Overall Author Performance Note */}
+      </section>
 
       <section className="my-12 py-10 bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 rounded-xl shadow-2xl border border-purple-200">
         <div className="container mx-auto text-center px-6">
@@ -1489,7 +1673,7 @@ export default function OpportunityPage() {
                           scope="col"
                           className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                         >
-                          All Keywords
+                          All Keywords (Vol)
                         </th>
                         <th
                           scope="col"
@@ -1523,7 +1707,7 @@ export default function OpportunityPage() {
                         </th>
                         <th
                           scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
                         >
                           Actions
                         </th>
@@ -1555,7 +1739,7 @@ export default function OpportunityPage() {
                                 {opp.originalCsvKeyword}
                               </span>
                             )}
-                            <span className="ml-2 text-xs text-gray-500">
+                            <span className="ml-1 text-xs text-gray-500">
                               (Vol:{" "}
                               {opp.keywordGroup?.aiPrimaryKeywordVolume !==
                                 null &&
@@ -1572,6 +1756,17 @@ export default function OpportunityPage() {
                                 <li>
                                   <strong>AI:</strong>{" "}
                                   {opp.keywordGroup.aiPrimaryKeyword}
+                                  {opp.keywordGroup?.aiPrimaryKeywordVolume !==
+                                    null &&
+                                    opp.keywordGroup?.aiPrimaryKeywordVolume !==
+                                      undefined && (
+                                      <span className="ml-1 text-gray-500">
+                                        {" "}
+                                        (Vol:{" "}
+                                        {opp.keywordGroup.aiPrimaryKeywordVolume.toLocaleString()}
+                                        )
+                                      </span>
+                                    )}
                                 </li>
                               )}
                               {opp.keywordGroup?.aiRelatedKeyword1 &&
@@ -1580,6 +1775,24 @@ export default function OpportunityPage() {
                                   <li>
                                     <strong>R1:</strong>{" "}
                                     {opp.keywordGroup.aiRelatedKeyword1}
+                                    {opp.keywordGroup
+                                      .aiRelatedKeyword1Volume !== null &&
+                                    opp.keywordGroup.aiRelatedKeyword1Volume !==
+                                      undefined &&
+                                    typeof opp.keywordGroup
+                                      .aiRelatedKeyword1Volume === "number" ? (
+                                      <span className="ml-1 text-gray-500">
+                                        {" "}
+                                        (Vol:{" "}
+                                        {opp.keywordGroup.aiRelatedKeyword1Volume.toLocaleString()}
+                                        )
+                                      </span>
+                                    ) : (
+                                      <span className="ml-1 text-gray-500">
+                                        {" "}
+                                        (Vol: N/A)
+                                      </span>
+                                    )}
                                   </li>
                                 )}
                               {opp.keywordGroup?.aiRelatedKeyword2 &&
@@ -1588,10 +1801,34 @@ export default function OpportunityPage() {
                                   <li>
                                     <strong>R2:</strong>{" "}
                                     {opp.keywordGroup.aiRelatedKeyword2}
+                                    {opp.keywordGroup
+                                      .aiRelatedKeyword2Volume !== null &&
+                                    opp.keywordGroup.aiRelatedKeyword2Volume !==
+                                      undefined &&
+                                    typeof opp.keywordGroup
+                                      .aiRelatedKeyword2Volume === "number" ? (
+                                      <span className="ml-1 text-gray-500">
+                                        {" "}
+                                        (Vol:{" "}
+                                        {opp.keywordGroup.aiRelatedKeyword2Volume.toLocaleString()}
+                                        )
+                                      </span>
+                                    ) : (
+                                      <span className="ml-1 text-gray-500">
+                                        {" "}
+                                        (Vol: N/A)
+                                      </span>
+                                    )}
                                   </li>
                                 )}
                               <li>
                                 <strong>CSV:</strong> {opp.originalCsvKeyword}
+                                {typeof opp.csvVolume === "number" && (
+                                  <span className="ml-1 text-gray-500">
+                                    {" "}
+                                    (Vol: {opp.csvVolume.toLocaleString()})
+                                  </span>
+                                )}
                               </li>
                             </ul>
                           </td>
@@ -1633,54 +1870,71 @@ export default function OpportunityPage() {
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
                             {opp.gscKeywords && opp.gscKeywords.length > 0 ? (
-                              <Collapsible>
-                                <CollapsibleTrigger className="text-xs text-blue-600 hover:underline flex items-center">
-                                  <ChevronDown className="h-3 w-3 mr-1" /> Show
-                                  GSC ({opp.gscKeywords.length})
-                                </CollapsibleTrigger>
-                                <CollapsibleContent>
-                                  <ul className="mt-1 pl-2 list-disc space-y-0.5 text-[10px] max-h-32 overflow-y-auto scrollbar-thin p-1 bg-gray-50 rounded border">
-                                    {opp.gscKeywords
-                                      .slice(0, 5)
-                                      .map(
-                                        (kw: GscKeywordMetric, idx: number) => (
-                                          <li
-                                            key={idx}
-                                          >{`"${kw.keyword}" P:${kw.mean_position.toFixed(0)} I:${kw.total_impressions} C:${kw.total_clicks}`}</li>
-                                        )
-                                      )}
-                                    {opp.gscKeywords.length > 5 && (
-                                      <li>
-                                        ...and {opp.gscKeywords.length - 5} more
-                                      </li>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="text-xs p-0 h-auto text-blue-600 hover:underline"
+                                  >
+                                    <Info className="h-3 w-3 mr-1" /> Show GSC (
+                                    {opp.gscKeywords.length})
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-lg">
+                                  <DialogHeader>
+                                    <DialogTitle>
+                                      GSC Keywords for:{" "}
+                                      {opp.scrapedTitle ||
+                                        decodeURIComponent(opp.url)}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                      Top {opp.gscKeywords.length} keywords from
+                                      Google Search Console.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <ul className="mt-2 list-disc space-y-1 text-xs text-gray-800 max-h-60 overflow-y-auto scrollbar-thin pr-2 pl-5">
+                                    {opp.gscKeywords.map(
+                                      (kw: GscKeywordMetric, idx: number) => (
+                                        <li
+                                          key={idx}
+                                        >{`"${kw.keyword}" (Pos: ${kw.mean_position.toFixed(1)}, Impr: ${kw.total_impressions}, Clicks: ${kw.total_clicks})`}</li>
+                                      )
                                     )}
                                   </ul>
-                                </CollapsibleContent>
-                              </Collapsible>
+                                </DialogContent>
+                              </Dialog>
                             ) : (
-                              <span className="text-xs italic">No GSC</span>
+                              <span className="text-xs italic text-gray-500">
+                                No GSC kw data
+                              </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 flex items-center">
-                            <Button variant="outline" size="sm" asChild>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              asChild
+                              title="View Details"
+                            >
                               <Link
                                 href={`/opportunity/${opp.id}`}
                                 legacyBehavior={false}
                               >
-                                View
+                                <Eye className="h-4 w-4 text-blue-600" />
                               </Link>
                             </Button>
                             {opp.status !== "marked_unavailable" && (
                               <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-500 border-red-400 hover:bg-red-50 hover:text-red-600 h-8 px-2 text-xs"
+                                variant="ghost"
+                                size="icon"
+                                title="Mark Unavailable"
                                 onClick={() => handleMarkUnavailable(opp.url)}
                                 disabled={
                                   isUpdatingStatus || isProcessingLottery
                                 }
                               >
-                                <XCircle className="mr-1 h-3 w-3" /> M.U.
+                                <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             )}
                           </td>

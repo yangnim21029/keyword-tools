@@ -11,6 +11,11 @@ import {
   type GscKeywordMetrics,
 } from "./schema"; // Import the shared timestamp schema and GscKeywordMetrics type
 
+// Define EnrichedKeywordDataSchema based on GscKeywordMetricsSchema
+const EnrichedKeywordDataSchema = GscKeywordMetricsSchema.extend({
+  searchVolume: z.number().nullable().optional(),
+});
+
 // Raw data from CSV
 export interface OpportunityFromCsv {
   keyword: string;
@@ -35,6 +40,8 @@ const KeywordGroupSchema = z.object({
   aiRelatedKeyword1: z.string(),
   aiRelatedKeyword2: z.string(),
   aiPrimaryKeywordVolume: z.number().nullable().optional(),
+  aiRelatedKeyword1Volume: z.number().nullable().optional(),
+  aiRelatedKeyword2Volume: z.number().nullable().optional(),
 });
 
 // Zod schema for FirebaseOpportunity, including timestamp transformations
@@ -64,9 +71,17 @@ export const FirebaseOpportunitySchema = z.object({
     .describe("Site name from the scraped article"),
   keywordGroup: KeywordGroupSchema.optional(),
   gscKeywords: z
-    .array(GscKeywordMetricsSchema)
+    .array(GscKeywordMetricsSchema) // Actual GSC data for the URL
     .optional()
-    .describe("Raw GSC keyword metrics for the URL"),
+    .describe(
+      "Raw GSC keyword metrics directly fetched for the URL (not AI fallback data)"
+    ),
+  aiInputKeywords: z // NEW FIELD
+    .array(EnrichedKeywordDataSchema) // Uses the new schema
+    .optional()
+    .describe(
+      "Keywords (and their volumes) actually sent to the AI for analysis"
+    ),
   author: z.string().optional(),
   lastAttemptError: z.string().optional(),
   researchId: z.string().optional(),
@@ -94,7 +109,8 @@ export interface FirebaseOpportunity {
   scrapedExcerpt?: string;
   scrapedSiteName?: string;
   keywordGroup?: KeywordGroup;
-  gscKeywords?: GscKeywordMetrics[];
+  gscKeywords?: GscKeywordMetrics[]; // Actual GSC data
+  aiInputKeywords?: Array<GscKeywordMetrics & { searchVolume?: number | null }>; // NEW FIELD - type to match EnrichedKeywordData
   author?: string;
   lastAttemptError?: string;
   researchId?: string;
