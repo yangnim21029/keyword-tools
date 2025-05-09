@@ -11,6 +11,7 @@ import {
   TerminalSquare,
   Settings2,
   X,
+  TrendingUp,
 } from "lucide-react"; // Add ArrowUp, Trash2, and ShieldAlert
 import { useRouter } from "next/navigation"; // Import useRouter
 import { useTransition } from "react";
@@ -22,7 +23,8 @@ import { submitGeneratePersonaForCluster } from "@/app/actions/actions-ai-person
 import {
   submitCreateKeywordVolumeObj,
   submitDeleteKeywordVolumeObj,
-} from "@/app/actions/actions-keyword-volume"; // Import the keyword research action, delete action, and new cleanup action
+} from "@/app/actions/actions-keyword-volume"; // Import the keyword research action, delete action
+import { submitCheckKeywordTrend } from "@/app/actions/actions-trending"; // CORRECTED: Import submitCheckKeywordTrend from actions-trending
 import { submitClustering } from "@/app/actions/actions-semantic-clustering"; // Action for clustering
 import { LoadingButton } from "@/components/ui/LoadingButton";
 import { cn } from "@/lib/utils";
@@ -1253,6 +1255,100 @@ export function GenerateGraphFromTextButton({
       loadingText="Generating Graph..."
     >
       Generate Graph
+    </LoadingButton>
+  );
+}
+
+// === Check Keyword Trend Button ===
+
+interface CheckKeywordTrendButtonProps {
+  keyword: string;
+  region: string;
+  language: string;
+  onAnalysisComplete?: (result: any) => void; // Callback to pass result to parent
+  variant?: React.ComponentProps<typeof LoadingButton>["variant"];
+  size?: React.ComponentProps<typeof LoadingButton>["size"];
+  className?: string;
+  disabled?: boolean;
+}
+
+export function CheckKeywordTrendButton({
+  keyword,
+  region,
+  language,
+  onAnalysisComplete,
+  variant = "outline",
+  size = "sm",
+  className = "",
+  disabled = false,
+}: CheckKeywordTrendButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleCheckTrend = () => {
+    if (!keyword.trim() || !region.trim() || !language.trim() || isPending) {
+      if (!keyword.trim()) toast.warning("Please enter a keyword.");
+      if (!region.trim()) toast.warning("Please select a region.");
+      if (!language.trim()) toast.warning("Please select a language.");
+      return;
+    }
+
+    startTransition(async () => {
+      toast.info(`Checking trend for keyword: "${keyword}"...`);
+      try {
+        const result = await submitCheckKeywordTrend({
+          keyword,
+          region,
+          language,
+        });
+
+        if (result.success) {
+          toast.success(
+            result.message || `Trend analysis complete for "${keyword}".`
+          );
+          if (onAnalysisComplete) {
+            onAnalysisComplete(result);
+          }
+        } else {
+          toast.error(
+            result.message ||
+              `Trend analysis failed for "${keyword}": ${result.error || "Unknown error"}`
+          );
+          if (onAnalysisComplete) {
+            // Pass error result as well if parent needs to handle it
+            onAnalysisComplete(result);
+          }
+        }
+      } catch (err) {
+        console.error("[CheckKeywordTrendButton] Error calling action:", err);
+        const message =
+          err instanceof Error ? err.message : "An unexpected error occurred.";
+        toast.error(`Error: ${message}`);
+        if (onAnalysisComplete) {
+          onAnalysisComplete({ success: false, error: message });
+        }
+      }
+    });
+  };
+
+  return (
+    <LoadingButton
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={handleCheckTrend}
+      isLoading={isPending}
+      disabled={
+        disabled ||
+        isPending ||
+        !keyword.trim() ||
+        !region.trim() ||
+        !language.trim()
+      }
+      loadingIcon={<Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+      loadingText="Analyzing Trend..."
+    >
+      {!isPending && <TrendingUp className="h-4 w-4 mr-2" />}
+      Check Trend
     </LoadingButton>
   );
 }

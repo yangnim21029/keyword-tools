@@ -83,6 +83,7 @@ export const AI_MODELS: { [key: string]: LanguageModel } = {
   /** Faster model for simpler conversion/recommendation steps */
   // FAST: google('gemini-2.5-flash-preview-04-17')
   FAST: google("gemini-2.0-flash-lite"),
+  SEARCH: openai("gpt-4o-mini-search-preview"),
 };
 
 /** Default Firebase Function Region */
@@ -263,18 +264,18 @@ export const NAV_ITEMS: NavItem[] = [
     isPrimary: false,
   },
   {
-    href: "https://gsc-weekly-analyzer-241331030537.asia-east2.run.app",
-    label: "GSC 每週報告",
-    icon: "bar-chart",
-    isPrimary: false,
-  },
-  {
     href: "/serp-result",
     label: "SERP 分析",
     icon: "bar-chart",
     isPrimary: false,
   },
   // Secondary Items (Less clicked - will be tagged)
+  {
+    href: "https://gsc-weekly-analyzer-241331030537.asia-east2.run.app",
+    label: "GSC 每週報告",
+    icon: "bar-chart",
+    isPrimary: false,
+  },
   {
     href: "/demo",
     label: "功能演示",
@@ -285,6 +286,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/opportunity",
     label: "機會字優化",
     icon: "list",
+    isPrimary: false,
+  },
+  {
+    href: "/trending",
+    label: "關鍵字趨勢",
+    icon: "bar-chart",
     isPrimary: false,
   },
 ];

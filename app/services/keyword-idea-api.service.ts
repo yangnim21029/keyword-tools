@@ -13,7 +13,7 @@ const API_VERSION = "v19";
 /**
  * Location Code Mapping for Google Ads API
  */
-const LOCATION_CODES: Record<string, number> = {
+export const LOCATION_CODES: Record<string, number> = {
   TW: 2158, // Taiwan
   HK: 2344, // Hong Kong
   US: 2840, // United States
@@ -33,7 +33,7 @@ const LOCATION_CODES: Record<string, number> = {
 /**
  * Language Code Mapping for Google Ads API
  */
-const LANGUAGE_CODES: Record<string, number> = {
+export const LANGUAGE_CODES: Record<string, number> = {
   zh_TW: 1018, // Traditional Chinese
   zh_CN: 1000, // Simplified Chinese
   en: 1000, // English
@@ -46,10 +46,10 @@ const LANGUAGE_CODES: Record<string, number> = {
 };
 
 // Google Ads API Credentials (Ensure these are properly configured in your environment)
-const DEVELOPER_TOKEN = process.env.DEVELOPER_TOKEN || "";
-const CLIENT_ID = process.env.CLIENT_ID || "";
-const CLIENT_SECRET = process.env.CLIENT_SECRET || "";
-const REFRESH_TOKEN = process.env.REFRESH_TOKEN || "";
+export const DEVELOPER_TOKEN = process.env.DEVELOPER_TOKEN || "";
+export const CLIENT_ID = process.env.CLIENT_ID || "";
+export const CLIENT_SECRET = process.env.CLIENT_SECRET || "";
+export const REFRESH_TOKEN = process.env.REFRESH_TOKEN || "";
 const LOGIN_CUSTOMER_ID = process.env.LOGIN_CUSTOMER_ID || "";
 const CUSTOMER_ID = process.env.CUSTOMER_ID || "";
 
@@ -88,16 +88,39 @@ async function getAccessToken(): Promise<string> {
   }
 }
 
+// --- Google Ads API Interfaces ---
+
+/**
+ * Represents a month for historical data.
+ * Follows Google Ads API (MonthOfYear enum is 1-indexed).
+ */
+interface YearMonth {
+  year: string; // e.g., "2023"
+  month: number; // 1 (January) to 12 (December)
+}
+
+/**
+ * Represents monthly search volume data from Google Ads API.
+ */
+interface MonthlySearchVolume {
+  year: string; // e.g., "2023"
+  month: number; // 1-12
+  monthlySearches: string | number | null; // Can be string or number
+}
+
+interface GoogleAdsKeywordIdeaMetrics {
+  avgMonthlySearches?: string | number | null;
+  competition?: number; // Enum value
+  competitionIndex?: number;
+  lowTopOfPageBidMicros?: string | number | null;
+  monthlySearchVolumes?: MonthlySearchVolume[]; // Added for historical data
+}
+
 // Define a basic interface for the Google Ads API response (replace any)
 // TODO: Define a more detailed interface based on actual API response structure
 interface GoogleAdsKeywordIdea {
   text?: string;
-  keywordIdeaMetrics?: {
-    avgMonthlySearches?: string | number | null; // Can be string or number
-    competition?: number; // Enum value
-    competitionIndex?: number;
-    lowTopOfPageBidMicros?: string | number | null; // Can be string or number
-  };
+  keywordIdeaMetrics?: GoogleAdsKeywordIdeaMetrics; // Updated to use the more detailed interface
 }
 
 interface GoogleAdsKeywordIdeaResponse {
@@ -110,14 +133,16 @@ interface FetchRetryParams {
   locationId: number;
   languageId: number;
   maxRetries?: number; // Make optional with default below
+  fetchHistoricalMetrics?: boolean; // New flag to request historical data
 }
 
 // Helper function to fetch keyword ideas with retry logic
-async function fetchKeywordIdeasWithRetry({
+export async function fetchKeywordIdeasWithRetry({
   batchKeywords,
   locationId,
   languageId,
   maxRetries = 3,
+  fetchHistoricalMetrics = false, // Default to false
 }: FetchRetryParams): Promise<GoogleAdsKeywordIdeaResponse> {
   let retries = 0;
   while (retries < maxRetries) {
@@ -125,7 +150,8 @@ async function fetchKeywordIdeasWithRetry({
       const response = await fetchKeywordIdeas(
         batchKeywords,
         locationId,
-        languageId
+        languageId,
+        fetchHistoricalMetrics // Pass the flag
       );
       return response;
     } catch (error: unknown) {
@@ -168,21 +194,50 @@ async function fetchKeywordIdeasWithRetry({
 async function fetchKeywordIdeas(
   keywords: string[],
   locationId: number,
-  languageId: number
+  languageId: number,
+  fetchHistoricalMetrics: boolean = false // New parameter
 ): Promise<GoogleAdsKeywordIdeaResponse> {
   try {
     const accessToken = await getAccessToken();
     const apiUrl = `https://googleads.googleapis.com/${API_VERSION}/customers/${CUSTOMER_ID}:generateKeywordIdeas`;
-    const requestBody = {
+
+    const requestBody: any = {
+      // Use 'any' for flexibility, or define a more complex type
       language: `languageConstants/${languageId}`,
       geoTargetConstants: [`geoTargetConstants/${locationId}`],
       includeAdultKeywords: false,
-      keywordPlanNetwork: "GOOGLE_SEARCH",
+      keywordPlanNetwork: "GOOGLE_SEARCH", // Changed to GOOGLE_SEARCH based on common usage for historical
       keywordSeed: {
         keywords: keywords,
       },
     };
+
+    if (fetchHistoricalMetrics) {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setFullYear(endDate.getFullYear() - 1); // Get data for the last 12 full months
+
+      requestBody.historicalMetricsOptions = {
+        yearMonthRange: {
+          start: {
+            year: startDate.getFullYear().toString(),
+            month: startDate.getMonth() + 1, // Google Ads API month is 1-indexed
+          },
+          end: {
+            year: endDate.getFullYear().toString(),
+            month: endDate.getMonth() + 1, // Google Ads API month is 1-indexed
+          },
+        },
+        // includeAverageCpc: false, // Optional: only request what's needed
+      };
+      // When fetching historical metrics, we typically want them for the seed keywords themselves
+      // and not necessarily broad ideas. The API behavior might vary slightly.
+      // For trend analysis of a specific keyword, ensure 'keywords' contains only that keyword.
+    }
+
     console.log(`Sending request to Google Ads API: ${apiUrl}`);
+    console.log(`Request body: ${JSON.stringify(requestBody, null, 2)}`);
+
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {

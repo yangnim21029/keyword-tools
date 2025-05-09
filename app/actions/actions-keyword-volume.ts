@@ -97,7 +97,7 @@ function generateSpacedVariations(uniqueBaseKeywords: string[]): string[] {
 }
 
 function validatedDataToFirestore(
-  data: z.infer<typeof KeywordVolumeObjectSchema>,
+  data: z.infer<typeof KeywordVolumeObjectSchema>
 ): FirestoreKeywordVolumeObject {
   // Convert Dates to Timestamps
   return {
@@ -109,7 +109,7 @@ function validatedDataToFirestore(
 
 // Add this helper function near the top or within the DB section
 function _calculateTotalVolume(
-  keywords: KeywordVolumeItem[] | undefined | null,
+  keywords: KeywordVolumeItem[] | undefined | null
 ): number {
   if (!keywords || !Array.isArray(keywords)) {
     return 0;
@@ -138,12 +138,12 @@ export async function submitDeleteKeywordVolumeObj({
   } catch (error) {
     console.error(
       `[Action] Error deleting keyword research entry ${researchId}:`,
-      error,
+      error
     );
     throw new Error(
       `Failed to delete keyword research entry ${researchId}: ${
         error instanceof Error ? error.message : String(error)
-      }`,
+      }`
     );
   }
 }
@@ -168,7 +168,7 @@ export async function submitCreateKeywordVolumeObj({
       query,
       region,
       language,
-      10,
+      10
     );
 
     // get google suggestions 自製取 url 尾端的關鍵字去找數據
@@ -197,7 +197,7 @@ export async function submitCreateKeywordVolumeObj({
       console.warn(
         `[Server Action] Google Suggestion Warning: ${
           suggestionsResult.error || "No suggestions found"
-        }`,
+        }`
       );
       googleSuggestList = [];
     }
@@ -206,7 +206,7 @@ export async function submitCreateKeywordVolumeObj({
     throw new Error(
       `Failed to create keyword research entry: ${
         error instanceof Error ? error.message : String(error)
-      }`,
+      }`
     );
   }
 
@@ -244,7 +244,7 @@ export async function submitCreateKeywordVolumeObj({
   if (!validationResult.success) {
     console.error(
       "[Action] Zod validation failed:",
-      validationResult.error.errors,
+      validationResult.error.errors
     );
     return {
       success: false,
@@ -270,7 +270,7 @@ export async function submitCreateKeywordVolumeObj({
 
   // Convert validated data (with nulls instead of undefined) for Firestore
   const validatedDataForFirestore = validatedDataToFirestore(
-    validatedData, // Pass the modified data
+    validatedData // Pass the modified data
   );
 
   if (!db) throw new Error("Database not initialized");
@@ -280,7 +280,7 @@ export async function submitCreateKeywordVolumeObj({
       .collection(COLLECTIONS.KEYWORD_VOLUME)
       .add(validatedDataForFirestore);
     console.log(
-      `[Action] Successfully created entry with ID: ${docRef.id}, Total Volume: ${validatedDataForFirestore.totalVolume}`,
+      `[Action] Successfully created entry with ID: ${docRef.id}, Total Volume: ${validatedDataForFirestore.totalVolume}`
     );
     revalidateTag(KEYWORD_VOLUME_LIST_TAG);
     revalidatePath("/keyword-volume");
@@ -290,7 +290,7 @@ export async function submitCreateKeywordVolumeObj({
     throw new Error(
       `Failed to create keyword research entry: ${
         error instanceof Error ? error.message : String(error)
-      }`,
+      }`
     );
   }
 }
@@ -300,7 +300,7 @@ export async function submitCreateKeywordVolumeObj({
  */
 export async function submitUpdateKeywordVolumeObj(
   researchId: string,
-  input: Partial<KeywordVolumeObject>,
+  input: Partial<KeywordVolumeObject>
 ): Promise<boolean> {
   if (!db) throw new Error("Database not initialized");
   if (!researchId) throw new Error("Research ID is required for update");
@@ -318,12 +318,12 @@ export async function submitUpdateKeywordVolumeObj(
   } catch (error) {
     console.error(
       `[Action] Error updating keyword research entry ${researchId}:`,
-      error,
+      error
     );
     throw new Error(
       `Failed to update keyword research entry ${researchId}: ${
         error instanceof Error ? error.message : String(error)
-      }`,
+      }`
     );
   }
 }

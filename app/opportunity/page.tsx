@@ -519,7 +519,7 @@ export default function OpportunityPage() {
         "Advice URL", // <-- Added Advice URL header
       ]
         .map(escapeCsvField)
-        .join(",") + "\n";
+        .join("\t") + "\n"; // Use TAB as delimiter for header cells
 
     const rows = thisWeeksOpportunities
       .map((opp) => {
@@ -558,7 +558,7 @@ export default function OpportunityPage() {
           adviceUrl, // <-- Add adviceUrl data
         ]
           .map(escapeCsvField)
-          .join(",");
+          .join("\t"); // Use TAB as delimiter for data cells
       })
       .join("\n");
 
