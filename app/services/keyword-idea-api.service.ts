@@ -352,6 +352,17 @@ export async function getSearchVolume({
             JSON.stringify(keywordIdeas, null, 2)
           );
 
+          if (keywordIdeas.length > 0) {
+            console.log(
+              `[getSearchVolume] Received ${keywordIdeas.length} ideas from Ads API. Raw metrics for first few:`
+            );
+            keywordIdeas.slice(0, 5).forEach((idea, index) => {
+              console.log(
+                `  Idea ${index + 1}: Text='${idea.text}', AvgMonthlySearches='${idea.keywordIdeaMetrics?.avgMonthlySearches}'`
+              );
+            });
+          }
+
           // --- Inlined processing logic ---
           for (const idea of keywordIdeas) {
             const originalText = idea.text || "";
@@ -592,6 +603,17 @@ export async function getRelatedKeywordIdeas({
     console.log(
       `[getRelatedKeywordIdeas] API returned ${keywordIdeas.length} ideas.`
     );
+
+    if (keywordIdeas.length > 0) {
+      console.log(
+        `[getRelatedKeywordIdeas] Received ${keywordIdeas.length} ideas from Ads API. Raw metrics for first few:`
+      );
+      keywordIdeas.slice(0, 5).forEach((idea, index) => {
+        console.log(
+          `  Idea ${index + 1}: Text='${idea.text}', AvgMonthlySearches='${idea.keywordIdeaMetrics?.avgMonthlySearches}'`
+        );
+      });
+    }
 
     // Process ALL results returned by the API
     for (const idea of keywordIdeas) {

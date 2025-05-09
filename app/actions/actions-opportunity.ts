@@ -115,6 +115,11 @@ export type ProcessAttemptOutcome = // Export for use in page.tsx if needed for 
         finalStatusMessage: string;
       }
     | {
+        status: "no_gsc_data_skipped"; // <<< NEW STATUS
+        finalStatusMessage: string;
+        urlSkipped: string;
+      }
+    | {
         status: "error"; // For actual errors like scraping, AI, etc.
         finalStatusMessage: string;
         error: string;
@@ -246,6 +251,8 @@ async function processSingleCsvItem(
     // --- Step 1: Fetch GSC Keywords ---
     let gscFetchStatusMessage = "";
     let rawGscKeywords: GscKeywordMetrics[] | undefined = undefined;
+    let gscHadError = false; // Flag to indicate GSC fetch error
+
     try {
       const gscKeywordsResult = await fetchGscKeywordsForUrl(csvCandidate.url);
       if (!("error" in gscKeywordsResult)) {
@@ -258,6 +265,7 @@ async function processSingleCsvItem(
           `[processSingleCsvItem] ${gscFetchStatusMessage} for ${csvCandidate.url}`
         );
       } else {
+        gscHadError = true; // Mark GSC fetch as having an error
         gscFetchStatusMessage = ` (GSC fetch failed: ${gscKeywordsResult.error})`;
         console.warn(
           `[processSingleCsvItem] GSC fetch failed for ${csvCandidate.url}: ${gscKeywordsResult.error}`,
@@ -265,11 +273,24 @@ async function processSingleCsvItem(
         );
       }
     } catch (gscError) {
+      gscHadError = true; // Mark GSC fetch as having an error
       gscFetchStatusMessage = " (GSC fetch error)";
       console.error(
         `[processSingleCsvItem] GSC fetch error for ${csvCandidate.url}:`,
         gscError
       );
+    }
+
+    // --- NEW: Skip if no GSC data ---
+    if (gscHadError || !rawGscKeywords || rawGscKeywords.length === 0) {
+      console.log(
+        `[processSingleCsvItem] Skipping ${csvCandidate.url} due to no GSC data found (Error: ${gscHadError}, Found: ${rawGscKeywords?.length ?? 0}).${gscFetchStatusMessage}`
+      );
+      return {
+        status: "no_gsc_data_skipped",
+        finalStatusMessage: `No GSC data found for ${csvCandidate.url}, item skipped.${gscFetchStatusMessage}`,
+        urlSkipped: csvCandidate.url,
+      };
     }
 
     // --- Step 2: Prepare Keywords & Get Ads Volume/Ideas ---

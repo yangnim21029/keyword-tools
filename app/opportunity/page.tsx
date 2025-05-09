@@ -305,6 +305,15 @@ export default function OpportunityPage() {
               { duration: 2000 }
             );
             break; // No point in further attempts for this site in this batch
+          } else if (attempt.status === "no_gsc_data_skipped") {
+            toast.info(
+              `Batch item for ${site.name} (${attempt.urlSkipped}) skipped: No GSC data found.`,
+              { duration: 2500 }
+            );
+            setLastAttemptStatusMessage(
+              `Batch: Item for ${site.name} skipped (No GSC data). Trying next...`
+            );
+            // Continue attempts for this site as this specific item was skipped due to no GSC data
           } else if (
             attempt.status === "author_limit_deferred" ||
             attempt.status === "author_ignored"
@@ -444,6 +453,14 @@ export default function OpportunityPage() {
           );
           setGeneralMessage(
             `No new available items found in your CSV list for ${siteName}.`
+          );
+        } else if (attempt.status === "no_gsc_data_skipped") {
+          toast.info(
+            `Item for ${siteName} (${attempt.urlSkipped}) skipped: No GSC data found.`,
+            { duration: 3000 }
+          );
+          setGeneralMessage(
+            `Could not draw for ${siteName}: Item from CSV skipped due to no GSC data. ${attempt.finalStatusMessage}`
           );
         } else {
           toast.info(
@@ -750,6 +767,14 @@ export default function OpportunityPage() {
           );
           setGeneralMessage(
             `Redraw: No new available items in CSV for ${siteName} found.`
+          );
+        } else if (attempt.status === "no_gsc_data_skipped") {
+          toast.info(
+            `Redraw: Replacement for ${siteName} (${attempt.urlSkipped}) skipped: No GSC data found.`,
+            { duration: 3000 }
+          );
+          setGeneralMessage(
+            `Redraw: Replacement for ${siteName} from CSV skipped due to no GSC data. ${attempt.finalStatusMessage}`
           );
         } else {
           toast.info(
